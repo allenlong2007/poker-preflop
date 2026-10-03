@@ -61,6 +61,41 @@ per hand, so the strategies are effectively exact *for this model*.
   the gap is a measure of how much postflop play and position matter. That is
   stage 2.
 
+## Experiment 2: Big Blind defense vs a 2.25–2.50bb open
+
+`scripts/bb_defense.py` (~6 min) solves every BTN open from 2.25 to 2.50bb in
+0.05bb steps and tries every BB 3-bet size from 6 to 14bb (0.25bb steps), keeping
+the one that earns the BB the most. It runs two models:
+
+* **equity**: raw all-in equity, position is worth nothing.
+* **position**: in pots that see a flop, the BTN realizes 110% of its equity and
+  the BB 85% (`r_ip`, `r_oop` in `solve()`). These two numbers are illustrative
+  assumptions, not measured.
+
+| BTN open | Best 3-bet (equity) | Best 3-bet (position) | BB fold / call / 3-bet (position) |
+|---|---|---|---|
+| 2.25 | 8.0bb (3.6x) | 10.0bb (4.4x) | 5% / 77% / 18% |
+| 2.30 | 8.0bb | 10.5bb | 6% / 76% / 18% |
+| 2.35 | 8.25bb | 10.75bb | 9% / 73% / 18% |
+| 2.40 | 8.5bb | 11.25bb | 10% / 73% / 17% |
+| 2.45 | 8.5bb | 11.5bb | 10% / 73% / 17% |
+| 2.50 | 8.75bb (3.5x) | 11.5bb (4.6x) | 13% / 70% / 17% |
+
+* **The best 3-bet scales with the open: about 3.5x in the equity model and about 4.5x
+  once the BB is penalized for being out of position.** Playing a bloated pot out of
+  position is costly, so the BB 3-bets bigger to make the BTN fold more often
+  (the BTN folds ~45% to the 3-bet at every size).
+* **The EV curves are flat near the top.** Anything within about ±0.75bb of the
+  best size costs under 1 milli-bb per hand (see `good_3bet_range_bb` in `summary.csv`).
+* **The 3-bet range barely moves across 2.25–2.50.** It's a linear "value" range:
+  pairs 55+, Ax suited down to A4s, offsuit aces down to A7o, broadway hands.
+  What changes is the **fold** range. With the position penalty, the BB folds 5%
+  vs 2.25bb and 13% vs 2.50bb: every 0.05bb on the open pushes the weakest
+  offsuit hands (83o, 74o, 64o, 53o, 43o...) from call to fold.
+
+Outputs in `output/bb_defense/`: `summary.csv`, `bb_ranges.csv` (every hand,
+every size, both models), `ev_by_3bet_size.csv`, and range / EV charts.
+
 ## Next steps
 
 1. Add equity realization (IP realizes > 100%, OOP < 100%) and compare to published solver charts.

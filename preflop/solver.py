@@ -25,11 +25,15 @@ def _regret_match(R):
 
 
 class Payoffs:
-    def __init__(self, E, s, t, stack):
+    def __init__(self, E, s, t, stack, r_ip=1.0, r_oop=1.0):
         self.s, self.t, self.stack = s, t, stack
-        self.call_open = 2 * s * E - s          # BB calls the open
-        self.call_3bet = 2 * t * E - t          # BTN calls the 3-bet
-        self.call_jam = 2 * stack * E - stack   # BB calls the all-in
+        # Equity realization: in a pot that still has postflop play, the BTN (in
+        # position) wins a bit more than its raw equity and the BB a bit less.
+        # BTN's share of the pot = E*r_ip / (E*r_ip + (1-E)*r_oop). 1.0/1.0 = raw equity.
+        share = E * r_ip / (E * r_ip + (1 - E) * r_oop)
+        self.call_open = 2 * s * share - s      # BB calls the open
+        self.call_3bet = 2 * t * share - t      # BTN calls the 3-bet
+        self.call_jam = 2 * stack * E - stack   # BB calls the all-in (no postflop, raw equity)
 
 
 def _values(P, s2, s3, s4):
@@ -40,14 +44,15 @@ def _values(P, s2, s3, s4):
     return V2, V3, V4
 
 
-def solve(E, W, open_size=2.25, threebet_size=None, stack=100, iters=3000):
+def solve(E, W, open_size=2.25, threebet_size=None, stack=100, iters=3000, r_ip=1.0, r_oop=1.0):
     """Return the equilibrium strategy for one open size.
 
     open_size     -- BTN raises to this many bb
     threebet_size -- BB re-raises to this (default 4x the open)
+    r_ip, r_oop   -- equity realization for BTN / BB in non-all-in pots (1.0 = raw equity)
     """
     t = threebet_size or 4 * open_size
-    P = Payoffs(E, open_size, t, stack)
+    P = Payoffs(E, open_size, t, stack, r_ip, r_oop)
     W = W / W.sum()                 # joint probability of each (BTN, BB) class pair
     n = len(W)
 

@@ -43,6 +43,72 @@ def range_grid(values, title, path, fmt="pct", vmin=0.0, vmax=1.0):
     plt.close(fig)
 
 
+ACTION_COLORS = {"fold": "#e4e3df", "call": "#2a78d6", "3-bet": "#eb6834"}
+
+
+def action_grid(actions, title, path, subtitle=""):
+    """13x13 grid where each cell is split left-to-right by action frequency.
+
+    `actions` maps an action name (key of ACTION_COLORS) to a 169-length array.
+    """
+    from matplotlib.patches import Patch, Rectangle
+
+    fig, ax = plt.subplots(figsize=(8, 8.6))
+    gap = 0.04
+    for i, h in enumerate(HANDS):
+        r, c = divmod(i, 13)
+        x = c - 0.5 + gap
+        width = 1 - 2 * gap
+        for name, freq in actions.items():
+            w = width * freq[i]
+            if w > 0.002:
+                ax.add_patch(Rectangle((x, r - 0.5 + gap), w, 1 - 2 * gap,
+                                       color=ACTION_COLORS[name], linewidth=0))
+            x += w
+        dark = actions.get("call", [0] * 169)[i] + actions.get("3-bet", [0] * 169)[i] > 0.5
+        ax.text(c, r, h, ha="center", va="center", fontsize=8.5, fontweight="bold",
+                color="white" if dark else INK)
+    ax.set_xlim(-0.5, 12.5)
+    ax.set_ylim(12.5, -0.5)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title(title, loc="left", fontsize=12, color=INK, pad=24)
+    if subtitle:
+        ax.text(-0.5, -0.75, subtitle, fontsize=9, color=MUTED)
+    ax.legend(handles=[Patch(color=v, label=k) for k, v in ACTION_COLORS.items() if k in actions],
+              loc="upper center", bbox_to_anchor=(0.5, -0.01), ncol=3, frameon=False,
+              fontsize=9, labelcolor=INK)
+    fig.text(0.125, 0.06, "Pairs on the diagonal, suited above it, offsuit below. "
+             "Each cell is split by how often the hand takes each action.",
+             fontsize=8.5, color=MUTED)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+def multi_line(series, title, xlabel, ylabel, path):
+    """Several lines whose labels are ordered (e.g. open sizes): one-hue light->dark ramp."""
+    ramp = ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281", "#0d366b"]
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    for k, (label, (x, y)) in enumerate(series.items()):
+        color = ramp[round(k * (len(ramp) - 1) / max(len(series) - 1, 1))]
+        ax.plot(x, y, color=color, linewidth=2, label=label)
+        best = max(range(len(y)), key=lambda j: y[j])
+        ax.plot([x[best]], [y[best]], marker="o", markersize=8, color=color,
+                markeredgecolor="white", markeredgewidth=2)
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK, title="BTN open", title_fontsize=9)
+    ax.set_title(title, loc="left", fontsize=12, color=INK)
+    ax.set_xlabel(xlabel, color=MUTED)
+    ax.set_ylabel(ylabel, color=MUTED)
+    ax.grid(axis="y", color=GRID)
+    ax.tick_params(colors=MUTED)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    for s in ("left", "bottom"):
+        ax.spines[s].set_color(GRID)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
 def line(x, y, title, xlabel, ylabel, path, highlight=None):
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(x, y, color="#2a78d6", linewidth=2, marker="o", markersize=6)
