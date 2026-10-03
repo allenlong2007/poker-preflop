@@ -96,6 +96,53 @@ the one that earns the BB the most. It runs two models:
 Outputs in `output/bb_defense/`: `summary.csv`, `bb_ranges.csv` (every hand,
 every size, both models), `ev_by_3bet_size.csv`, and range / EV charts.
 
+## Experiment 3: Sweeping the BB's out-of-position penalty
+
+Only the ratio `r_ip / r_oop` changes the results, so `scripts/realization_sweep.py`
+fixes the BTN at 1.0 and sweeps the BB's `r_oop` from 0.75 to 1.0. Experiment 2's
+1.10 / 0.85 "position model" is r_oop ≈ 0.77 on this scale.
+
+![realization sweep](output/realization_sweep/realization_sweep.png)
+
+| r_oop | Best 3-bet vs 2.25 | BB fold vs 2.25 | Best 3-bet vs 2.50 | BB fold vs 2.50 |
+|---|---|---|---|---|
+| 1.00 | 8.0bb (3.6x) | 0% | 8.75bb (3.5x) | 0% |
+| 0.90 | 8.75bb (3.9x) | 0% | 9.75bb (3.9x) | 5% |
+| 0.80 | 9.75bb (4.3x) | 4% | 11.0bb (4.4x) | 11% |
+| 0.75 | 10.5bb (4.7x) | 5% | 11.75bb (4.7x) | 15% |
+
+* **The best 3-bet size grows almost linearly as the penalty grows**, from about 3.5x
+  the open with no penalty to about 4.7x at r_oop 0.75.
+* **Folding starts only once the penalty is real.** Against 2.25bb the BB keeps
+  defending everything until r_oop drops below ~0.86. Against 2.50bb, folds start
+  at ~0.97.
+* **The 3-bet frequency falls slightly** (20% → 17%): a bigger size means a tighter range.
+  The jagged lines come from the 0.25bb size grid.
+
+## Experiment 4: The Button chooses its open size too
+
+`scripts/sizing_game.py` lets the Button choose an open from 2.0 to 4.0bb, knowing the
+BB will answer with its best 3-bet size (2.5x–6x the open). Each player uses one size
+for every hand.
+
+![sizing game](output/sizing_game/btn_ev_by_open_size.png)
+
+| r_oop | BTN best open | BB 3-bets to | BTN raises | BB fold / call / 3-bet | Cost of opening 2.2bb |
+|---|---|---|---|---|---|
+| 1.00 | 3.4bb | 11.9bb (3.5x) | 58% | 25% / 59% / 17% | 3.7bb/100 |
+| 0.90 | 3.2bb | 12.4bb (3.9x) | 67% | 28% / 56% / 17% | 3.4bb/100 |
+| 0.80 | 3.1bb | 14.3bb (4.6x) | 79% | 29% / 55% / 17% | 3.1bb/100 |
+| 0.75 | 3.1bb | 15.5bb (5.0x) | 86% | 29% / 55% / 16% | 3.3bb/100 |
+
+* **The Button's best open stays at 3.1–3.4bb whatever the penalty.** Penalizing the BB
+  makes the Button profitable and lets it open far more hands (58% → 86%), but the best
+  size only drops from 3.4 to 3.1bb.
+* **So this model still can't produce 2.25bb opens.** Small opens are what solvers that
+  play the full game recommend. The model is missing whatever makes small opens work:
+  postflop betting, hand-by-hand realization (suited/connected hands realize more), and
+  mixing sizes by hand.
+* **The BB's answer to a bigger open is a bigger 3-bet**, reaching 5x the open at r_oop 0.75.
+
 ## Next steps
 
 1. Add equity realization (IP realizes > 100%, OOP < 100%) and compare to published solver charts.

@@ -85,7 +85,7 @@ def action_grid(actions, title, path, subtitle=""):
     plt.close(fig)
 
 
-def multi_line(series, title, xlabel, ylabel, path):
+def multi_line(series, title, xlabel, ylabel, path, legend_title="BTN open"):
     """Several lines whose labels are ordered (e.g. open sizes): one-hue light->dark ramp."""
     ramp = ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281", "#0d366b"]
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
@@ -95,7 +95,8 @@ def multi_line(series, title, xlabel, ylabel, path):
         best = max(range(len(y)), key=lambda j: y[j])
         ax.plot([x[best]], [y[best]], marker="o", markersize=8, color=color,
                 markeredgecolor="white", markeredgewidth=2)
-    ax.legend(frameon=False, fontsize=9, labelcolor=INK, title="BTN open", title_fontsize=9)
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK, title=legend_title, title_fontsize=9,
+              loc="center left", bbox_to_anchor=(1.01, 0.5))
     ax.set_title(title, loc="left", fontsize=12, color=INK)
     ax.set_xlabel(xlabel, color=MUTED)
     ax.set_ylabel(ylabel, color=MUTED)
@@ -105,6 +106,41 @@ def multi_line(series, title, xlabel, ylabel, path):
         ax.spines[s].set_visible(False)
     for s in ("left", "bottom"):
         ax.spines[s].set_color(GRID)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+RAMP = ["#86b6ef", "#5598e7", "#2a78d6", "#1c5cab", "#104281", "#0d366b"]
+
+
+def _ramp(k, n):
+    return RAMP[round(k * (len(RAMP) - 1) / max(n - 1, 1))]
+
+
+def _style(ax):
+    ax.grid(axis="y", color=GRID)
+    ax.tick_params(colors=MUTED)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    for s in ("left", "bottom"):
+        ax.spines[s].set_color(GRID)
+
+
+def small_multiples(panels, title, xlabel, path, legend_title=""):
+    """One panel per measure (each with its own y-axis), same ordered series in every panel.
+
+    panels = {panel title: {series label: (x list, y list)}}
+    """
+    fig, axes = plt.subplots(1, len(panels), figsize=(5 * len(panels), 4.2))
+    for ax, (ptitle, series) in zip(axes, panels.items()):
+        for k, (label, (x, y)) in enumerate(series.items()):
+            ax.plot(x, y, color=_ramp(k, len(series)), linewidth=2, label=label)
+        ax.set_title(ptitle, loc="left", fontsize=11, color=INK)
+        ax.set_xlabel(xlabel, color=MUTED, fontsize=9)
+        _style(ax)
+    axes[-1].legend(frameon=False, fontsize=9, labelcolor=INK, title=legend_title, title_fontsize=9)
+    fig.suptitle(title, x=0.01, ha="left", fontsize=13, color=INK)
+    fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
