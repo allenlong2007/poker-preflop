@@ -3,6 +3,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
 
 from .cards import HANDS
@@ -13,17 +14,30 @@ BLUES = LinearSegmentedColormap.from_list(
 INK, MUTED, GRID = "#1f1f1e", "#6b6b66", "#e4e3df"
 
 
-def range_grid(values, title, path, fmt="pct", vmin=0.0, vmax=1.0):
-    """Draw a 13x13 hand grid. `values` has one number per class, in HANDS order."""
+# Diverging ramp for ratios around 1.0: red = below, warm gray = 1.0, blue = above.
+DIVERGING = LinearSegmentedColormap.from_list(
+    "diverging", ["#a3302f", "#e34948", "#f2a8a6", "#f0efec", "#9ec5f4", "#2a78d6", "#104281"])
+
+
+def range_grid(values, title, path, fmt="pct", vmin=0.0, vmax=1.0, cmap=None, note=None):
+    """Draw a 13x13 hand grid. `values` has one number per class, in HANDS order.
+
+    fmt: "pct" (action frequencies), "eq" (equities), "ratio" (e.g. realization, centred on 1).
+    Missing values (NaN) are left blank.
+    """
     fig, ax = plt.subplots(figsize=(8, 8.4))
     grid = [[values[r * 13 + c] for c in range(13)] for r in range(13)]
-    ax.imshow(grid, cmap=BLUES, vmin=vmin, vmax=vmax)
+    ax.imshow(grid, cmap=cmap or (DIVERGING if fmt == "ratio" else BLUES), vmin=vmin, vmax=vmax)
     for i, (h, v) in enumerate(zip(HANDS, values)):
         r, c = divmod(i, 13)
-        dark = (v - vmin) / (vmax - vmin) > 0.55
-        if fmt == "pct":
+        if fmt == "ratio":
+            dark = abs(v - 1) / max(vmax - 1, 1 - vmin) > 0.55 if v == v else False
+            sub = f"{v:.2f}" if v == v else ""
+        elif fmt == "pct":
+            dark = (v - vmin) / (vmax - vmin) > 0.55
             sub = "" if v > 0.995 or v < 0.005 else f"{v:.0%}"
         else:
+            dark = (v - vmin) / (vmax - vmin) > 0.55
             sub = f"{v:.1%}"
         color = "white" if dark else INK
         ax.text(c, r - (0.12 if sub else 0), h, ha="center", va="center", fontsize=8.5,
@@ -37,8 +51,25 @@ def range_grid(values, title, path, fmt="pct", vmin=0.0, vmax=1.0):
     for s in ax.spines.values():
         s.set_visible(False)
     ax.set_title(title, loc="left", fontsize=12, color=INK, pad=10)
-    fig.text(0.125, 0.04, "Pairs on the diagonal, suited above it, offsuit below.",
+    fig.text(0.125, 0.04, note or "Pairs on the diagonal, suited above it, offsuit below.",
              fontsize=8.5, color=MUTED)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+def fit_plot(x, y, curves, title, xlabel, ylabel, path):
+    """Binned data as dots plus model curves. curves = {label: (x list, y list)}."""
+    fig, ax = plt.subplots(figsize=(7, 4.6))
+    ax.plot([0, 1], [0, 1], color=GRID, linewidth=1.5, linestyle="--")
+    ax.text(0.97, 0.93, "raw equity", color=MUTED, fontsize=8.5, ha="right")
+    for k, (label, (cx, cy)) in enumerate(curves.items()):
+        ax.plot(cx, cy, color=["#2a78d6", "#eb6834"][k % 2], linewidth=2, label=label)
+    ax.plot(x, y, "o", color=INK, markersize=4, label="simulated (binned)")
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="upper left")
+    ax.set_title(title, loc="left", fontsize=12, color=INK)
+    ax.set_xlabel(xlabel, color=MUTED)
+    ax.set_ylabel(ylabel, color=MUTED)
+    _style(ax)
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
@@ -141,6 +172,31 @@ def small_multiples(panels, title, xlabel, path, legend_title=""):
     axes[-1].legend(frameon=False, fontsize=9, labelcolor=INK, title=legend_title, title_fontsize=9)
     fig.suptitle(title, x=0.01, ha="left", fontsize=13, color=INK)
     fig.tight_layout()
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+def heatmap(df, title, xlabel, ylabel, path):
+    """Generic heatmap of a DataFrame (index = rows, columns = columns); darker = larger."""
+    fig, ax = plt.subplots(figsize=(8, 4.8))
+    vals = df.values
+    im = ax.imshow(vals, cmap=BLUES, aspect="auto")
+    lo, hi = np.nanmin(vals), np.nanmax(vals)
+    for r in range(vals.shape[0]):
+        for c in range(vals.shape[1]):
+            v = vals[r, c]
+            dark = (v - lo) / (hi - lo + 1e-12) > 0.55
+            ax.text(c, r, f"{v:.1f}", ha="center", va="center", fontsize=7.5,
+                    color="white" if dark else INK)
+    ax.set_xticks(range(len(df.columns)), [f"{c:g}" for c in df.columns])
+    ax.set_yticks(range(len(df.index)), [f"{i:g}" for i in df.index])
+    ax.set_xlabel(xlabel, color=MUTED)
+    ax.set_ylabel(ylabel, color=MUTED)
+    ax.tick_params(colors=MUTED, length=0)
+    for sp in ax.spines.values():
+        sp.set_visible(False)
+    ax.set_title(title, loc="left", fontsize=12, color=INK)
+    fig.colorbar(im, ax=ax, shrink=0.8).outline.set_visible(False)
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 

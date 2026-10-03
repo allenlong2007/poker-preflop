@@ -1,0 +1,6 @@
+rules,btn_equity,btn_realized,alpha_fit,r_oop_fit,best_open_bb,good_open_range_bb
+"baseline (bluff 1/3, bet 2/3 pot)",0.548,0.632,1.35,0.78,2.5,2.35-2.7
+never bluff,0.548,0.598,1.7,0.945,2.25,2.1-2.35
+bluff 2/3 of the time,0.548,0.724,1.6,0.54,2.7,2.45-2.8
+bet 1/2 pot,0.548,0.584,1.05,0.89,3.1,2.95-3.25
+bet full pot,0.548,0.768,2.12,0.5,2.1,2.05-2.25

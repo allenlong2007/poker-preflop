@@ -183,6 +183,77 @@ BB's position penalty (r_oop = 0.85), then reruns the open-size game (opens
 Caveat: alpha is a single knob chosen to match a known answer, not fitted to
 data. Calibrating it against real solver EVs is the next step.
 
+## Experiment 6: Calibrating realization, then measuring it by simulation
+
+### 6a. Calibration to published solver numbers (`scripts/calibrate.py`)
+
+Targets for the BB vs a ~2.5bb open at 100bb, from the
+[Preflop Wizard heads-up guide](https://www.preflopwizard.app/blog/poker-heads-up-strategy):
+fold 30–35%, 3-bet 15–20%, 3-bet size 9–10bb. This is a weak source: an aggregate of
+unnamed solver runs that include limping, which this model doesn't allow.
+
+A grid search over α (1.0–2.0) and r_oop (0.70–1.00) finds **α = 1.4, r_oop = 0.75**
+fits every target (fold 31%, 3-bet 21% to 9bb). α is well pinned down (1.3–1.5);
+r_oop less so (0.70–0.80 all fit).
+
+![calibration error](output/calibration/calibration_error.png)
+
+**Out-of-sample check:** the open size was not a target, yet the calibrated model's
+best BTN open is **2.45bb** (2.35–2.6 within 1 milli-bb), inside the 2–2.5bb that
+solvers use. Opening 2.25bb instead costs only 0.19bb/100.
+
+### 6b. Measuring realization with simple postflop rules (`scripts/simulate_realization.py`)
+
+`preflop/postflop.py` plays hands out from the flop. Both players follow the same rules:
+
+| Strength (from the cards each player sees) | First to act / checked to | Facing a bet |
+|---|---|---|
+| **Strong**: two pair+ that improves the board, overpair, top pair with T+ kicker | bet 2/3 pot | call |
+| **Medium**: any other pair using a hole card, or a flush draw / open-ended straight draw (not on the river) | check | call |
+| **Weak**: everything else | bluff 1/3 of the time, else check | fold |
+
+The BB acts first every street; one bet per street at most and no raises. Hands are dealt
+from the model's BTN opening range vs BB calling range at a 2.25bb open, 1.4M hands
+per round. Then α and r_oop are fitted to the results, the preflop game is re-solved
+with them, and the loop repeats until they stop moving (2 rounds).
+
+| | α | r_oop | BTN best open |
+|---|---|---|---|
+| Calibrated to solver numbers (6a) | 1.40 | 0.75 | 2.45bb |
+| **Simulated from simple rules (6b)** | **1.36** | **0.80** | **2.45bb** (2.35–2.65) |
+
+On average the BTN wins 63% of the flop pot with 55% equity.
+
+![realization fit](output/simulated_realization/realization_fit.png)
+
+Per-hand realization (realized share ÷ raw equity):
+
+* **BTN (in position):** big pairs realize the most (AA 2.7x, KK 2.3x, small pairs ~1.4x,
+  because the rules pay them off with any pair). Suited connectors 1.3–1.4x.
+  Offsuit weak aces and kings only 0.8–0.9x.
+* **BB (out of position):** offsuit trash (A2o–A5o, K2o–K6o, Q2o–Q6o) realizes only
+  ~0.6–0.7 of its equity; suited connectors and broadway offsuit ~1.0–1.2.
+
+![BTN realization](output/simulated_realization/realization_btn.png)
+![BB realization](output/simulated_realization/realization_bb.png)
+
+### 6c. How much do the rules matter? (`scripts/rule_sensitivity.py`)
+
+| Rules | α | r_oop | BTN best open |
+|---|---|---|---|
+| baseline (bluff 1/3, bet 2/3 pot) | 1.35 | 0.78 | 2.50bb |
+| never bluff | 1.70 | 0.95 | 2.25bb |
+| bluff 2/3 of the time | 1.60 | 0.54 | 2.70bb |
+| bet 1/2 pot | 1.05 | 0.89 | 3.10bb |
+| bet full pot | 2.12 | 0.50* | 2.10bb |
+
+\* hits the edge of the fit grid.
+
+**Bet size is the biggest driver.** The rules call with any pair whatever the bet size,
+so bigger bets just extract more from strong hands, making α larger and the best open
+smaller. That the 2/3-pot baseline matches the solver calibration is encouraging,
+but partly luck of the rule choice. The obvious next step is calling based on pot odds.
+
 ## Next steps
 
 1. Add equity realization (IP realizes > 100%, OOP < 100%) and compare to published solver charts.
