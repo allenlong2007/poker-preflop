@@ -1,0 +1,6 @@
+,two pair+,"top pair, weak kicker",weaker pair,missed draw
+blank,0.97,0.004,0.052,0.088
+overcard,0.991,,0.049,
+pairs the board,0.309,0.084,0.023,0.022
+flush card,0.682,0.002,0.043,
+straight card,0.993,0.012,0.052,0.025

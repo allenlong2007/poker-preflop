@@ -25,7 +25,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `preflop/realization.py` | Per-hand playability bonuses (experiment 5) |
 | `preflop/postflop.py` | Rule-based postflop simulator: pot-odds calling, balanced bluffing |
 | `preflop/flopgame.py` | Learned flop c-bet / check-raise game (CFR+ per board texture x hand bucket) |
-| `preflop/turngame.py` | Learned turn game after a c-bet is called |
+| `preflop/turngame.py` | Learned turn game after a c-bet is called (shared check/bet/raise tree + CFR+ loop) |
+| `preflop/rivergame.py` | Learned river game after the BB check-calls the turn |
 | `preflop/plots.py` | Range grids, heatmaps, bar and line charts |
 | `scripts/` | One script per experiment (named in each section below) |
 | `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules |
@@ -568,10 +569,83 @@ and its turn strategy shifts:
 
 ![BB check-raise heatmap](output/turn_study/bb_xr_heatmap_learned.png)
 
+## Experiment 12: The BB called the turn too. What now on the river?
+
+`scripts/river_study.py` + `preflop/rivergame.py`. The line: BTN c-bets the flop, BB calls; BB checks
+the turn, BTN bets 2/3 pot, BB calls. The river uses the same learned tree as the turn (check / lead,
+bet, fold / call / check-raise, raises; 2/3-pot bets, 3x raises).
+
+* **Exact values:** every river line ends in a fold or a showdown, so each hand's values are exact.
+* **Weighting:** hands are weighted by how likely they reach this river under the learned flop *and*
+  turn strategies.
+* **Texture and buckets:** river texture = what the river card did. River buckets match the flop's,
+  with "draw" becoming **missed draw**.
+* **Learning:** 60 CFR+ rounds, then 1.5M hands.
+
+**What the BB holds on this river:** weaker pairs 73%, two pair+ 14%, top pair 10%, missed draws 2%.
+After check-calling two streets, its range is mostly bluff-catchers.
+
+### The BB's river strategy (after learned flop c-bets)
+
+![BB river lines by hand](output/river_study/bb_river_lines_by_hand_learned.png)
+
+| BB hand | Leads | vs a BTN bet: fold / call / check-raise | Wins when it calls |
+|---|---|---|---|
+| two pair+ | 15% | 0% / 27% / 73% | 72% |
+| top pair (either kicker) | 1–2% | 2–3% / 96% / 2% | 46–48% |
+| weaker pair | 2% | 54% / 42% / 5% | **28%** |
+| missed draw | 6% | 94% / 0% / 6% | — |
+| air | 6% | 80% / 0% / 20% | — |
+
+* **Check and let the BTN bet.** The BB leads only 4% of rivers; the BTN bets 79% when checked to.
+* **Weaker pairs are pure bluff-catchers at the exact break-even point.** Calling a 2/3-pot bet needs
+  28.6% equity, and when they call they win **28%**. The learned BB mixes fold (54%) and call (42%),
+  which is what equilibrium theory says an indifferent bluff-catcher should do.
+* **Top pair always calls** (96%) and wins about half the time.
+* **Two pair+ check-raises for value (73%),** except on rivers that pair the board (31%) or put a third
+  suited card out (68%). There, two pair can be beaten by full houses and flushes, so it calls instead.
+* **Missed draws give up (94% fold).** Their bluffing role goes to air, which check-raises as a bluff 20%
+  of the time: hands with no showdown value are the ones that can afford to bluff.
+
+### Benchmarks: MDF and bluff share
+
+![BB defense vs MDF](output/river_study/defense_vs_mdf.png)
+
+* **The BB defends 57% vs a river bet,** a little under the 60% MDF. That's fine here: the BTN's river
+  bets aren't a pure bluff-or-nuts range, so the BB doesn't have to defend the full MDF to keep the
+  BTN from betting any two cards.
+* **34% of the BTN's river bets lose at showdown,** vs 28.6% for a perfectly balanced bettor. The excess
+  is mostly thin value bets that run into the BB's better hands, not pure bluffs.
+
+![BTN bluff share](output/river_study/btn_bluff_share.png)
+
+### By river card
+
+![BB river lines by river card](output/river_study/bb_river_lines_by_card_learned.png)
+
+| River card | BB leads | BTN bets when checked to | BB fold / call / check-raise | BB wins when calling |
+|---|---|---|---|---|
+| blank | 4% | 83% | 43% / 43% / 14% | 33% |
+| overcard | 1% | 95% | 45% / 43% / 12% | 31% |
+| pairs the board | 8% | 58% | 43% / 49% / 9% | 42% |
+| flush card | 4% | 87% | 43% / 42% / 15% | 37% |
+| straight card | 1% | 83% | 42% / 46% / 12% | 33% |
+
+* **Board-pairing rivers favor the BB:** the BTN bets least (58%), the BB leads most (8%; missed draws
+  lead 13% as bluffs), and the BB's calls win most often (42%).
+* **Overcard rivers favor the BTN:** it bets 95% and the BB almost never leads.
+* **Flush rivers bring the most check-raises** (15%).
+
+### After the fixed 50–75% flop c-bets
+
+Nearly the same river strategy. The BB arrives with more missed draws (7% vs 2%) and air (2% vs 1%),
+and that air leads the river as a bluff 26% of the time. Defense stays at 57%; the BTN's losing-bet
+share drops to 32%.
+
 ## Next steps
 
-1. **River study:** learn the river after a turn bet is called, so the whole postflop line is learned.
-2. **More bet sizes:** let the BTN choose between small and large c-bets / barrels.
-3. **Compare to real solver output** for a few flops, and model the gap with hand features.
+1. **More bet sizes:** let each player choose between small and large bets / raises on every street.
+2. **Compare to real solver output** for a few flops, and model the gap with hand features.
+3. **Finer hand buckets** on the river (e.g. top pair vs two pair vs sets, nut vs non-nut flushes).
 4. **Stack depth:** sweep 10 → 200bb.
 5. **Multiway:** rank hands by equity vs 1–8 random opponents (87s rises, K9o falls).

@@ -78,6 +78,27 @@ def _river(holes, board, s, pot, left, put_in, seed, rules):
     return play_streets(holes, board, s, {"pot": pot, "left": left, "put_in": put_in}, (2,), rng, **rules)[0]
 
 
+def line_values(v, p):
+    """Values of every decision in the check/bet/raise tree, given the leaf values.
+
+    v: leaf values in BTN share units -- check_check, bb_folds_to_bet, bet_called,
+       btn_folds_to_xr, raise_called, btn_folds_to_lead, bb_folds_to_raise. (A called
+       lead and a called bet put the same chips in, as do a called raise and a called
+       check-raise, since both raises are 3x the same bet size.)
+    p: the 6 node policies for this hand, in NODES order.
+    Returns (action values per node -- BB nodes from the BB's side, i.e. negated --,
+    the hand's value for the BTN, each node's reach probability given the hand gets here).
+    """
+    ev3 = np.array([v["btn_folds_to_xr"], v["raise_called"]]); v3 = p[3] @ ev3
+    ev2 = -np.array([v["bb_folds_to_bet"], v["bet_called"], v3]); v2 = -(p[2] @ ev2)
+    ev1 = np.array([v["check_check"], v2]); v1 = p[1] @ ev1
+    ev5 = -np.array([v["bb_folds_to_raise"], v["raise_called"]]); v5 = -(p[5] @ ev5)
+    ev4 = np.array([v["btn_folds_to_lead"], v["bet_called"], v5]); v4 = p[4] @ ev4
+    ev0 = -np.array([v1, v4]); value = -(p[0] @ ev0)
+    reach = [1.0, p[0][0], p[0][0] * p[1][1], p[0][0] * p[1][1] * p[2][2], p[0][1], p[0][1] * p[4][2]]
+    return (ev0, ev1, ev2, ev3, ev4, ev5), value, reach
+
+
 def _worker(job):
     btn_w, bb_w, n, s, stack, seed, flop_pol, pol, rules, record = job
     f_cbet, f_bb = flop_pol
@@ -121,18 +142,13 @@ def _worker(job):
         v_bb_folds_to_raise = (P1 + b - c) / u
 
         p = [pol[0][t, bk], pol[1][t, tb], pol[2][t, bk], pol[3][t, tb], pol[4][t, tb], pol[5][t, bk]]
-        # Values in BTN share units; BB nodes use the negative (BB's point of view).
-        ev3 = np.array([v_btn_folds_to_xr, v_raise_called]); v3 = p[3] @ ev3
-        ev2 = -np.array([v_bb_folds_to_bet, v_bet_called, v3]); v2 = -(p[2] @ ev2)
-        ev1 = np.array([v_check_check, v2]); v1 = p[1] @ ev1
-        ev5 = -np.array([v_bb_folds_to_raise, v_raise_called]); v5 = -(p[5] @ ev5)
-        ev4 = np.array([v_btn_folds_to_lead, v_bet_called, v5]); v4 = p[4] @ ev4
-        ev0 = -np.array([v1, v4]); value = -(p[0] @ ev0)
-
-        reach = [w, w * p[0][0], w * p[0][0] * p[1][1], w * p[0][0] * p[1][1] * p[2][2],
-                 w * p[0][1], w * p[0][1] * p[4][2]]
+        evs, value, reach = line_values({"check_check": v_check_check, "bb_folds_to_bet": v_bb_folds_to_bet,
+                                         "bet_called": v_bet_called, "btn_folds_to_xr": v_btn_folds_to_xr,
+                                         "raise_called": v_raise_called, "btn_folds_to_lead": v_btn_folds_to_lead,
+                                         "bb_folds_to_raise": v_bb_folds_to_raise}, p)
+        reach = [w * r for r in reach]
         cells = [bk, tb, bk, tb, tb, bk]
-        for k, ev in enumerate((ev0, ev1, ev2, ev3, ev4, ev5)):
+        for k, ev in enumerate(evs):
             acc[k][t, cells[k]] += reach[k] * ev
             wts[k][t, cells[k]] += reach[k]
         if record:
@@ -153,16 +169,19 @@ def _run(btn_range, bb_range, n, s, stack, seed, flop_pol, pol, rules, record):
     return acc, wts, np.concatenate([p[2] for p in parts])
 
 
-def learn_and_play(btn_range, bb_range, flop_pol, rules, s=2.25, stack=100, rounds=40,
-                   hands_per_round=80_000, n=800_000, seed=0, verbose=True):
-    """Learn the turn policies with CFR+, then play n hands. Returns {policy, hands, history}."""
-    regret = [np.zeros((NT, NB, len(a))) for _, _, a in NODES]
+def cfr_learn(run_round, rounds, street, verbose=True):
+    """Shared CFR+ loop for the turn and river games.
+
+    run_round(policies, k) plays one round with the current policies and returns
+    (action-value sums, reach weights) per node; run_round.nt is the number of
+    textures. Returns (average policies, per-round history).
+    """
+    regret = [np.zeros((run_round.nt, NB, len(a))) for _, _, a in NODES]
     avg = [np.zeros_like(r) for r in regret]
     history = []
     for k in range(1, rounds + 1):
         cur = [_regret_match(r) for r in regret]
-        acc, wts, _ = _run(btn_range, bb_range, hands_per_round, s, stack, seed * 100 + k,
-                           flop_pol, cur, rules, False)
+        acc, wts = run_round(cur, k)
         for m in range(len(NODES)):
             ev = acc[m] / np.maximum(wts[m], 1e-9)[..., None]
             gain = ev - (cur[m] * ev).sum(-1, keepdims=True)
@@ -172,7 +191,18 @@ def learn_and_play(btn_range, bb_range, flop_pol, rules, s=2.25, stack=100, roun
         xr = (wts[2] * cur[2][..., 2]).sum() / max(wts[2].sum(), 1e-9)
         history.append({"round": k, "bb_lead_pct": lead, "bb_xr_vs_bet_pct": xr})
         if verbose and (k % 10 == 0 or k == 1):
-            print(f"  turn round {k}: BB leads {lead:.0%}, check-raises {xr:.0%} of BTN bets")
-    final = [a / a.sum(-1, keepdims=True) for a in avg]
+            print(f"  {street} round {k}: BB leads {lead:.0%}, check-raises {xr:.0%} of BTN bets")
+    return [a / a.sum(-1, keepdims=True) for a in avg], history
+
+
+def learn_and_play(btn_range, bb_range, flop_pol, rules, s=2.25, stack=100, rounds=40,
+                   hands_per_round=80_000, n=800_000, seed=0, verbose=True):
+    """Learn the turn policies with CFR+, then play n hands. Returns {policy, hands, history}."""
+    def run_round(cur, k):
+        acc, wts, _ = _run(btn_range, bb_range, hands_per_round, s, stack, seed * 100 + k,
+                           flop_pol, cur, rules, False)
+        return acc, wts
+    run_round.nt = NT
+    final, history = cfr_learn(run_round, rounds, "turn", verbose)
     _, _, rec = _run(btn_range, bb_range, n, s, stack, seed + 999, flop_pol, final, rules, True)
     return {"policy": final, "hands": rec, "history": history}
