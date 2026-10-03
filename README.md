@@ -20,10 +20,15 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 |---|---|
 | `preflop/cards.py` | 169 hand classes, 1,326 combos, 13x13 grid order |
 | `preflop/equity.py` | eval7 Monte Carlo equity, equity vs random, 169x169 matrix with card removal |
-| `preflop/solver.py` | BTN vs BB game tree solved with CFR+, plus EV and exploitability |
-| `preflop/plots.py` | 13x13 range charts, line charts |
-| `scripts/` | `build_equity.py` (step 1), `solve.py` (step 2) |
-| `tests/` | AA vs random ~85%, AA vs KK ~82%, 22 vs AKo ~coin flip, combo counts |
+| `preflop/solver.py` | BTN vs BB preflop game tree solved with CFR+ (with equity realization), EV, exploitability |
+| `preflop/sizing.py` | Parallel open-size / 3-bet-size searches |
+| `preflop/realization.py` | Per-hand playability bonuses (experiment 5) |
+| `preflop/postflop.py` | Rule-based postflop simulator: pot-odds calling, balanced bluffing |
+| `preflop/flopgame.py` | Learned flop c-bet / check-raise game (CFR+ per board texture x hand bucket) |
+| `preflop/turngame.py` | Learned turn game after a c-bet is called |
+| `preflop/plots.py` | Range grids, heatmaps, bar and line charts |
+| `scripts/` | One script per experiment (named in each section below) |
+| `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules |
 
 ## The model
 
@@ -454,9 +459,119 @@ learned at every open size (~18 min on an idle machine; each size is saved as it
 
 ![How pots end](output/bb_study_cbet/bb_pot_endings_by_open.png)
 
+## Experiment 10: A Button that c-bets 75% on its boards and 50% on the BB's
+
+`scripts/cbet_frequency_test.py`, 2.25bb open.
+
+**Which boards favor whom:** for each flop texture, the BTN's average equity vs the BB's calling
+range (measured from the simulated showdowns). The BTN averages 58%; textures above that
+favor the BTN (46% of flops). A-high and K-high boards favor the BTN (61–64%). T-high-or-lower
+unpaired boards favor the BB (52–55%), especially connected ones.
+
+**The fixed strategy:** c-bet exactly 75% on BTN boards and 50% on BB boards, filling the frequency
+in priority order: two pair+, overpair, top pair, then draws, then air (bluffs), then two
+overcards, with weak pairs checking last. The BB (and the BTN's answer to a check-raise) learn
+their best response.
+
+![Scenario comparison](output/cbet_frequency/scenario_comparison.png)
+
+| | BTN c-bets | BB fold / call / check-raise vs c-bet | BTN EV from the flop (bb/hand) |
+|---|---|---|---|
+| learned c-bets | 57% (69% BTN boards, 47% BB boards) | 34% / 47% / 19% | 0.705 |
+| fixed 50–75% | 62% (75% / 50%) | 16% / 59% / 25% | 0.643 |
+
+* **The learned BTN already c-bets ~69% / 47% by board.** The 50–75% rule gets the frequencies
+  roughly right.
+* **It still loses 0.06bb per flop, because of *which* hands bet.** The rule always bets top pair
+  and draws, bluffs 78% of its air, and checks nearly all weak pairs and overcards. That betting
+  range is polarized and bluff-heavy, so the BB stops folding: it **calls air 62% of the time**
+  (36% vs the learned BTN), folds only 16% overall, and check-raises more (25%), especially
+  with weak top pairs (44% vs 31%).
+* **Lesson:** a good c-bet frequency is not enough. The hands inside it have to be balanced. The
+  learned BTN mixes in some weak pairs and overcards and checks back some air.
+
+![BB vs fixed c-bets by hand](output/cbet_frequency/bb_vs_fixed_by_bucket.png)
+
+## Experiment 11: The BB called the c-bet. What now on the turn?
+
+`scripts/turn_study.py` + `preflop/turngame.py`. After a flop c-bet and BB call, the turn is a
+learned game:
+
+```
+BB:  check | lead 2/3 pot
+ after a check:  BTN check | bet 2/3 pot  ->  BB fold | call | check-raise 3x  ->  BTN fold | call
+ after a lead:   BTN fold | call | raise 3x  ->  BB fold | call
+```
+
+* **Inputs:** hands are weighted by how likely the flop c-bet and call were under each flop
+  strategy from experiment 10. The river uses the rules.
+* **Turn texture:** what the turn card did (blank / overcard / pairs the board / flush card /
+  straight card) × dry or wet flop.
+* **Learning:** decisions are learned with CFR+ per texture × hand bucket (40 rounds, then
+  800k hands), with fixed seeds, so reruns give identical numbers.
+
+What the BB holds on the turn after calling a learned c-bet: weaker pairs 42%, air 35% (floats
+that missed), two pair+ 7%, top pair 8%, draws 7%.
+
+### The BB's turn strategy (after learned flop c-bets)
+
+![BB turn lines by hand](output/turn_study/bb_turn_lines_by_hand_learned.png)
+
+| BB hand | Leads | vs a BTN bet: fold / call / check-raise |
+|---|---|---|
+| two pair+ | 42% | 0% / 7% / 93% |
+| top pair, T+ kicker | 19% | 8% / 70% / 22% |
+| top pair, weak kicker | 20% | 6% / 87% / 7% |
+| weaker pair | 4% | 26% / 68% / 6% |
+| draw | 9% | 68% / 14% / 18% |
+| two overcards | 9% | 91% / 3% / 5% |
+| air | 8% | 97% / 1% / 2% |
+
+* **Mostly check.** The BB leads only 9% of turns; the BTN bets 70% when checked to.
+* **Strong hands:** two pair+ splits between leading (42%) and check-raising (93% of the times
+  it checks and faces a bet).
+* **Pairs check-call.** Top pair calls 70–87%, weaker pairs 68%.
+* **Draws mostly fold to a 2/3-pot bet (68%).** One card to come gives ~18–20% equity vs the
+  28.6% needed, and the river rules pay off little extra, so there are few implied odds.
+  Some draws check-raise as semi-bluffs (18%).
+* **Air and overcards give up** (91–97% fold); air bluff-leads 8%.
+
+![BB turn lines by turn card](output/turn_study/bb_turn_lines_by_card_learned.png)
+
+**By turn card:**
+
+* **Board pairs: the BB leads 27%** (vs 3–7% on other turns): two pair+ leads 71% and weak top
+  pairs 79%. Turns that pair the board help the BB's range, which is full of middling pairs.
+  The BTN bets less (58%), and the BB folds more when it does bet (60%).
+* **Flush-completing turns:** the BB almost never leads (3%) but check-raises the most (13%).
+  Draws fold 78% (their remaining draw is usually weaker once three suited cards are out), and
+  weaker pairs fold more (36%).
+* **Overcard turns:** the BTN bets the most (81%), since overcards hit its preflop-raising range;
+  the BB leads only 5%.
+* **Blank and straight-completing turns sit in between.** Straight cards give the BB's draws the
+  most check-raises (22%).
+* **Dry vs wet flop:** on dry flops draws fold far less (23% vs 76%) and check-raise 49%. The few
+  draws there are usually strong (open-enders with overcards).
+
+![BB fold heatmap](output/turn_study/bb_fold_heatmap_learned.png)
+
+### After the fixed 50–75% flop c-bets
+
+The BB arrives on the turn with more air (47% of hands, from floating the bluff-heavy c-bets)
+and its turn strategy shifts:
+
+* **Weaker pairs and draws defend more vs a turn bet:** pairs fold 14% (vs 26%); draws fold 37%
+  (vs 68%) and call 45%. The BTN's turn betting range is weaker, carrying air from the flop.
+* **More check-raises with top pair** (31% / 18% for strong / weak kicker, vs 22% / 7%) and on
+  board-pairing turns (18% vs 11%).
+* **Fewer leads on board-pairing turns** (14% vs 27%).
+
+![BB check-raise heatmap](output/turn_study/bb_xr_heatmap_learned.png)
+
 ## Next steps
 
-1. Add equity realization (IP realizes > 100%, OOP < 100%) and compare to published solver charts.
-2. Model the gap between this model and solver frequencies with hand features (suited, connected, high card).
-3. Sweep stack depth (10 → 200bb) and 3-bet size.
-4. Multiway: rank hands by equity vs 1–8 random opponents (87s rises, K9o falls).
+1. **River study:** learn the river after a turn bet is called, so the whole postflop line is learned.
+2. **More bet sizes:** let the BTN choose between small and large c-bets / barrels.
+3. **Compare to real solver output** for a few flops, and model the gap with hand features.
+4. **Stack depth:** sweep 10 → 200bb.
+5. **Multiway:** rank hands by equity vs 1–8 random opponents (87s rises, K9o falls).
