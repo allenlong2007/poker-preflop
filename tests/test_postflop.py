@@ -23,5 +23,5 @@ def test_strength_rules():
 def test_no_betting_realizes_raw_equity():
     E = np.load("data/equity_matrix.npz")["E"]
     w = np.ones(169)
-    i, j, share = _worker((w, w, 20_000, 2.25, 100, 1, True, 1 / 3, 2 / 3))
+    i, j, share, _, _, _ = _worker((w, w, 20_000, 2.25, 100, 1, {"passive": True}))
     assert abs(share.mean() - E[i, j].mean()) < 0.01

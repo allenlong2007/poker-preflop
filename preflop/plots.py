@@ -1,5 +1,6 @@
 """13x13 range charts and simple line charts (matplotlib, saved as PNG)."""
 import matplotlib
+import matplotlib.ticker
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -27,12 +28,15 @@ def range_grid(values, title, path, fmt="pct", vmin=0.0, vmax=1.0, cmap=None, no
     """
     fig, ax = plt.subplots(figsize=(8, 8.4))
     grid = [[values[r * 13 + c] for c in range(13)] for r in range(13)]
-    ax.imshow(grid, cmap=cmap or (DIVERGING if fmt == "ratio" else BLUES), vmin=vmin, vmax=vmax)
+    ax.imshow(grid, cmap=cmap or (DIVERGING if fmt in ("ratio", "signed") else BLUES), vmin=vmin, vmax=vmax)
     for i, (h, v) in enumerate(zip(HANDS, values)):
         r, c = divmod(i, 13)
         if fmt == "ratio":
             dark = abs(v - 1) / max(vmax - 1, 1 - vmin) > 0.55 if v == v else False
             sub = f"{v:.2f}" if v == v else ""
+        elif fmt == "signed":             # e.g. profit in bb, centred on 0
+            dark = abs(v) / max(vmax, -vmin) > 0.55 if v == v else False
+            sub = f"{v:+.2f}" if v == v else ""
         elif fmt == "pct":
             dark = (v - vmin) / (vmax - vmin) > 0.55
             sub = "" if v > 0.995 or v < 0.005 else f"{v:.0%}"
@@ -197,6 +201,48 @@ def heatmap(df, title, xlabel, ylabel, path):
         sp.set_visible(False)
     ax.set_title(title, loc="left", fontsize=12, color=INK)
     fig.colorbar(im, ax=ax, shrink=0.8).outline.set_visible(False)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+CATEGORICAL = ["#2a78d6", "#eb6834", "#1baf7a"]
+
+
+def stacked_bars(labels, parts, title, ylabel, path, colors=None, markers=None, marker_label=""):
+    """100%-style stacked bars. parts = {segment name: list of values (one per label)}.
+
+    markers: optional list of y-values drawn as a short black tick on each bar.
+    """
+    from matplotlib.lines import Line2D
+
+    colors = colors or dict(zip(parts, CATEGORICAL))
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    x = np.arange(len(labels))
+    bottom = np.zeros(len(labels))
+    for name, vals in parts.items():
+        vals = np.asarray(vals, dtype=float)
+        ax.bar(x, vals, 0.62, bottom=bottom, color=colors[name], label=name,
+               edgecolor="white", linewidth=2)
+        for xi, b, v in zip(x, bottom, vals):
+            if v >= 0.06:
+                ax.text(xi, b + v / 2, f"{v:.0%}", ha="center", va="center", fontsize=8.5,
+                        color=INK if colors[name] in ("#e4e3df",) else "white")
+        bottom += vals
+    handles = [plt.Rectangle((0, 0), 1, 1, color=colors[n]) for n in parts]
+    names = list(parts)
+    if markers is not None:
+        for xi, m in zip(x, markers):
+            ax.plot([xi - 0.36, xi + 0.36], [m, m], color=INK, linewidth=2)
+        handles.append(Line2D([0], [0], color=INK, linewidth=2))
+        names.append(marker_label)
+    ax.legend(handles, names, frameon=False, fontsize=9, labelcolor=INK,
+              loc="center left", bbox_to_anchor=(1.01, 0.5))
+    ax.set_xticks(x, labels)
+    ax.set_ylim(0, 1)
+    ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
+    ax.set_title(title, loc="left", fontsize=12, color=INK)
+    ax.set_ylabel(ylabel, color=MUTED)
+    _style(ax)
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 

@@ -254,6 +254,91 @@ so bigger bets just extract more from strong hands, making α larger and the bes
 smaller. That the 2/3-pot baseline matches the solver calibration is encouraging,
 but partly luck of the rule choice. The obvious next step is calling based on pot odds.
 
+### 6d. Pot-odds calling and balanced bluffing
+
+The 6b rules had two flaws: medium hands called any bet regardless of price, and
+bettors bluffed a fixed 1/3 of their weak hands. `preflop/postflop.py` now defaults to:
+
+* **Pot-odds calling:** facing a bet, call if your chance of beating the *bettor* is at least
+  `bet / (pot + 2·bet)` (28.6% vs 2/3 pot). Strong hands always call. The chance comes from a
+  learned table: hand strength (equity vs a random hand on this board, eval7 Monte Carlo)
+  → how often hands that strong actually beat a bettor on that street. Example: on the river,
+  a hand that beats 70% of random hands beats a bettor only ~30% of the time.
+* **Balanced bluffing:** in each spot (BB leading / BTN after a check, by street), weak hands bluff
+  just often enough that bluffs are `bet / (pot + 2·bet)` of all bets, the mix that leaves a
+  caller indifferent. Learned rates are 4–9% of weak hands on the flop and 16–18% on the river.
+
+Both are learned from two warm-up batches before the main batch.
+(Pot-odds calling with the old fixed 1/3 bluffing ran away to α ≈ 2.9: callers adapt but
+bettors don't, and the BTN gets more bluffing spots.)
+
+| Rules | α | r_oop | BTN realizes / equity | BTN best open |
+|---|---|---|---|---|
+| **pot odds + balanced, 2/3 pot** | **1.25** | **0.92** | 62% / 58% | **2.75bb** (2.6–2.85) |
+| pot odds + balanced, 1/2 pot | 1.13 | 0.93 | 61% / 58% | 3.00bb |
+| pot odds + balanced, full pot | 1.66 | 0.88 | 67% / 58% | 2.25bb |
+| pot odds + fixed bluff 1/3 | 2.91 | 0.69 | 80% / 58% | 1.75bb |
+| old rules (call any pair, bluff 1/3) | 1.45 | 0.85 | 67% / 58% | 2.40bb |
+
+Smarter rules give a smaller α (1.25) and a less extreme position penalty, so the best
+open moves up to ~2.75bb, and 2.25bb costs 1.0bb/100. Bet size still matters, but less
+(open 2.25–3.0bb across 1/2–full pot, vs 2.1–3.1bb with the old rules).
+
+## Experiment 7: The Big Blind vs different raise sizes, preflop and postflop
+
+`scripts/bb_study.py`. For each BTN open (2.0–3.5bb), realization is re-measured *at that
+size* (solve → simulate with pot-odds / balanced rules → refit, 2 rounds), then the BB's
+preflop and postflop play is summarized. α stays 1.26–1.36 at every size, so in this
+range the open size barely changes how well hands realize.
+
+### Preflop
+
+![BB preflop by open](output/bb_study/bb_preflop_by_open.png)
+
+| BTN open | BB fold | call | 3-bet (to) | Fold limit (1 − MDF) |
+|---|---|---|---|---|
+| 2.0 | 2% | 74% | 23% (6.5bb) | 50% |
+| 2.25 | 10% | 69% | 21% (7.3bb) | 54% |
+| 2.5 | 24% | 55% | 20% (8.1bb) | 57% |
+| 2.75 | 31% | 50% | 19% (9.6bb) | 60% |
+| 3.0 | 39% | 42% | 19% (9.75bb) | 63% |
+| 3.5 | 47% | 35% | 18% (11.4bb) | 67% |
+
+* **Raise size mostly changes the BB's folds, not its 3-bets.** Each +0.25bb on the open moves
+  ~5–10% of hands from call to fold, while the 3-bet share drifts only from 23% to 18%.
+* **The best 3-bet stays ~3.25x the open** at every size.
+* **The BB always defends more than MDF requires** (MDF = 1.5 / (open + 1): the BTN risks
+  open − 0.5 to win 1.5). Calling has real value because the BB's hand still realizes ~90%
+  of its equity out of position.
+* Vs 2.25bb the BB folds only 11 hands (72o, 93o, 83o-style trash). Vs 3.0bb it folds most
+  weak offsuit hands and low suited gappers (T2s–T4s, 92s–95s, 82s–85s, 72s–74s, 62s–64s, 52s–54s).
+
+![BB preflop vs 2.25](output/bb_study/bb_preflop_2.25.png)
+
+### Postflop (BB-called pots, simulated)
+
+![BB postflop by open](output/bb_study/bb_postflop_by_open.png)
+![How pots end](output/bb_study/bb_pot_endings_by_open.png)
+
+* **The BB realizes ~90% of its equity** (0.89–0.91) at every open size.
+* **Called pots end the same way regardless of open size:** BB folds ~25%, BTN folds 17–21%,
+  showdown 54–58%.
+* **The BB leads more as the open grows** (flop leads 8% → 12%). Its calling range is tighter and
+  stronger, so it flops more strong hands. River leads are steady at ~21%.
+* **The BB folds 55–75% when the BTN bets.** That's correct against these rules: a balanced
+  BTN betting range is ~71% value, so folding weak hands is right. Real players c-bet much
+  more widely, so the BB should fold less.
+* **BB bluffs work 54–61% of the time** (more often vs bigger opens).
+* **Calling beats folding by +0.44 to +0.56bb per called hand.** The BB loses ~0.5bb on
+  average postflop, but folding loses 1bb.
+
+![BB call profit vs 2.25](output/bb_study/bb_call_profit_2.25.png)
+
+Per hand (vs 2.25bb): **broadway offsuit hands are the most profitable calls** (QJo +1.8, KTo +1.8,
+QTo +1.5) along with high suited hands (K9s +1.4, Q9s +1.2). Weak offsuit hands barely break
+even (T5o +0.02, T3o −0.01, J2o −0.03, T2o −0.16): those are the next folds as the open grows.
+Vs 3.0bb the worst calls (Q2o −0.21, J5o −0.08, K2o −0.03) are already losing.
+
 ## Next steps
 
 1. Add equity realization (IP realizes > 100%, OOP < 100%) and compare to published solver charts.

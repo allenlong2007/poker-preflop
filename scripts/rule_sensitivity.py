@@ -1,8 +1,8 @@
 """Experiment 6c: how much do the simulated results depend on the postflop rule choices?
 
-Re-runs the simulation (ranges fixed at the simulated fit from experiment 6b) with
-different bluff frequencies and bet sizes, refits alpha / r_oop, and finds the
-BTN's best open size for each.
+Re-runs the simulation (ranges fixed at the pot-odds simulated fit) with different
+bet sizes and bluffing / calling rules, refits alpha / r_oop, and finds the BTN's
+best open size for each.
 
 Usage:  python scripts/rule_sensitivity.py      (~8 min on a multi-core machine)
 """
@@ -18,14 +18,14 @@ from preflop.postflop import simulate
 from preflop.sizing import bb_ev_grid, best_threebet
 from simulate_realization import OPEN, OPENS, fit, ranges
 
-VARIANTS = {  # label: (bluff frequency, bet size as a fraction of the pot)
-    "baseline (bluff 1/3, bet 2/3 pot)": (1 / 3, 2 / 3),
-    "never bluff": (0.0, 2 / 3),
-    "bluff 2/3 of the time": (2 / 3, 2 / 3),
-    "bet 1/2 pot": (1 / 3, 1 / 2),
-    "bet full pot": (1 / 3, 1.0),
+VARIANTS = {  # label: (bluffing, bet size as a fraction of the pot, calling rule)
+    "baseline (balanced, 2/3 pot, pot odds)": ("balanced", 2 / 3, "pot_odds"),
+    "bet 1/2 pot": ("balanced", 1 / 2, "pot_odds"),
+    "bet full pot": ("balanced", 1.0, "pot_odds"),
+    "fixed bluff 1/3 (pot odds)": (1 / 3, 2 / 3, "pot_odds"),
+    "old rules: bluff 1/3, call any pair": (1 / 3, 2 / 3, "fixed"),
 }
-OUT = ROOT / "output" / "simulated_realization"
+OUT = ROOT / "output" / "simulated_realization_pot_odds"
 
 
 def main():
@@ -34,8 +34,9 @@ def main():
     f = pd.read_csv(OUT / "simulated_fit.csv", header=None, index_col=0)[1]
     btn_r, bb_c, _ = ranges(E, W, float(f["alpha"]), float(f["r_oop"]))
     rows, models = [], {}
-    for label, (bluff, bet) in VARIANTS.items():
-        bi, bj, share = simulate(btn_r, bb_c, n=800_000, s=OPEN, seed=7, bluff=bluff, bet_fraction=bet)
+    for label, (bluff, bet, calling) in VARIANTS.items():
+        sim = simulate(btn_r, bb_c, n=800_000, s=OPEN, seed=7, bluff=bluff, bet_fraction=bet, calling=calling)
+        bi, bj, share = sim["btn_class"], sim["bb_class"], sim["share"]
         eq = E[bi, bj]
         a, r, _, _ = fit(eq, share)
         models[label] = {"alpha": a, "r_oop": r}
