@@ -404,25 +404,55 @@ options that would have done better get played more next round (60 rounds, then 
 
 ![Texture effects](output/cbet_study/texture_effects.png)
 
-## Experiment 9: The BB study with a Button that bets more (partial)
+## Experiment 9: The BB study with a Button that bets more
 
-`python scripts/bb_study.py cbet` reruns experiment 7 with the learned flop (BTN c-bets 58% instead
-of betting ~17% of the time after a check). **Only the 2.0, 2.25 and 2.5bb opens finished.** The
-run was stopped at its time limit after heavy CPU contention on the machine slowed it ~10x. The
-script now saves each open size as it finishes and resumes from there.
+`python scripts/bb_study.py cbet` reruns experiment 7 with the learned flop from experiment 8:
+the BB checks the flop, and the BTN's c-bets and the BB's fold / call / check-raise are
+learned at every open size (~18 min on an idle machine; each size is saved as it finishes).
 
-| BTN open | BB fold / call / 3-bet (BTN bets more) | same, rules-only BTN (exp. 7) | BB realization (vs exp. 7) | BB folds to a flop bet |
+### Preflop
+
+![BB preflop by open](output/bb_study_cbet/bb_preflop_by_open.png)
+
+| BTN open | BB fold / call / 3-bet (BTN bets more) | rules-only BTN (exp. 7) | 3-bet to | BB realization (exp. 7) |
 |---|---|---|---|---|
-| 2.0 | 10% / 68% / 22% (to 7.0) | 2% / 74% / 23% | 0.84 (0.89) | 32% |
-| 2.25 | 21% / 58% / 21% (to 7.9) | 10% / 69% / 21% | 0.83 (0.90) | 33% |
-| 2.5 | 30% / 50% / 20% (to 8.8) | 24% / 55% / 20% | 0.83 (0.90) | 29% |
+| 2.0 | 10% / 68% / 22% | 2% / 74% / 23% | 7.0bb (3.5x) | 0.82 (0.89) |
+| 2.25 | 22% / 58% / 21% | 10% / 69% / 21% | 7.9bb (3.5x) | 0.83 (0.90) |
+| 2.5 | 31% / 49% / 20% | 24% / 55% / 20% | 8.75bb (3.5x) | 0.83 (0.90) |
+| 2.75 | 36% / 45% / 20% | 31% / 50% / 19% | 10.3bb (3.75x) | 0.83 (0.90) |
+| 3.0 | 38% / 44% / 18% | 39% / 42% / 19% | 11.25bb (3.75x) | 0.84 (0.90) |
+| 3.5 | 46% / 36% / 18% | 47% / 35% / 18% | 13.1bb (3.75x) | 0.85 (0.91) |
 
-* **A Button that c-bets often cuts the BB's realization from ~0.90 to ~0.83** (α 1.34, r_oop 0.79–0.81,
-  vs 1.28 / 0.94 before).
-* **So the BB should fold more preflop:** about +10 percentage points of hands vs a 2.0–2.25bb open.
-  The 3-bet range and 3-bet size barely change.
-* **The BB folds to flop bets much less** (29–33% vs 63–72%), because the BTN's bets now include
-  many more bluffs.
+* **A Button that c-bets often cuts the BB's realization from ~0.90 to ~0.83** (α ≈ 1.35, r_oop 0.74–0.81).
+* **The BB should fold more vs small opens:** +8 to +12 percentage points at 2.0–2.25bb. The gap
+  closes by 3.0bb, where the BB's calling range is already tight.
+* **The BB 3-bets bigger:** ~3.5–3.75x the open instead of ~3.25x. Taking the pot preflop is
+  worth more when calling means facing frequent c-bets out of position.
+* **The 3-bet share is unchanged** (22% → 18% as the open grows), and the BB still defends
+  more than MDF at every size.
+* **Calling still beats folding** by +0.43 to +0.49bb per called hand.
+
+### Postflop
+
+![BB vs c-bet by open](output/bb_study_cbet/bb_vs_cbet_by_open.png)
+
+| BTN open | BTN c-bets | BB fold / call / check-raise vs c-bet | BTN calls a check-raise |
+|---|---|---|---|
+| 2.0 | 54% | 33% / 43% / 24% | 83% |
+| 2.25 | 53% | 30% / 46% / 24% | 82% |
+| 2.5 | 50% | 29% / 49% / 23% | 84% |
+| 2.75 | 48% | 28% / 49% / 24% | 81% |
+| 3.0 | 46% | 29% / 47% / 24% | 81% |
+| 3.5 | 44% | 28% / 48% / 25% | 82% |
+
+* **The bigger the open, the less the BTN c-bets** (54% → 44%). The BB's calling range gets
+  tighter and stronger, so fewer flops favor the BTN.
+* **The BB's answer to a c-bet barely depends on the open:** fold ~28–33%, check-raise ~24%.
+  It folds slightly less vs bigger opens, because its range is stronger.
+* **Called pots:** BB folds ~28–33%, BTN folds ~17%, showdown ~51–54%. That's more BB folds and
+  fewer showdowns than with the rules-only BTN.
+
+![How pots end](output/bb_study_cbet/bb_pot_endings_by_open.png)
 
 ## Next steps
 
