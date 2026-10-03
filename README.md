@@ -143,6 +143,46 @@ for every hand.
   mixing sizes by hand.
 * **The BB's answer to a bigger open is a bigger 3-bet**, reaching 5x the open at r_oop 0.75.
 
+## Experiment 5: Hand-by-hand realization — where 2.25bb appears
+
+`scripts/hand_realization.py` adds two kinds of per-hand realization on top of the
+BB's position penalty (r_oop = 0.85), then reruns the open-size game (opens
+1.75–3.5bb every 0.05bb, BB best-responds with its 3-bet size):
+
+* **Playability (k):** suited, connected and broadway hands realize more
+  (`preflop/realization.py`, hand-picked bonuses).
+* **Strength (alpha):** the BTN's pot share becomes `E^a / (E^a + 0.85 (1-E)^a)`.
+  With a > 1, strong hands realize more than their equity and weak hands less,
+  because after the flop strong hands win bigger pots and weak hands fold. At a = 1.5,
+  a 30%-equity hand realizes about 73% of its equity and a 60% hand about 108%.
+
+![EV by open size](output/hand_realization/btn_ev_by_open_alpha.png)
+
+| Model | BTN best open | Opens within 1 mbb of best | Cost of 2.25 (bb/100) | BB 3-bet vs 2.25 |
+|---|---|---|---|---|
+| position only | 3.10bb | 2.95–3.25 | 2.84 | 9.6bb |
+| playability k=2 | 3.25bb | 3.05–3.40 | 2.79 | 9.0bb |
+| strength a=1.25 | 2.65bb | 2.50–2.80 | 0.78 | 7.9bb |
+| strength a=1.4 | 2.45bb | 2.35–2.60 | 0.20 | 7.3bb |
+| **strength a=1.5** | **2.35bb** | **2.25–2.50** | **0.06** | **7.3bb** |
+| **strength a=1.6** | **2.25bb** | **2.15–2.35** | **0.00** | **6.75bb** |
+| strength a=1.75 | 2.10bb | 2.00–2.25 | 0.09 | 6.75bb |
+| strength a=2.0 | 1.95bb | 1.85–2.05 | 0.44 | 6.2bb |
+| both a=1.5 k=2 | 2.40bb | 2.25–2.50 | 0.09 | 7.3bb |
+
+* **Playability bonuses don't explain small opens.** They help both players' good
+  hands, so they mostly cancel out, and the best open stays above 3bb.
+* **The strength effect does.** At a ≈ 1.5–1.6, a 2.25bb open is the best size (or
+  within 0.06bb/100 of it). The more postflop play rewards strong hands and punishes
+  weak ones, the smaller the best open: a smoothly falling curve from 3.1bb to 1.95bb.
+* **Why:** a small open gets called by many weak BB hands that will underperform
+  after the flop. The BTN *wants* those calls, so it keeps the price low.
+* At a = 1.5 vs a 2.25bb open, the BTN raises 71%. The BB folds 26%, calls 53%,
+  and 3-bets 21% to ~7.3bb (about 3.25x), a smaller 3-bet than in the equity-only models.
+
+Caveat: alpha is a single knob chosen to match a known answer, not fitted to
+data. Calibrating it against real solver EVs is the next step.
+
 ## Next steps
 
 1. Add equity realization (IP realizes > 100%, OOP < 100%) and compare to published solver charts.

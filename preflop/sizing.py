@@ -20,31 +20,37 @@ def _load():
 
 
 def _bb_ev(job):
-    """BB's equilibrium EV (bb/hand) for one (open, 3-bet, r_oop) combination."""
-    s, t, r_oop, iters = job
+    """BB's equilibrium EV (bb/hand) for one (open, 3-bet, model settings) combination."""
+    s, t, model, iters = job
     E, W = _load()
-    return -solve(E, W, s, t, iters=iters, r_oop=r_oop).btn_ev()
+    return -solve(E, W, s, t, iters=iters, **model).btn_ev()
 
 
-def bb_ev_table(opens, threebets_for, r_oops, iters=2000):
-    """BB EV for every (r_oop, open, 3-bet) in the grid.
+def bb_ev_grid(opens, threebets_for, models, iters=2000):
+    """BB EV for every (model, open, 3-bet) in the grid.
 
+    models: {label: dict of solve() keyword args, e.g. {"r_oop": 0.85, "alpha": 1.5}}
     threebets_for(s) gives the 3-bet sizes to try against an open of s.
-    Returns {(r_oop, s): (threebet sizes array, BB EV array)}.
+    Returns {(label, s): (threebet sizes array, BB EV array)}.
     """
     keys, jobs = [], []
-    for r in r_oops:
+    for label, model in models.items():
         for s in opens:
             ts = np.asarray(threebets_for(s))
-            keys.append((r, s, ts))
-            jobs += [(s, t, r, iters) for t in ts]
+            keys.append((label, s, ts))
+            jobs += [(s, t, model, iters) for t in ts]
     with ProcessPoolExecutor(max_workers=os.cpu_count()) as pool:
         evs = list(pool.map(_bb_ev, jobs, chunksize=8))
     out, k = {}, 0
-    for r, s, ts in keys:
-        out[(r, s)] = (ts, np.array(evs[k:k + len(ts)]))
+    for label, s, ts in keys:
+        out[(label, s)] = (ts, np.array(evs[k:k + len(ts)]))
         k += len(ts)
     return out
+
+
+def bb_ev_table(opens, threebets_for, r_oops, iters=2000):
+    """bb_ev_grid keyed by r_oop alone (BTN realization fixed at 1.0)."""
+    return bb_ev_grid(opens, threebets_for, {r: {"r_oop": r} for r in r_oops}, iters)
 
 
 def best_threebet(ts, evs):

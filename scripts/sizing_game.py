@@ -36,6 +36,7 @@ def main():
     combos = np.array([n_combos(h) for h in HANDS])
     pct = lambda p: float((p * combos).sum() / combos.sum())
 
+    # Local cache this script writes itself (gitignored) -- never load a .pkl from elsewhere.
     cache = OUT / "raw_grid.pkl"
     if cache.exists():
         table = pd.read_pickle(cache)
