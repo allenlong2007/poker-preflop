@@ -1,0 +1,17 @@
+source,bucket,check,small,big,weight
+model,air,0.552,0.217,0.231,4447.099
+model,draw,0.014,0.195,0.791,384.136
+model,overpair,0.067,0.672,0.261,240.0
+model,"top pair, T+ kicker",0.151,0.526,0.323,491.996
+model,"top pair, weak kicker",0.206,0.698,0.096,549.62
+model,two overcards,0.714,0.132,0.154,1264.993
+model,two pair+,0.003,0.242,0.755,451.957
+model,weaker pair,0.624,0.299,0.077,1798.068
+solver,air,0.131,0.312,0.556,4447.099
+solver,draw,0.001,0.035,0.964,384.136
+solver,overpair,0.001,0.252,0.747,240.0
+solver,"top pair, T+ kicker",0.001,0.097,0.903,491.996
+solver,"top pair, weak kicker",0.001,0.113,0.886,549.62
+solver,two overcards,0.383,0.303,0.314,1264.993
+solver,two pair+,0.0,0.266,0.734,451.957
+solver,weaker pair,0.094,0.288,0.618,1798.068

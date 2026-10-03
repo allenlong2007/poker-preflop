@@ -287,6 +287,29 @@ def grouped_bars(labels, series, title, ylabel, path, groups=None):
     plt.close(fig)
 
 
+def scatter_compare(x, y, labels, title, xlabel, ylabel, path):
+    """Model (y) vs reference (x) with the y = x line; each point labelled."""
+    fig, ax = plt.subplots(figsize=(6, 6))
+    lo, hi = 0, 1
+    ax.plot([lo, hi], [lo, hi], color=GRID, linewidth=1.5, linestyle="--")
+    ax.text(0.97, 0.92, "perfect agreement", color=MUTED, fontsize=8.5, ha="right", rotation=45)
+    ax.plot(x, y, "o", color="#2a78d6", markersize=7, markeredgecolor="white", markeredgewidth=1.5)
+    for xi, yi, lab in zip(x, y, labels):
+        ax.annotate(lab, (xi, yi), textcoords="offset points", xytext=(5, 4), fontsize=7.5, color=INK)
+    ax.set_xlim(lo, hi)
+    ax.set_ylim(lo, hi)
+    ax.set_aspect("equal")
+    ax.xaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
+    ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
+    ax.set_title(title, loc="left", fontsize=12, color=INK)
+    ax.set_xlabel(xlabel, color=MUTED)
+    ax.set_ylabel(ylabel, color=MUTED)
+    _style(ax)
+    ax.grid(axis="x", color=GRID)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
 def line(x, y, title, xlabel, ylabel, path, highlight=None):
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(x, y, color="#2a78d6", linewidth=2, marker="o", markersize=6)

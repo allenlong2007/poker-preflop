@@ -1,0 +1,11 @@
+decision,solver_avg,model_avg,mean_abs_diff,correlation_across_flops
+BTN c-bets,0.67,0.516,0.154,0.88
+BTN bets big (of its bets),0.691,0.494,0.259,0.521
+BTN bets small,0.25,0.278,0.151,0.608
+BTN bets big,0.419,0.237,0.193,0.719
+BB folds vs small c-bet,0.288,0.356,0.081,0.768
+BB calls vs small c-bet,0.534,0.383,0.153,0.684
+BB raises vs small c-bet,0.178,0.26,0.083,0.623
+BB folds vs big c-bet,0.518,0.592,0.074,0.879
+BB calls vs big c-bet,0.384,0.248,0.136,0.859
+BB raises vs big c-bet,0.098,0.16,0.062,0.854

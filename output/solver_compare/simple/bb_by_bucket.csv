@@ -1,0 +1,29 @@
+source,size,bucket,fold,call,raise
+model,0,air,0.572,0.309,0.119
+model,0,draw,0.023,0.277,0.701
+model,0,"top pair, T+ kicker",0.22,0.408,0.372
+model,0,"top pair, weak kicker",0.124,0.365,0.511
+model,0,two overcards,0.147,0.665,0.189
+model,0,two pair+,0.001,0.009,0.99
+model,0,weaker pair,0.075,0.614,0.311
+model,1,air,0.873,0.024,0.103
+model,1,draw,0.096,0.355,0.549
+model,1,"top pair, T+ kicker",0.233,0.601,0.167
+model,1,"top pair, weak kicker",0.352,0.537,0.111
+model,1,two overcards,0.443,0.379,0.178
+model,1,two pair+,0.012,0.149,0.839
+model,1,weaker pair,0.228,0.69,0.082
+solver,0,air,0.527,0.457,0.015
+solver,0,draw,0.001,0.851,0.148
+solver,0,"top pair, T+ kicker",0.0,0.656,0.344
+solver,0,"top pair, weak kicker",0.0,0.68,0.32
+solver,0,two overcards,0.034,0.934,0.032
+solver,0,two pair+,0.0,0.358,0.642
+solver,0,weaker pair,0.001,0.719,0.28
+solver,1,air,0.888,0.108,0.003
+solver,1,draw,0.065,0.899,0.036
+solver,1,"top pair, T+ kicker",0.0,0.893,0.106
+solver,1,"top pair, weak kicker",0.0,0.783,0.216
+solver,1,two overcards,0.756,0.227,0.017
+solver,1,two pair+,0.0,0.616,0.384
+solver,1,weaker pair,0.066,0.831,0.103

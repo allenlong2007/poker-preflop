@@ -28,6 +28,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `preflop/turngame.py` | Learned turn game after a c-bet is called (shared check/bet/raise tree + CFR+ loop) |
 | `preflop/rivergame.py` | Learned river game after the BB check-calls the turn |
 | `preflop/sizedgame.py` | Flop / turn / river with several bet sizes per street (experiment 13) |
+| `scripts/solver_compare.py` | Runs TexasSolver on 12 flops and compares it with the model (experiment 14) |
 | `preflop/plots.py` | Range grids, heatmaps, bar and line charts |
 | `scripts/` | One script per experiment (named in each section below) |
 | `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules |
@@ -722,10 +723,81 @@ experiment 11 (turn 52 / 38 / 10%; BB leads 26% when the turn pairs the board) a
 
 ![Flop BB check-raises by size](output/bet_sizing/flop_bb_xr_by_size_hand.png)
 
+## Experiment 14: How close is the model to a real solver?
+
+`scripts/solver_compare.py` solves 12 flops with **TexasSolver**
+([bupticybee/TexasSolver](https://github.com/bupticybee/TexasSolver), AGPL-3.0, not included in this
+repo: download the v0.2.0 macOS release into `tools/`; the binary runs under Rosetta on Apple
+silicon). TexasSolver plays the real game on exact cards, with no buckets or rules. Each flop uses
+the same preflop ranges, pot (4.5bb) and stacks (97.75bb) as experiment 13, and the same flop
+decisions: the BB checks, the BTN checks or bets 1/3 or 3/4 pot, and the BB folds, calls or
+raises (about 3x).
+
+**The solver's later streets have to be smaller than the model's.** With leads, raises and one size
+on the turn and river, each flop needed 10–16 GB of memory and ~3 min per iteration, which is
+impractical on a laptop. The main comparison uses a **medium** tree: either player can bet the turn
+(2/3 pot) and the river (3/4 pot), with no raises there. Every flop solved to 0.22–0.30% exploitability
+(~3–13 min each, three at a time). A **simple** tree, where the BB can only call or fold on the turn
+and river, is kept as a sensitivity check.
+
+Flops: A♠7♦2♣, A♥K♦5♥, K♥8♦3♣, Q♦J♥4♦, T♦9♥6♣, 8♠6♠4♦, 7♣5♦3♥, J♥7♥2♥ (single-suit), K♦K♣4♠, 7♥7♦2♠, T♠5♣2♦, 9♣6♣5♦.
+
+### Board level: the model gets the pattern right
+
+![C-bet scatter](output/solver_compare/medium/cbet_scatter.png)
+
+| Decision | Solver avg | Model avg | Mean abs. difference | Correlation across flops |
+|---|---|---|---|---|
+| BTN c-bets | 67% | 52% | 15 pts | **0.88** |
+| BTN bets big (share of its bets) | 69% | 49% | 26 pts | 0.52 |
+| BB folds vs 1/3-pot c-bet | 29% | 36% | 8 pts | 0.77 |
+| BB check-raises vs 1/3-pot c-bet | 18% | 26% | 8 pts | 0.62 |
+| BB folds vs 3/4-pot c-bet | 52% | 59% | 7 pts | **0.88** |
+| BB check-raises vs 3/4-pot c-bet | 10% | 16% | 6 pts | **0.85** |
+
+* **C-bet frequency tracks the solver closely across boards (r = 0.88).** Both bet nearly everything on
+  A-high flops (solver 99–100%, model 89–95%) and bet least on low connected boards (solver 28–39%,
+  model 26–30%). The BB's response to a big bet is also well matched (r = 0.85–0.88).
+* **The model c-bets too little on K-high and paired boards.** On K♥8♦3♣ and K♦K♣4♠ the solver bets
+  96–100%, mostly *small*; the model bets ~60%. Those boards look "neutral" to the model's texture
+  features, but with these ranges the BTN has a big advantage there (the BB's calling range has few
+  kings).
+* **The model under-uses the big size,** especially on low boards. There the solver bets 3/4 pot with
+  almost every bet (98% on 8♠6♠4♦ and 7♣5♦3♥) and checks the rest, a very polarized strategy.
+
+### Hand level: where the abstraction breaks down
+
+![BB check-raise by hand](output/solver_compare/medium/xr_by_bucket_small.png)
+
+* **The BB never folds a pair or draw to a small c-bet in the solver** (0%), but the model folds top
+  pair 12–22% and weak pairs 8% of the time.
+* **The model check-raises medium hands far too often:**
+  * top pair with a weak kicker 51% (solver 18%)
+  * weaker pairs 31% (solver 9%)
+  * draws 70% (solver 39%)
+
+  The solver *calls* with them instead (pairs 82–91%, draws 61%). Only two pair+ (92–99%) and air (12%) match.
+* **The solver's BTN protects its checking range:** it checks 35% of overpairs and 18–25% of top pairs.
+  It also bluffs more: air bets 71% vs the model's 45%. The model bets nearly all of its strong
+  hands and checks too much air.
+* **Why:** the model's buckets lump very different hands together. "Top pair, T+ kicker" includes
+  both AK on A-high and T9 on T-high, and "air" includes backdoor draws and overcards with
+  blockers. The model's turn and river are also played by simple rules, so it can't plan the
+  multi-street lines (check-call, slowplay, delayed bluffs) that make calling and checking
+  valuable in the solver.
+
+### Sensitivity: what the BB can do on later streets changes the flop
+
+With the **simple** tree (the BB can never bet the turn or river), the solver c-bets **87%** of flops
+instead of 67% and bets big 72% of the time. Giving the BB later-street betting rights shrinks the
+BTN's flop betting by 20 points. Flop strategy depends heavily on what each player can do on later
+streets, which is also why the model's rules-based turn and river limit its flop accuracy.
+
 ## Next steps
 
-1. **Compare to real solver output** for a few flops, and model the gap with hand features.
-2. **Finer hand buckets** (e.g. top pair vs two pair vs sets, nut vs non-nut flushes).
-3. **More lines:** what happens after the BB leads the turn, or the BTN checks back the flop.
-4. **Stack depth:** sweep 10 → 200bb.
-5. **Multiway:** rank hands by equity vs 1–8 random opponents (87s rises, K9o falls).
+1. **Finer hand buckets** (e.g. top pair by kicker and board, sets vs two pair, backdoor draws). The solver
+   comparison shows the coarse buckets cause most hand-level errors.
+2. **Learn the turn and river in the flop game** instead of using rules, so the flop can plan multi-street lines.
+3. **Board features from range advantage**, not just high card: K-high and paired boards are BTN boards here.
+4. **More lines:** what happens after the BB leads the turn, or the BTN checks back the flop.
+5. **Stack depth and multiway** play.
