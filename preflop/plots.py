@@ -245,7 +245,8 @@ def stacked_bars(labels, parts, title, ylabel, path, colors=None, markers=None, 
         names.append(marker_label)
     ax.legend(handles, names, frameon=False, fontsize=9, labelcolor=INK,
               loc="center left", bbox_to_anchor=(1.01, 0.5))
-    ax.set_xticks(x, labels)
+    long = max(len(str(l)) for l in labels) > 9
+    ax.set_xticks(x, labels, rotation=25 if long else 0, ha="right" if long else "center")
     ax.set_ylim(0, 1)
     ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
     ax.set_title(title, loc="left", fontsize=12, color=INK)

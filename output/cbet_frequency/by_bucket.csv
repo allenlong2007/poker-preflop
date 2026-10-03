@@ -1,0 +1,17 @@
+scenario,bucket,btn_cbet_pct,bb_fold_pct,bb_call_pct,bb_xr_pct
+learned,two pair+,0.986,0.002,0.028,0.969
+learned,overpair,0.703,,,
+learned,"top pair, T+ kicker",0.831,0.066,0.336,0.598
+learned,"top pair, weak kicker",0.744,0.068,0.627,0.305
+learned,weaker pair,0.394,0.039,0.853,0.107
+learned,draw,0.967,0.018,0.183,0.8
+learned,two overcards,0.474,0.056,0.752,0.192
+learned,air,0.507,0.555,0.363,0.082
+fixed 50-75%,two pair+,1.0,0.001,0.033,0.966
+fixed 50-75%,overpair,1.0,,,
+fixed 50-75%,"top pair, T+ kicker",1.0,0.041,0.327,0.632
+fixed 50-75%,"top pair, weak kicker",1.0,0.044,0.512,0.444
+fixed 50-75%,weaker pair,0.014,0.025,0.798,0.177
+fixed 50-75%,draw,0.999,0.025,0.134,0.841
+fixed 50-75%,two overcards,0.011,0.067,0.779,0.154
+fixed 50-75%,air,0.785,0.246,0.618,0.136

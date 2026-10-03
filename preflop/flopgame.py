@@ -148,9 +148,11 @@ def _worker(job):
                     called = rng.random() < x[1]
                     flop_code = CHECK_RAISE_CALLED if called else CHECK_RAISE_FOLD
                     rest_codes = codes_xr if called else [0, 0, 0]
+            v_b, v_o = eval7.evaluate(list(btn) + board), eval7.evaluate(list(bb) + board)
+            showdown = 1.0 if v_b > v_o else 0.5 if v_b == v_o else 0.0   # BTN's equity sample on this flop
             rec.append((i, j, t, tb, bbk, p_bet, q[0], q[1], q[2], x[1], share,
-                        flop_code, rest_codes[1], rest_codes[2]))
-    return acc_btn, w_btn, acc_bb, w_bb, acc_xr, w_xr, np.array(rec).reshape(-1, 14)
+                        flop_code, rest_codes[1], rest_codes[2], showdown))
+    return acc_btn, w_btn, acc_bb, w_bb, acc_xr, w_xr, np.array(rec).reshape(-1, 15)
 
 
 def _run(btn_range, bb_range, n, s, stack, seed, pol, rules, record):
@@ -171,7 +173,7 @@ def _regret_match(R):
 
 
 def learn_and_play(btn_range, bb_range, s=2.25, stack=100, rounds=30, hands_per_round=60_000,
-                   n=600_000, seed=0, verbose=True):
+                   n=600_000, seed=0, verbose=True, fixed_cbet=None):
     """Learn the flop policies with CFR+ (regret matching), then play n hands with them.
 
     Each round plays hands_per_round hands with the current policies and measures,
@@ -179,6 +181,9 @@ def learn_and_play(btn_range, bb_range, s=2.25, stack=100, rounds=30, hands_per_
     option = how much better it would have done than the current mix; the next
     policy plays options in proportion to positive regret. The reported policy is
     the average over rounds (later rounds weigh more), which is what converges.
+
+    fixed_cbet: optional [NT, NB] c-bet probabilities. The BTN then always c-bets this
+    way (it doesn't learn), and only the other decisions adapt to it.
 
     Returns a dict: policy (cbet [NT,NB] = c-bet probability, bb [NT,NB,3] = fold /
     call / raise, btn_vs_xr [NT,NB,2] = fold / call), hands (per-hand records, see
@@ -193,6 +198,8 @@ def learn_and_play(btn_range, bb_range, s=2.25, stack=100, rounds=30, hands_per_
     history = []
     for k in range(1, rounds + 1):
         cur = [_regret_match(r) for r in regret]
+        if fixed_cbet is not None:
+            cur[0] = np.stack([1 - fixed_cbet, fixed_cbet], -1)
         pol = (cur[0][..., 1], cur[1], cur[2])
         (ab, wb, ac, wc, ax, wx), _ = _run(btn_range, bb_range, hands_per_round, s, stack,
                                            seed * 100 + k, pol, rules, False)
@@ -207,10 +214,11 @@ def learn_and_play(btn_range, bb_range, s=2.25, stack=100, rounds=30, hands_per_
             print(f"  flop round {k}: BTN c-bets {history[-1]['btn_cbet_pct']:.0%}, "
                   f"BB check-raises {history[-1]['bb_xr_pct_vs_cbet']:.0%} of c-bets")
     final = [a / a.sum(-1, keepdims=True) for a in avg]
-    pol = (final[0][..., 1], final[1], final[2])
+    pol = (final[0][..., 1] if fixed_cbet is None else fixed_cbet, final[1], final[2])
     _, rec = _run(btn_range, bb_range, n, s, stack, seed + 999, pol, rules, True)
     return {"policy": pol, "hands": rec, "history": history, "rules": rules}
 
 
 COLUMNS = ["btn_class", "bb_class", "texture", "btn_bucket", "bb_bucket", "p_cbet", "bb_fold",
-           "bb_call", "bb_raise", "btn_call_vs_xr", "share", "flop_code", "turn_code", "river_code"]
+           "bb_call", "bb_raise", "btn_call_vs_xr", "share", "flop_code", "turn_code", "river_code",
+           "btn_showdown"]

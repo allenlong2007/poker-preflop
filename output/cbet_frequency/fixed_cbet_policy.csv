@@ -1,0 +1,49 @@
+,two pair+,overpair,"top pair, T+ kicker","top pair, weak kicker",weaker pair,draw,two overcards,air
+A-high / unpaired / rainbow / disconnected,1.0,1.0,1.0,1.0,0.017,1.0,1.0,1.0
+A-high / unpaired / rainbow / connected,1.0,1.0,1.0,1.0,0.098,1.0,1.0,1.0
+A-high / unpaired / two-tone / disconnected,1.0,1.0,1.0,1.0,0.011,1.0,1.0,1.0
+A-high / unpaired / two-tone / connected,1.0,1.0,1.0,1.0,0.079,1.0,1.0,1.0
+A-high / unpaired / monotone / disconnected,1.0,1.0,1.0,1.0,0.001,1.0,1.0,1.0
+A-high / unpaired / monotone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.195
+A-high / paired / rainbow / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.833
+A-high / paired / rainbow / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+A-high / paired / two-tone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.821
+A-high / paired / two-tone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+A-high / paired / monotone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+A-high / paired / monotone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+K-high / unpaired / rainbow / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.964
+K-high / unpaired / rainbow / connected,1.0,1.0,1.0,1.0,0.239,1.0,1.0,1.0
+K-high / unpaired / two-tone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.955
+K-high / unpaired / two-tone / connected,1.0,1.0,1.0,1.0,0.237,1.0,1.0,1.0
+K-high / unpaired / monotone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.151
+K-high / unpaired / monotone / connected,1.0,1.0,1.0,1.0,0.244,1.0,1.0,1.0
+K-high / paired / rainbow / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.819
+K-high / paired / rainbow / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+K-high / paired / two-tone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.786
+K-high / paired / two-tone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+K-high / paired / monotone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+K-high / paired / monotone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+Q/J-high / unpaired / rainbow / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.507
+Q/J-high / unpaired / rainbow / connected,1.0,1.0,1.0,1.0,0.021,1.0,1.0,1.0
+Q/J-high / unpaired / two-tone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.474
+Q/J-high / unpaired / two-tone / connected,1.0,1.0,1.0,1.0,0.033,1.0,1.0,1.0
+Q/J-high / unpaired / monotone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.08
+Q/J-high / unpaired / monotone / connected,1.0,1.0,1.0,1.0,0.0,0.926,0.0,0.0
+Q/J-high / paired / rainbow / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.844
+Q/J-high / paired / rainbow / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+Q/J-high / paired / two-tone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.833
+Q/J-high / paired / two-tone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+Q/J-high / paired / monotone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+Q/J-high / paired / monotone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+T-high or lower / unpaired / rainbow / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.702
+T-high or lower / unpaired / rainbow / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.006,1.0
+T-high or lower / unpaired / two-tone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.656
+T-high or lower / unpaired / two-tone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.93
+T-high or lower / unpaired / monotone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.17
+T-high or lower / unpaired / monotone / connected,1.0,1.0,1.0,1.0,0.0,0.978,0.0,0.0
+T-high or lower / paired / rainbow / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.804
+T-high or lower / paired / rainbow / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+T-high or lower / paired / two-tone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.719
+T-high or lower / paired / two-tone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+T-high or lower / paired / monotone / disconnected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544
+T-high or lower / paired / monotone / connected,1.0,1.0,1.0,1.0,0.0,1.0,0.0,0.544

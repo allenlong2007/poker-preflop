@@ -1,0 +1,33 @@
+texture,flops_pct,btn_range_equity,favors
+A-high / paired / rainbow / disconnected,0.013,0.64,BTN
+K-high / unpaired / rainbow / connected,0.006,0.629,BTN
+K-high / unpaired / two-tone / connected,0.009,0.627,BTN
+A-high / unpaired / rainbow / disconnected,0.059,0.626,BTN
+A-high / paired / two-tone / disconnected,0.013,0.623,BTN
+K-high / paired / rainbow / disconnected,0.012,0.618,BTN
+A-high / unpaired / two-tone / disconnected,0.088,0.617,BTN
+A-high / unpaired / rainbow / connected,0.013,0.613,BTN
+K-high / paired / two-tone / disconnected,0.012,0.613,BTN
+Q/J-high / paired / two-tone / disconnected,0.02,0.606,BTN
+A-high / unpaired / two-tone / connected,0.02,0.605,BTN
+Q/J-high / paired / rainbow / disconnected,0.02,0.603,BTN
+K-high / unpaired / rainbow / disconnected,0.053,0.598,BTN
+Q/J-high / unpaired / rainbow / connected,0.012,0.597,BTN
+K-high / unpaired / monotone / connected,0.001,0.596,BTN
+K-high / unpaired / two-tone / disconnected,0.079,0.594,BTN
+Q/J-high / unpaired / two-tone / connected,0.019,0.584,BTN
+A-high / unpaired / monotone / disconnected,0.01,0.582,BTN
+Q/J-high / unpaired / rainbow / disconnected,0.074,0.579,BB
+T-high or lower / paired / rainbow / disconnected,0.041,0.578,BB
+Q/J-high / unpaired / two-tone / disconnected,0.111,0.576,BB
+Q/J-high / unpaired / monotone / connected,0.002,0.573,BB
+T-high or lower / paired / two-tone / disconnected,0.04,0.573,BB
+K-high / unpaired / monotone / disconnected,0.009,0.57,BB
+Q/J-high / unpaired / monotone / disconnected,0.012,0.564,BB
+A-high / unpaired / monotone / connected,0.002,0.559,BB
+T-high or lower / unpaired / monotone / disconnected,0.009,0.55,BB
+T-high or lower / unpaired / rainbow / disconnected,0.055,0.548,BB
+T-high or lower / unpaired / two-tone / disconnected,0.083,0.541,BB
+T-high or lower / unpaired / monotone / connected,0.006,0.527,BB
+T-high or lower / unpaired / two-tone / connected,0.056,0.521,BB
+T-high or lower / unpaired / rainbow / connected,0.037,0.515,BB

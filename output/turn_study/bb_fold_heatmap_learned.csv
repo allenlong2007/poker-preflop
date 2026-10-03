@@ -1,0 +1,8 @@
+,two pair+,"top pair, T+ kicker","top pair, weak kicker",weaker pair,draw,two overcards,air
+blank,0.0,,0.041,0.229,0.542,0.955,0.972
+overcard,0.0,,0.03,0.214,0.686,,0.978
+pairs the board,0.003,,,0.202,0.784,0.853,0.927
+flush card,0.0,,0.044,0.364,0.777,,0.99
+straight card,0.0,,0.084,0.282,0.607,0.927,0.98
+dry flop,0.001,,0.047,0.31,0.227,0.896,0.97
+wet flop,0.001,0.082,0.062,0.239,0.757,0.917,0.97
