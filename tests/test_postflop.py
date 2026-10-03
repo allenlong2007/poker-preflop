@@ -25,3 +25,11 @@ def test_no_betting_realizes_raw_equity():
     w = np.ones(169)
     i, j, share, _, _, _ = _worker((w, w, 20_000, 2.25, 100, 1, {"passive": True}))
     assert abs(share.mean() - E[i, j].mean()) < 0.01
+
+
+def test_tiny_batches_keep_their_shape():
+    # A worker whose only hand is dropped for a card clash must still return (0, 3) codes.
+    w = np.ones(169)
+    for seed in range(40):
+        _, _, _, codes, _, _ = _worker((w, w, 1, 2.25, 100, seed, {"passive": True}))
+        assert codes.ndim == 2 and codes.shape[1] == 3

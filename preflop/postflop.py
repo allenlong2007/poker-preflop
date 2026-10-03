@@ -124,14 +124,27 @@ def play(btn, bb, board, s, stack, rng, passive=False, bluff=BLUFF, bet_fraction
     balanced bluff rates can be learned (role 0 = BB first to act, 1 = BTN after a check).
     bluff_probs: 2 x 3 array of bluff rates by role and street (used instead of `bluff`).
     """
-    pot = 2 * s
-    left = {"btn": stack - s, "bb": stack - s}
-    put_in = {"btn": 0.0, "bb": 0.0}
-    holes = {"btn": btn, "bb": bb}
+    state = {"pot": 2 * s, "left": {"btn": stack - s, "bb": stack - s}, "put_in": {"btn": 0.0, "bb": 0.0}}
+    return play_streets({"btn": btn, "bb": bb}, board, s, state, (0, 1, 2), rng, passive=passive,
+                        bluff=bluff, bet_fraction=bet_fraction, calling=calling, table=table,
+                        learn=learn, bluff_probs=bluff_probs, spots=spots)
+
+
+def play_streets(holes, board, s, state, streets, rng, passive=False, bluff=BLUFF,
+                 bet_fraction=BET_FRACTION, calling="pot_odds", table=None, learn=None,
+                 bluff_probs=None, spots=None):
+    """Play the given streets (0 flop, 1 turn, 2 river) with the rules, then showdown.
+
+    state: {"pot", "left": {player: chips}, "put_in": {player: postflop chips}} at the
+    start of the first street; it is not modified. Returns (BTN realized share, codes).
+    """
+    pot = state["pot"]
+    left = dict(state["left"])
+    put_in = dict(state["put_in"])
     codes = [NOT_REACHED] * 3
-    for street, n in enumerate((3, 4, 5)):
-        seen = board[:n]
-        st = {p: strength(holes[p], seen, n == 5) for p in holes}
+    for street in streets:
+        seen = board[:3 + street]
+        st = {p: strength(holes[p], seen, street == 2) for p in holes}
         if passive:
             codes[street] = CHECK_CHECK
             continue
@@ -169,8 +182,8 @@ def play(btn, bb, board, s, stack, rng, passive=False, bluff=BLUFF, bet_fraction
             left[p] -= bet
             put_in[p] += bet
         pot += 2 * bet
-    v_btn = eval7.evaluate(list(btn) + board)
-    v_bb = eval7.evaluate(list(bb) + board)
+    v_btn = eval7.evaluate(list(holes["btn"]) + board)
+    v_bb = eval7.evaluate(list(holes["bb"]) + board)
     won = pot if v_btn > v_bb else pot / 2 if v_btn == v_bb else 0.0
     return (won - put_in["btn"]) / (2 * s), codes
 
@@ -194,7 +207,8 @@ def _worker(job):
         sh, cd = play(btn, bb, board, s, stack, rng, learn=learn, spots=spots, **opts)
         share.append(sh)
         codes.append(cd)
-    return (np.array(out_i), np.array(out_j), np.array(share), np.array(codes, dtype=np.int8),
+    return (np.array(out_i, dtype=int), np.array(out_j, dtype=int), np.array(share),
+            np.array(codes, dtype=np.int8).reshape(-1, 3),
             np.array(learn).reshape(-1, 3), np.array(spots, dtype=np.int8).reshape(-1, 3))
 
 

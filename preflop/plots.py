@@ -38,8 +38,8 @@ def range_grid(values, title, path, fmt="pct", vmin=0.0, vmax=1.0, cmap=None, no
             dark = abs(v) / max(vmax, -vmin) > 0.55 if v == v else False
             sub = f"{v:+.2f}" if v == v else ""
         elif fmt == "pct":
-            dark = (v - vmin) / (vmax - vmin) > 0.55
-            sub = "" if v > 0.995 or v < 0.005 else f"{v:.0%}"
+            dark = (v - vmin) / (vmax - vmin) > 0.55 if v == v else False
+            sub = "" if v != v or v > 0.995 or v < 0.005 else f"{v:.0%}"
         else:
             dark = (v - vmin) / (vmax - vmin) > 0.55
             sub = f"{v:.1%}"
@@ -78,7 +78,7 @@ def fit_plot(x, y, curves, title, xlabel, ylabel, path):
     plt.close(fig)
 
 
-ACTION_COLORS = {"fold": "#e4e3df", "call": "#2a78d6", "3-bet": "#eb6834"}
+ACTION_COLORS = {"fold": "#e4e3df", "call": "#2a78d6", "3-bet": "#eb6834", "check-raise": "#eb6834"}
 
 
 def action_grid(actions, title, path, subtitle=""):
@@ -100,7 +100,7 @@ def action_grid(actions, title, path, subtitle=""):
                 ax.add_patch(Rectangle((x, r - 0.5 + gap), w, 1 - 2 * gap,
                                        color=ACTION_COLORS[name], linewidth=0))
             x += w
-        dark = actions.get("call", [0] * 169)[i] + actions.get("3-bet", [0] * 169)[i] > 0.5
+        dark = sum(v[i] for k, v in actions.items() if k != "fold") > 0.5
         ax.text(c, r, h, ha="center", va="center", fontsize=8.5, fontweight="bold",
                 color="white" if dark else INK)
     ax.set_xlim(-0.5, 12.5)
@@ -180,20 +180,28 @@ def small_multiples(panels, title, xlabel, path, legend_title=""):
     plt.close(fig)
 
 
-def heatmap(df, title, xlabel, ylabel, path):
-    """Generic heatmap of a DataFrame (index = rows, columns = columns); darker = larger."""
-    fig, ax = plt.subplots(figsize=(8, 4.8))
+def heatmap(df, title, xlabel, ylabel, path, fmt="num", figsize=(8, 4.8)):
+    """Generic heatmap of a DataFrame (index = rows, columns = columns); darker = larger.
+
+    fmt: "num" (one decimal) or "pct". NaN cells are left blank.
+    """
+    fig, ax = plt.subplots(figsize=figsize)
     vals = df.values
     im = ax.imshow(vals, cmap=BLUES, aspect="auto")
     lo, hi = np.nanmin(vals), np.nanmax(vals)
     for r in range(vals.shape[0]):
         for c in range(vals.shape[1]):
             v = vals[r, c]
+            if v != v:
+                continue
             dark = (v - lo) / (hi - lo + 1e-12) > 0.55
-            ax.text(c, r, f"{v:.1f}", ha="center", va="center", fontsize=7.5,
-                    color="white" if dark else INK)
-    ax.set_xticks(range(len(df.columns)), [f"{c:g}" for c in df.columns])
-    ax.set_yticks(range(len(df.index)), [f"{i:g}" for i in df.index])
+            ax.text(c, r, f"{v:.0%}" if fmt == "pct" else f"{v:.1f}", ha="center", va="center",
+                    fontsize=7.5, color="white" if dark else INK)
+    lab = lambda v: f"{v:g}" if isinstance(v, (int, float, np.floating)) else str(v)
+    ax.set_xticks(range(len(df.columns)), [lab(c) for c in df.columns],
+                  rotation=30 if any(isinstance(c, str) for c in df.columns) else 0, ha="right"
+                  if any(isinstance(c, str) for c in df.columns) else "center")
+    ax.set_yticks(range(len(df.index)), [lab(i) for i in df.index])
     ax.set_xlabel(xlabel, color=MUTED)
     ax.set_ylabel(ylabel, color=MUTED)
     ax.tick_params(colors=MUTED, length=0)
@@ -241,6 +249,37 @@ def stacked_bars(labels, parts, title, ylabel, path, colors=None, markers=None, 
     ax.set_ylim(0, 1)
     ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
     ax.set_title(title, loc="left", fontsize=12, color=INK)
+    ax.set_ylabel(ylabel, color=MUTED)
+    _style(ax)
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+def grouped_bars(labels, series, title, ylabel, path, groups=None):
+    """Side-by-side bars. series = {name: values per label}. groups = list of (group name, n labels)
+    drawn as captions under the axis so related labels read together."""
+    names = list(series)
+    fig, ax = plt.subplots(figsize=(max(7.5, 0.62 * len(labels) + 2), 4.6))
+    x = np.arange(len(labels))
+    width = 0.8 / len(names)
+    for k, name in enumerate(names):
+        vals = np.asarray(series[name], dtype=float)
+        ax.bar(x + (k - (len(names) - 1) / 2) * width, vals, width * 0.92, color=CATEGORICAL[k],
+               label=name, edgecolor="white", linewidth=1)
+        for xi, v in zip(x + (k - (len(names) - 1) / 2) * width, vals):
+            ax.text(xi, v + 0.01, f"{v:.0%}", ha="center", va="bottom", fontsize=7, color=INK)
+    ax.set_xticks(x, labels, rotation=30, ha="right", fontsize=8.5)
+    if groups:
+        pos = 0
+        for gname, n in groups:
+            if pos:
+                ax.axvline(pos - 0.5, color=GRID, linewidth=1)
+            ax.text(pos + (n - 1) / 2, 1.02, gname, transform=ax.get_xaxis_transform(), ha="center",
+                    fontsize=9, color=MUTED)
+            pos += n
+    ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
+    ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="center left", bbox_to_anchor=(1.01, 0.5))
+    ax.set_title(title, loc="left", fontsize=12, color=INK, pad=22 if groups else 6)
     ax.set_ylabel(ylabel, color=MUTED)
     _style(ax)
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")

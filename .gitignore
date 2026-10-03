@@ -2,3 +2,4 @@
 __pycache__/
 .pytest_cache/
 raw_grid.pkl
+hands_*.npz

@@ -1,0 +1,30 @@
+texture,flops_pct,btn_cbet_pct,bb_xr_pct,bb_fold_pct
+Q/J-high / paired / rainbow / disconnected,0.02,0.63,0.311,0.303
+T-high or lower / paired / two-tone / disconnected,0.04,0.361,0.29,0.274
+T-high or lower / paired / rainbow / disconnected,0.042,0.389,0.281,0.241
+Q/J-high / paired / two-tone / disconnected,0.02,0.5,0.278,0.345
+K-high / paired / rainbow / disconnected,0.012,0.544,0.258,0.36
+K-high / paired / two-tone / disconnected,0.012,0.544,0.258,0.346
+T-high or lower / unpaired / rainbow / connected,0.037,0.27,0.257,0.207
+A-high / paired / two-tone / disconnected,0.014,0.695,0.249,0.262
+T-high or lower / unpaired / two-tone / connected,0.056,0.285,0.243,0.228
+A-high / paired / rainbow / disconnected,0.014,0.787,0.235,0.244
+Q/J-high / unpaired / two-tone / connected,0.019,0.545,0.224,0.253
+Q/J-high / unpaired / rainbow / connected,0.012,0.594,0.223,0.251
+T-high or lower / unpaired / monotone / connected,0.006,0.467,0.204,0.264
+A-high / unpaired / monotone / disconnected,0.01,0.405,0.189,0.38
+Q/J-high / unpaired / monotone / disconnected,0.012,0.449,0.187,0.378
+K-high / unpaired / monotone / disconnected,0.009,0.415,0.182,0.388
+T-high or lower / unpaired / monotone / disconnected,0.009,0.513,0.181,0.312
+T-high or lower / unpaired / two-tone / disconnected,0.083,0.561,0.181,0.304
+T-high or lower / unpaired / rainbow / disconnected,0.056,0.55,0.179,0.3
+K-high / unpaired / rainbow / disconnected,0.052,0.597,0.167,0.384
+K-high / unpaired / two-tone / disconnected,0.079,0.596,0.166,0.398
+K-high / unpaired / two-tone / connected,0.009,0.634,0.166,0.424
+Q/J-high / unpaired / two-tone / disconnected,0.112,0.546,0.165,0.362
+K-high / unpaired / rainbow / connected,0.006,0.644,0.16,0.477
+Q/J-high / unpaired / rainbow / disconnected,0.074,0.549,0.153,0.338
+A-high / unpaired / two-tone / connected,0.019,0.772,0.144,0.186
+A-high / unpaired / two-tone / disconnected,0.088,0.907,0.144,0.305
+A-high / unpaired / rainbow / disconnected,0.059,0.946,0.133,0.323
+A-high / unpaired / rainbow / connected,0.013,0.777,0.115,0.148

@@ -1,0 +1,12 @@
+feature,value,flops_pct,btn_cbet_pct,bb_fold_pct,bb_call_pct,bb_xr_pct
+high card,A-high,0.219,0.85,0.288,0.561,0.151
+high card,K-high,0.18,0.583,0.392,0.429,0.179
+high card,Q/J-high,0.272,0.546,0.337,0.472,0.19
+high card,T-high or lower,0.329,0.43,0.277,0.507,0.216
+pairing,unpaired,0.828,0.598,0.322,0.512,0.166
+pairing,paired,0.172,0.5,0.287,0.439,0.274
+suits,rainbow,0.398,0.594,0.309,0.508,0.182
+suits,two-tone,0.551,0.585,0.32,0.5,0.18
+suits,monotone,0.052,0.444,0.352,0.45,0.198
+connectedness,disconnected,0.816,0.61,0.329,0.492,0.179
+connectedness,connected,0.184,0.455,0.244,0.558,0.198

@@ -339,6 +339,91 @@ QTo +1.5) along with high suited hands (K9s +1.4, Q9s +1.2). Weak offsuit hands 
 even (T5o +0.02, T3o −0.01, J2o −0.03, T2o −0.16): those are the next folds as the open grows.
 Vs 3.0bb the worst calls (Q2o −0.21, J5o −0.08, K2o −0.03) are already losing.
 
+## Experiment 8: If the BB always checks, what does the Button c-bet, and when should the BB check-raise?
+
+`scripts/cbet_study.py` + `preflop/flopgame.py`. BTN opens 2.25bb, BB calls (ranges from the
+preflop solver). On the flop:
+
+```
+BB:  always checks
+BTN: check | c-bet 1/3 pot
+BB:  fold | call | check-raise to 3x the c-bet
+BTN: fold | call                      (after a check-raise)
+```
+
+Turn and river use the pot-odds / balanced rules. **No flop decision is hand-written.** Each is
+learned per (board texture, hand bucket) with CFR+ and Monte Carlo rollouts: every hand's flop
+lines are all played to the end, the value of each option is averaged per texture × bucket, and
+options that would have done better get played more next round (60 rounds, then 800k hands).
+
+* **Hand buckets:** two pair+, overpair, top pair T+ kicker, top pair weak kicker, weaker pair,
+  draw (flush draw / open-ender), two overcards, air.
+* **Board texture:** high card (A / K / Q-J / T-or-lower) × paired × suits (rainbow / two-tone /
+  monotone) × connected (three ranks within a 5-card span).
+
+### Overall
+
+| BTN c-bets | BB folds / calls / check-raises vs a c-bet | BTN calls a check-raise |
+|---|---|---|
+| 58% of flops | 32% / 50% / 18% | 80% |
+
+### The Button's c-bet range
+
+![BTN c-bet heatmap](output/cbet_study/btn_cbet_heatmap.png)
+
+* **Value and draws always bet:** two pair+ 99%, draws 96%, overpairs 80%, top pair 78–81%.
+* **Weak pairs mostly check** (44%), keeping the pot small with showdown value.
+* **Air bets half the time overall, but it depends on the board.** 77% on A-high flops, 62% K-high,
+  51% Q/J-high, only 13% on T-high-or-lower. High boards favor the BTN's range (it has more
+  big cards after raising preflop); low, connected boards favor the BB's wider calling range.
+* **By texture:** c-bets 85% on A-high flops vs 43% on T-high-or-lower; 46% on connected
+  boards and 44% on monotone boards vs ~60% elsewhere.
+
+![BTN c-bet range](output/cbet_study/btn_cbet_range.png)
+
+### When should the BB check-raise?
+
+![BB check-raise heatmap](output/cbet_study/bb_xr_heatmap.png)
+
+* **By hand:** two pair+ 97% (value), draws 81% (semi-bluff), top pair T+ kicker 67%, top pair
+  weak kicker 31%. Weaker pairs and overcards mostly *call* (86% / 80%). Air folds 51% and
+  check-raises as a bluff 7%.
+* **By board, the BB check-raises most on boards that favor it:**
+  * paired boards 27% vs 17% unpaired
+  * T-high-or-lower 22% vs A-high 15%
+  * top textures: paired low/middle boards and low connected boards (26–31%)
+* **It check-raises least on A-high boards** (12–14%), where the BTN's range is strongest.
+* **Texture changes which hands raise:**
+  * top pair T+ kicker raises 80% on disconnected boards but only 22% on connected ones
+    (too many better hands and draws around)
+  * draws raise 94% on two-tone boards but only 20% on monotone ones (a flush draw on a
+    monotone board is weaker)
+  * air bluff-raises more on paired boards (18% vs 5%)
+
+![BB vs c-bet by preflop hand](output/cbet_study/bb_vs_cbet_range.png)
+
+![Texture effects](output/cbet_study/texture_effects.png)
+
+## Experiment 9: The BB study with a Button that bets more (partial)
+
+`python scripts/bb_study.py cbet` reruns experiment 7 with the learned flop (BTN c-bets 58% instead
+of betting ~17% of the time after a check). **Only the 2.0, 2.25 and 2.5bb opens finished.** The
+run was stopped at its time limit after heavy CPU contention on the machine slowed it ~10x. The
+script now saves each open size as it finishes and resumes from there.
+
+| BTN open | BB fold / call / 3-bet (BTN bets more) | same, rules-only BTN (exp. 7) | BB realization (vs exp. 7) | BB folds to a flop bet |
+|---|---|---|---|---|
+| 2.0 | 10% / 68% / 22% (to 7.0) | 2% / 74% / 23% | 0.84 (0.89) | 32% |
+| 2.25 | 21% / 58% / 21% (to 7.9) | 10% / 69% / 21% | 0.83 (0.90) | 33% |
+| 2.5 | 30% / 50% / 20% (to 8.8) | 24% / 55% / 20% | 0.83 (0.90) | 29% |
+
+* **A Button that c-bets often cuts the BB's realization from ~0.90 to ~0.83** (α 1.34, r_oop 0.79–0.81,
+  vs 1.28 / 0.94 before).
+* **So the BB should fold more preflop:** about +10 percentage points of hands vs a 2.0–2.25bb open.
+  The 3-bet range and 3-bet size barely change.
+* **The BB folds to flop bets much less** (29–33% vs 63–72%), because the BTN's bets now include
+  many more bluffs.
+
 ## Next steps
 
 1. Add equity realization (IP realizes > 100%, OOP < 100%) and compare to published solver charts.
