@@ -1,0 +1,72 @@
+street,table,row,check,bet 1/3 pot,bet 3/4 pot,fold,call,check-raise,mdf_defend,bb_defends,break_even_call,bb_wins_when_calling,btn_bet_loses_showdown,btn_uses_this_size,bet 1/2 pot,bet pot,lead 1/2 pot,lead pot,bet 1.5x pot,lead 1.5x pot
+flop,"BTN when checked to, by hand",two pair+,0.0026,0.272,0.7254,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by hand",overpair,0.1209,0.6005,0.2785,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by hand","top pair, T+ kicker",0.1271,0.5049,0.368,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by hand","top pair, weak kicker",0.1995,0.6931,0.1074,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by hand",weaker pair,0.5697,0.3666,0.0637,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by hand",draw,0.022,0.1956,0.7824,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by hand",two overcards,0.486,0.2382,0.2757,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by hand",air,0.4563,0.2791,0.2646,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by board",favors BTN,0.27,0.4292,0.3008,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by board",favors BB,0.4974,0.2569,0.2457,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by high card",A-high,0.1132,0.566,0.3207,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by high card",K-high,0.4074,0.3112,0.2814,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by high card",Q/J-high,0.4152,0.3227,0.2621,,,,,,,,,,,,,,,
+flop,"BTN when checked to, by high card",T-high or lower,0.5517,0.2085,0.2398,,,,,,,,,,,,,,,
+flop,BB vs a bet,vs 1/3 pot,,,,0.4186,0.313,0.2684,0.75,0.5814,0.2,,,0.3362,,,,,,
+flop,BB vs a bet,vs 3/4 pot,,,,0.5904,0.2469,0.1628,0.5714,0.4096,0.3,,,0.2711,,,,,,
+turn,"BTN when checked to, by hand",two pair+,0.0005,,,,,,,,,,,,0.2821,0.7173,,,,
+turn,"BTN when checked to, by hand",overpair,0.0274,,,,,,,,,,,,0.6736,0.2991,,,,
+turn,"BTN when checked to, by hand","top pair, T+ kicker",0.0263,,,,,,,,,,,,0.5255,0.4481,,,,
+turn,"BTN when checked to, by hand","top pair, weak kicker",0.0926,,,,,,,,,,,,0.6544,0.2529,,,,
+turn,"BTN when checked to, by hand",weaker pair,0.1998,,,,,,,,,,,,0.4658,0.3344,,,,
+turn,"BTN when checked to, by hand",draw,0.1782,,,,,,,,,,,,0.206,0.6158,,,,
+turn,"BTN when checked to, by hand",two overcards,0.5284,,,,,,,,,,,,0.1745,0.2971,,,,
+turn,"BTN when checked to, by hand",air,0.5193,,,,,,,,,,,,0.2071,0.2737,,,,
+turn,"BTN when checked to, by turn card",blank,0.2665,,,,,,,,,,,,0.3466,0.3869,,,,
+turn,"BTN when checked to, by turn card",overcard,0.1581,,,,,,,,,,,,0.381,0.461,,,,
+turn,"BTN when checked to, by turn card",pairs the board,0.3653,,,,,,,,,,,,0.3441,0.2906,,,,
+turn,"BTN when checked to, by turn card",flush card,0.2057,,,,,,,,,,,,0.3455,0.4488,,,,
+turn,"BTN when checked to, by turn card",straight card,0.2683,,,,,,,,,,,,0.3447,0.3871,,,,
+turn,BB vs a bet,vs 1/2 pot,,,,0.4031,0.3981,0.1988,0.6667,0.5969,0.25,,,0.3504,,,,,,
+turn,BB vs a bet,vs pot,,,,0.5757,0.2944,0.1299,0.5,0.4243,0.3333,,,0.3925,,,,,,
+turn,"BB first to act, by hand",two pair+,0.6512,,,,,,,,,,,,,,0.1871,0.1617,,
+turn,"BB first to act, by hand","top pair, T+ kicker",0.7621,,,,,,,,,,,,,,0.2011,0.0367,,
+turn,"BB first to act, by hand","top pair, weak kicker",0.6789,,,,,,,,,,,,,,0.2739,0.0473,,
+turn,"BB first to act, by hand",weaker pair,0.9327,,,,,,,,,,,,,,0.0538,0.0136,,
+turn,"BB first to act, by hand",draw,0.894,,,,,,,,,,,,,,0.053,0.053,,
+turn,"BB first to act, by hand",two overcards,0.8882,,,,,,,,,,,,,,0.0535,0.0583,,
+turn,"BB first to act, by hand",air,0.8846,,,,,,,,,,,,,,0.08,0.0354,,
+turn,"BB first to act, by turn card",blank,0.8828,,,,,,,,,,,,,,0.0864,0.0308,,
+turn,"BB first to act, by turn card",overcard,0.9387,,,,,,,,,,,,,,0.0452,0.0161,,
+turn,"BB first to act, by turn card",pairs the board,0.6892,,,,,,,,,,,,,,0.2188,0.0921,,
+turn,"BB first to act, by turn card",flush card,0.9328,,,,,,,,,,,,,,0.0429,0.0243,,
+turn,"BB first to act, by turn card",straight card,0.9082,,,,,,,,,,,,,,0.0602,0.0316,,
+river,"BTN when checked to, by hand",two pair+,0.0001,,,,,,,,,,,,0.1128,0.4279,,,0.4591,
+river,"BTN when checked to, by hand",overpair,0.0628,,,,,,,,,,,,0.507,0.2766,,,0.1537,
+river,"BTN when checked to, by hand","top pair, T+ kicker",0.1187,,,,,,,,,,,,0.4316,0.2879,,,0.1619,
+river,"BTN when checked to, by hand","top pair, weak kicker",0.1557,,,,,,,,,,,,0.4544,0.2519,,,0.138,
+river,"BTN when checked to, by hand",weaker pair,0.3626,,,,,,,,,,,,0.297,0.2183,,,0.1222,
+river,"BTN when checked to, by hand",missed draw,0.3568,,,,,,,,,,,,0.1037,0.2587,,,0.2809,
+river,"BTN when checked to, by hand",two overcards,0.4502,,,,,,,,,,,,0.1312,0.2215,,,0.1971,
+river,"BTN when checked to, by hand",air,0.2506,,,,,,,,,,,,0.1387,0.3052,,,0.3055,
+river,"BTN when checked to, by river card",blank,0.1442,,,,,,,,,,,,0.2641,0.3126,,,0.2791,
+river,"BTN when checked to, by river card",overcard,0.0777,,,,,,,,,,,,0.2891,0.3851,,,0.2481,
+river,"BTN when checked to, by river card",pairs the board,0.4107,,,,,,,,,,,,0.1855,0.2006,,,0.2031,
+river,"BTN when checked to, by river card",flush card,0.2256,,,,,,,,,,,,0.2428,0.306,,,0.2256,
+river,"BTN when checked to, by river card",straight card,0.1116,,,,,,,,,,,,0.2481,0.3357,,,0.3045,
+river,BB vs a bet,vs 1/2 pot,,,,0.3974,0.3645,0.2381,0.6667,0.6026,0.25,0.269,0.3254,0.2414,,,,,,
+river,BB vs a bet,vs pot,,,,0.5443,0.3211,0.1346,0.5,0.4557,0.3333,0.4228,0.3669,0.2977,,,,,,
+river,BB vs a bet,vs 1.5x pot,,,,0.6255,0.292,0.0825,0.4,0.3745,0.375,0.475,0.384,0.2541,,,,,,
+river,"BB first to act, by hand",two pair+,0.8918,,,,,,,,,,,,,,0.0676,0.0228,,0.0178
+river,"BB first to act, by hand","top pair, T+ kicker",0.8675,,,,,,,,,,,,,,0.1221,0.0063,,0.0041
+river,"BB first to act, by hand","top pair, weak kicker",0.7814,,,,,,,,,,,,,,0.2088,0.0073,,0.0025
+river,"BB first to act, by hand",weaker pair,0.9673,,,,,,,,,,,,,,0.0272,0.0035,,0.002
+river,"BB first to act, by hand",missed draw,0.786,,,,,,,,,,,,,,0.1763,0.0206,,0.0171
+river,"BB first to act, by hand",two overcards,0.7342,,,,,,,,,,,,,,0.2246,0.0271,,0.014
+river,"BB first to act, by hand",air,0.7347,,,,,,,,,,,,,,0.201,0.0324,,0.0319
+river,"BB first to act, by river card",blank,0.9323,,,,,,,,,,,,,,0.0568,0.006,,0.0049
+river,"BB first to act, by river card",overcard,0.9666,,,,,,,,,,,,,,0.0236,0.0056,,0.0043
+river,"BB first to act, by river card",pairs the board,0.9155,,,,,,,,,,,,,,0.0645,0.0109,,0.0091
+river,"BB first to act, by river card",flush card,0.9332,,,,,,,,,,,,,,0.0474,0.013,,0.0065
+river,"BB first to act, by river card",straight card,0.9367,,,,,,,,,,,,,,0.0586,0.003,,0.0017

@@ -27,6 +27,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `preflop/flopgame.py` | Learned flop c-bet / check-raise game (CFR+ per board texture x hand bucket) |
 | `preflop/turngame.py` | Learned turn game after a c-bet is called (shared check/bet/raise tree + CFR+ loop) |
 | `preflop/rivergame.py` | Learned river game after the BB check-calls the turn |
+| `preflop/sizedgame.py` | Flop / turn / river with several bet sizes per street (experiment 13) |
 | `preflop/plots.py` | Range grids, heatmaps, bar and line charts |
 | `scripts/` | One script per experiment (named in each section below) |
 | `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules |
@@ -642,10 +643,89 @@ Nearly the same river strategy. The BB arrives with more missed draws (7% vs 2%)
 and that air leads the river as a bluff 26% of the time. Defense stays at 57%; the BTN's losing-bet
 share drops to 32%.
 
+## Experiment 13: Multiple bet sizes on every street
+
+`scripts/bet_sizing_study.py` + `preflop/sizedgame.py`. Same line as experiments 8, 11 and 12
+(2.25bb open; BB checks the flop and calls a c-bet; BB check-calls a turn bet), but every bet or
+lead now picks a size:
+
+| Street | Sizes (fraction of the pot) |
+|---|---|
+| flop c-bet | 1/3, 3/4 |
+| turn bet / lead | 1/2, pot |
+| river bet / lead | 1/2, pot, 1.5x (overbet) |
+
+Raises stay at 3x the bet. Every response is learned separately for each size faced. The turn
+and river remember earlier sizes, so each flop size (and each flop-size × turn-size pair) gets its
+own strategy, since the pot differs.
+
+**Validation:** `python scripts/bet_sizing_study.py single` runs the same code with one size per
+street. It reproduces experiment 8 (c-bets 58.5%; BB fold / call / check-raise 34 / 47 / 19%),
+experiment 11 (turn 52 / 38 / 10%; BB leads 26% when the turn pairs the board) and experiment 12
+(river 43 / 44 / 13%; the BB's calls win 36%; 34% of BTN bets lose at showdown).
+
+### The Button: big bets are polarized, small bets are merged
+
+![River BTN sizes by hand](output/bet_sizing/river_btn_sizes_by_hand.png)
+
+* **Flop (c-bets 61%):**
+  * big (3/4) with two pair+ (73%) and draws (78%)
+  * small (1/3) with overpairs and top pair (50–69%)
+  * weak pairs mostly check (57%)
+  * air splits check / small / big (46 / 28 / 27%)
+* **Flop by board:** A-high boards are mostly small bets (57%) with few checks (11%). Boards that
+  favor the BB get checked half the time.
+* **Turn (bets 74% when checked to):** pot-size with two pair+ (72%) and draws (62%, semi-bluffs);
+  half-pot with overpairs and top pair.
+* **River (bets 79%):** the textbook polarized / merged split. Two pair+ bets pot or 1.5x 89% of
+  the time (46% overbets). Overpairs and top pair mostly bet 1/2 pot (43–51%). The bluffs (air,
+  missed draws) go big: pot or overbet 54–61%.
+
+![Flop BTN sizes by high card](output/bet_sizing/flop_btn_sizes_by_high_card.png)
+
+### The Big Blind: how it answers each size
+
+![River BB vs size](output/bet_sizing/river_bb_vs_size.png)
+
+| Street | BTN bet | BB fold / call / check-raise | BB defends | MDF |
+|---|---|---|---|---|
+| flop | 1/3 pot | 42% / 31% / 27% | 58% | 75% |
+| flop | 3/4 pot | 59% / 25% / 16% | 41% | 57% |
+| turn | 1/2 pot | 40% / 40% / 20% | 60% | 67% |
+| turn | pot | 58% / 29% / 13% | 42% | 50% |
+| river | 1/2 pot | 40% / 36% / 24% | 60% | 67% |
+| river | pot | 54% / 32% / 14% | 46% | 50% |
+| river | 1.5x pot | 63% / 29% / 8% | 37% | 40% |
+
+* **Small bets get check-raised a lot.** Vs a 1/3-pot flop c-bet, the BB check-raises 27% (vs 19% when
+  1/3 was the only size). The BTN bets its strongest hands big, so its small-bet range is capped,
+  and the BB attacks it: top pair raises 61–76%, weaker pairs 33%, draws 88%. Vs a 3/4-pot c-bet
+  it raises only its best hands and draws.
+* **Bigger bets get more folds,** but the BB stays close to MDF on the turn and river and well
+  below it on the flop. The BTN's big flop bets are mostly value and draws, so folding is right.
+* **River bluff-catching follows the theory.** A balanced bettor's share of bluffs should rise
+  with bet size (25% / 33% / 37.5% for 1/2 / pot / 1.5x). Here the share of BTN bets that lose
+  at showdown rises the same way: 33% / 37% / 38%.
+  * Vs a half-pot bet the BB's calls win 27%, just above the 25% break-even.
+  * Vs pot and overbets they win 42% and 48%, well above break-even. The BB only calls big bets
+    with strong hands.
+
+![River bluff-catching](output/bet_sizing/river_bluff_catching.png)
+
+* **Turn leads become block bets.** With a half-pot option, the BB leads the turn far more with
+  medium hands: top pair 24–32% (mostly half-pot), two pair+ 35% (half split between sizes).
+  It leads 31% when the turn pairs the board.
+* **River leads are small.** Medium and weak hands lead 1/2 pot as blockers or bluffs: top pair
+  weak kicker 21%, air 20%, missed draws 18%. Big leads are rare.
+
+![Turn BB first to act](output/bet_sizing/turn_bb_first_by_hand.png)
+
+![Flop BB check-raises by size](output/bet_sizing/flop_bb_xr_by_size_hand.png)
+
 ## Next steps
 
-1. **More bet sizes:** let each player choose between small and large bets / raises on every street.
-2. **Compare to real solver output** for a few flops, and model the gap with hand features.
-3. **Finer hand buckets** on the river (e.g. top pair vs two pair vs sets, nut vs non-nut flushes).
+1. **Compare to real solver output** for a few flops, and model the gap with hand features.
+2. **Finer hand buckets** (e.g. top pair vs two pair vs sets, nut vs non-nut flushes).
+3. **More lines:** what happens after the BB leads the turn, or the BTN checks back the flop.
 4. **Stack depth:** sweep 10 → 200bb.
 5. **Multiway:** rank hands by equity vs 1–8 random opponents (87s rises, K9o falls).

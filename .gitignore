@@ -5,3 +5,6 @@ raw_grid.pkl
 hands_*.npz
 hands_learned.npz
 hands_fixed.npz
+output/bet_sizing*/flop.npz
+output/bet_sizing*/turn.npz
+output/bet_sizing*/river.npz
