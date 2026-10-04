@@ -1,0 +1,4 @@
+hand,bb_slowplays_vs_flop_bet,bb_fold,bb_call,bb_raise,btn_checks_back_flop
+straight or better,0.262,0.006,0.26,0.733,0.065
+set / trips,0.18,0.001,0.18,0.819,0.037
+two pair,0.255,0.008,0.253,0.739,0.053

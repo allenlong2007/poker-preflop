@@ -10,3 +10,5 @@ output/bet_sizing*/turn.npz
 output/bet_sizing*/river.npz
 tools/
 output/solver_compare/raw/
+output/fullgame/cache/
+output/fullgame_quick/

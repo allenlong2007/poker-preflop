@@ -1,0 +1,13 @@
+,flop,turn,river,share_of_hands
+straight or better,0.135,0.02,0.005,0.008
+set / trips,0.096,0.028,0.009,0.014
+two pair,0.179,0.052,0.017,0.021
+overpair,0.0,0.0,0.0,0.0
+"top pair, T+ kicker",0.229,0.084,0.014,0.019
+"top pair, weak kicker",0.467,0.193,0.044,0.068
+middle pair,0.574,0.139,0.021,0.112
+weak pair,0.44,0.039,0.006,0.091
+strong draw,0.233,0.034,0.006,0.067
+weak draw,0.275,0.013,0.002,0.153
+overcards,0.136,0.006,0.001,0.03
+air,0.009,0.0,0.0,0.417

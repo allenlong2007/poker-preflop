@@ -256,9 +256,9 @@ def stacked_bars(labels, parts, title, ylabel, path, colors=None, markers=None, 
     plt.close(fig)
 
 
-def grouped_bars(labels, series, title, ylabel, path, groups=None):
+def grouped_bars(labels, series, title, ylabel, path, groups=None, pct=True):
     """Side-by-side bars. series = {name: values per label}. groups = list of (group name, n labels)
-    drawn as captions under the axis so related labels read together."""
+    drawn as captions under the axis so related labels read together. pct=False labels plain numbers."""
     names = list(series)
     fig, ax = plt.subplots(figsize=(max(7.5, 0.62 * len(labels) + 2), 4.6))
     x = np.arange(len(labels))
@@ -268,7 +268,8 @@ def grouped_bars(labels, series, title, ylabel, path, groups=None):
         ax.bar(x + (k - (len(names) - 1) / 2) * width, vals, width * 0.92, color=CATEGORICAL[k],
                label=name, edgecolor="white", linewidth=1)
         for xi, v in zip(x + (k - (len(names) - 1) / 2) * width, vals):
-            ax.text(xi, v + 0.01, f"{v:.0%}", ha="center", va="bottom", fontsize=7, color=INK)
+            ax.text(xi, v, f"{v:.0%}" if pct else f"{v:+.2f}", ha="center",
+                    va="bottom" if v >= 0 else "top", fontsize=7, color=INK)
     ax.set_xticks(x, labels, rotation=30, ha="right", fontsize=8.5)
     if groups:
         pos = 0
@@ -278,7 +279,10 @@ def grouped_bars(labels, series, title, ylabel, path, groups=None):
             ax.text(pos + (n - 1) / 2, 1.02, gname, transform=ax.get_xaxis_transform(), ha="center",
                     fontsize=9, color=MUTED)
             pos += n
-    ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
+    if pct:
+        ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
+    else:
+        ax.axhline(0, color=MUTED, linewidth=1)
     ax.legend(frameon=False, fontsize=9, labelcolor=INK, loc="center left", bbox_to_anchor=(1.01, 0.5))
     ax.set_title(title, loc="left", fontsize=12, color=INK, pad=22 if groups else 6)
     ax.set_ylabel(ylabel, color=MUTED)
@@ -310,14 +314,14 @@ def scatter_compare(x, y, labels, title, xlabel, ylabel, path):
     plt.close(fig)
 
 
-def line(x, y, title, xlabel, ylabel, path, highlight=None):
+def line(x, y, title, xlabel, ylabel, path, highlight=None, highlight_label=None):
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(x, y, color="#2a78d6", linewidth=2, marker="o", markersize=6)
     if highlight is not None:
         hx, hy = highlight
         ax.plot([hx], [hy], marker="o", markersize=9, color="#2a78d6",
                 markeredgecolor="white", markeredgewidth=2)
-        ax.annotate(f"{hx}bb: {hy:+.3f}", (hx, hy), textcoords="offset points",
+        ax.annotate(highlight_label or f"{hx}bb: {hy:+.3f}", (hx, hy), textcoords="offset points",
                     xytext=(8, -14), fontsize=9, color=INK)
     ax.set_title(title, loc="left", fontsize=12, color=INK)
     ax.set_xlabel(xlabel, color=MUTED)

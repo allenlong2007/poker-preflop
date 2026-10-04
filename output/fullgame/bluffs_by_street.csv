@@ -1,0 +1,13 @@
+scenario,player,street,bluffs_per_hand,semi_bluffs_per_hand,value_bets_per_hand
+donk,bb,flop,0.0707,0.0337,0.1157
+donk,bb,turn,0.0312,0.0225,0.07
+donk,bb,river,0.0406,0.0,0.1105
+donk,btn,flop,0.4307,0.0499,0.2775
+donk,btn,turn,0.0935,0.0349,0.1183
+donk,btn,river,0.0352,0.0,0.0902
+no_early_bluffs,bb,flop,0.0,0.0297,0.1049
+no_early_bluffs,bb,turn,0.0,0.0349,0.0492
+no_early_bluffs,bb,river,0.0516,0.0,0.114
+no_early_bluffs,btn,flop,0.467,0.05,0.2681
+no_early_bluffs,btn,turn,0.0952,0.0324,0.1093
+no_early_bluffs,btn,river,0.0364,0.0,0.0929

@@ -29,6 +29,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `preflop/rivergame.py` | Learned river game after the BB check-calls the turn |
 | `preflop/sizedgame.py` | Flop / turn / river with several bet sizes per street (experiment 13) |
 | `scripts/solver_compare.py` | Runs TexasSolver on 12 flops and compares it with the model (experiment 14) |
+| `preflop/fullgame.py` | Flop + turn + river learned together with Monte Carlo CFR, 12 hand buckets (experiment 15) |
 | `preflop/plots.py` | Range grids, heatmaps, bar and line charts |
 | `scripts/` | One script per experiment (named in each section below) |
 | `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules |
@@ -793,11 +794,127 @@ instead of 67% and bets big 72% of the time. Giving the BB later-street betting 
 BTN's flop betting by 20 points. Flop strategy depends heavily on what each player can do on later
 streets, which is also why the model's rules-based turn and river limit its flop accuracy.
 
+## Experiment 15: The whole hand learned together
+
+`scripts/fullgame_study.py` + `preflop/fullgame.py`. Earlier experiments learned one street at a time and
+played later streets with rules, so no player could plan multi-street lines. Here flop, turn and river are
+**one game**, learned with external-sampling Monte Carlo CFR: for each sampled hand, the learning player
+tries every option while the opponent's moves are sampled. A flop decision is valued by how the rest of
+the hand actually plays out.
+
+* **Hand buckets (12):** straight or better, set / trips, two pair, overpair, top pair (T+ kicker / weak
+  kicker), middle pair, weak pair, strong draw, weak draw (gutshot / backdoor flush), overcards, air.
+  On the river the draws become missed draws.
+* **Line memory:** later streets know who bet last on the previous street and how deep the stacks are
+  vs the pot.
+* **Sizes:**
+  * BB flop lead ("donk") 1/3 pot
+  * BTN flop bets 1/3 / 3/4
+  * turn leads 1/2, bets 1/2 / pot
+  * river leads 1/2, bets 1/2 / pot / 1.5x
+  * raises 3x
+* **Training:** 250 batches × 60k hands per scenario, then each is evaluated exactly on the same 300k
+  hands. Re-training the `donk` scenario with a different seed gave the same result to 0.001bb, so
+  differences between scenarios aren't training noise.
+
+Results are the BB's **net result for the whole hand, in bb per called pot**:
+
+| Scenario | BB net |
+|---|---|
+| base: BB never donks | −0.869 |
+| donk: BB may lead the flop 1/3 pot (learned) | −0.872 |
+| donk_often: BB leads 50% of flops with every hand | **−1.156** |
+| no_early_bluffs: BB never bluffs the flop or turn | −0.916 |
+| slowplay 0% / 25% / 50% / 75% of strong hands | −0.882 / **−0.876** / −0.879 / −0.887 |
+
+### Multi-street lines: check-calling with medium hands
+
+![Check-call chain](output/fullgame/bb_check_call_chain.png)
+
+How often the BB check-calls a bet on the flop, then the turn too, then the river too, by its flop hand
+(the BTN has to bet each time):
+
+| BB flop hand | Check-calls the flop | ... and the turn | ... and the river |
+|---|---|---|---|
+| top pair, weak kicker | 47% | **19%** | 4% |
+| middle pair | 57% | **14%** | 2% |
+| weak pair | 44% | 4% | 1% |
+| top pair, T+ kicker | 23% | 8% | 1% |
+| two pair | 18% | 5% | 2% |
+| strong draw | 23% | 3% | 1% |
+
+* **Check-calling twice is a medium-hand line,** mainly weak top pair and middle pair. They have enough
+  showdown value to call twice but are too weak to raise.
+* **Weak pairs usually stop after one call;** their turn calls drop to 4%.
+* **Strong top pair and two pair call less** because they check-raise more often.
+* **Calling down all three streets is rare** (≤4%): by the river, most medium hands either face a check or
+  give up.
+
+### Slowplaying: how often, and with what
+
+![Slowplay sweep](output/fullgame/slowplay_sweep.png)
+
+* **The best slowplay share is about 25%.** Forcing the BB to just call a flop bet with 0 / 25 / 50 / 75%
+  of its strong hands (straight+, sets, two pair) gives −0.882 / −0.876 / −0.879 / −0.887bb. Never
+  slowplaying costs 0.006bb per called pot and slowplaying 75% costs 0.011bb. The value curve is flat,
+  so getting the mix roughly right matters more than the exact number.
+* **The learned strategy agrees.** Facing a flop bet, the BB calls instead of raising with:
+  * two pair 25% of the time
+  * straights or better 26%
+  * sets 18%, the least: sets are the hands that most want the pot to grow now
+* **The BTN almost never slowplays:** it checks back strong hands on the flop only 4–7% of the time.
+
+### Bluff timing: preflop and river vs flop and turn
+
+![BB aggression by street](output/fullgame/bb_aggression_by_street_donk.png)
+
+* **In the learned strategy, half of the BB's postflop bluffs happen on the flop** (check-raise and donk
+  bluffs): flop 0.071, turn 0.031, river 0.041 bluffs per called pot, plus semi-bluffs with draws on the
+  flop and turn.
+* **Moving bluffs to the river costs the BB.** Banning weak-hand bets and raises on the flop and turn raises
+  its river bluffs by 27% (0.041 → 0.052 per hand) but costs **0.044bb per called pot** (−0.872 → −0.916).
+  Early bluffs work because the BTN's wide c-betting range folds a lot to check-raises.
+* **Preflop bluffs barely exist in this model:** the BB 3-bets 21% of its hands, but only 0.45% of hands
+  (22) are 3-bets with under 50% equity vs the BTN's opening range. The preflop model uses equity
+  realization, not postflop play, so it has no reason to 3-bet bluff. Adding real 3-bet-bluff value
+  would need a preflop model that plays out the postflop game.
+
+### Donk bets: often, small, and on which boards?
+
+![Donk heatmap](output/fullgame/donk_heatmap.png)
+
+* **When it may choose, the BB donks rarely:**
+  * A-high boards 4%, K-high 6%, Q/J-high 7%, T-high or lower 13%
+  * paired boards 16%, single-suit boards 12%
+* **It donks mostly with strong top pairs and sets on boards that favor it:** top pair T+ kicker donks
+  52% on paired boards and 48% on single-suit boards; sets donk 34% on low boards.
+* **Having the donk option is worth almost nothing:** −0.009 to +0.024bb per called pot by board, and
+  −0.003 overall. That matches solver lore that donking adds little when the caller is out of position.
+
+![Donk value by board](output/fullgame/donk_value_by_board.png)
+
+* **Donking 50% of flops with every hand is a big leak: −0.29bb per called pot.** The BTN raises and floats
+  a weak, capped donking range. Board by board, the cost (bb per 10 called pots):
+
+| Board | Cost of donking 50% |
+|---|---|
+| A-high | −3.9 |
+| K-high | −3.2 |
+| Q/J-high | −2.8 |
+| connected | −2.5 |
+| T-high or lower | −2.1 |
+| single-suit | −2.0 |
+
+* **If the BB wants to donk often, low and single-suit boards are where it hurts least,** because those boards
+  favor the BB's range. A-high and K-high boards, where the BTN's range is strongest, are the worst. On
+  every texture, small frequent donking with the whole range still loses vs donking selectively.
+
 ## Next steps
 
-1. **Finer hand buckets** (e.g. top pair by kicker and board, sets vs two pair, backdoor draws). The solver
-   comparison shows the coarse buckets cause most hand-level errors.
-2. **Learn the turn and river in the flop game** instead of using rules, so the flop can plan multi-street lines.
-3. **Board features from range advantage**, not just high card: K-high and paired boards are BTN boards here.
-4. **More lines:** what happens after the BB leads the turn, or the BTN checks back the flop.
-5. **Stack depth and multiway** play.
+1. **Solver comparison for the full-hand model:** rerun experiment 14 against `fullgame.py` to see if
+   learning all streets together and finer buckets close the hand-level gaps.
+2. **Preflop bluffs from postflop play:** feed the full-hand model's postflop values back into the
+   preflop solver, so 3-bet bluffs (A5s, suited connectors) get their real postflop value.
+3. **Selective donking:** let the BB donk with a forced frequency only on its best boards (low, single-suit,
+   paired) and measure the value vs never donking.
+4. **Stack depth and multiway** play.

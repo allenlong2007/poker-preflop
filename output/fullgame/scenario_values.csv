@@ -1,0 +1,10 @@
+scenario,bb_net_bb_per_called_pot
+base,-0.8694
+donk,-0.8721
+donk_often,-1.1562
+no_early_bluffs,-0.9162
+slowplay_0,-0.8819
+slowplay_25,-0.8759
+slowplay_50,-0.8786
+slowplay_75,-0.8874
+donk_rep,-0.8722

@@ -1,0 +1,12 @@
+feature,value,bb_donks_learned,bb_value_no_donk,bb_value_learned_donk,bb_value_donk_50pct,gain_from_donk_option,change_from_donking_50pct
+high card,A-high,0.0355,-1.3091,-1.3137,-1.6981,-0.0046,-0.3889
+high card,K-high,0.0606,-1.0476,-1.0569,-1.3644,-0.0092,-0.3167
+high card,Q/J-high,0.0678,-0.8258,-0.8285,-1.1014,-0.0027,-0.2756
+high card,T-high or lower,0.1267,-0.514,-0.5119,-0.7255,0.0021,-0.2115
+pairing,unpaired,0.0611,-0.9023,-0.9073,-1.1892,-0.005,-0.2869
+pairing,paired,0.1643,-0.7106,-0.7023,-0.9972,0.0083,-0.2865
+suits,rainbow,0.0853,-0.8752,-0.8724,-1.1645,0.0027,-0.2893
+suits,two-tone,0.0701,-0.8557,-0.8649,-1.1487,-0.0092,-0.293
+suits,monotone,0.1196,-0.9689,-0.9452,-1.1732,0.0238,-0.2042
+connectedness,disconnected,0.0751,-0.8941,-0.8977,-1.189,-0.0036,-0.2949
+connectedness,connected,0.0951,-0.7608,-0.7598,-1.0123,0.001,-0.2515
