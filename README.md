@@ -29,7 +29,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `preflop/rivergame.py` | Learned river game after the BB check-calls the turn |
 | `preflop/sizedgame.py` | Flop / turn / river with several bet sizes per street (experiment 13) |
 | `scripts/solver_compare.py` | Runs TexasSolver on 12 flops and compares it with the model (experiment 14) |
-| `preflop/fullgame.py` | Flop + turn + river learned together with Monte Carlo CFR, 12 hand buckets (experiment 15) |
+| `preflop/fullgame.py` | Flop + turn + river learned together with Monte Carlo CFR, 12 hand buckets, configurable sizes (experiments 15–16) |
 | `preflop/plots.py` | Range grids, heatmaps, bar and line charts |
 | `scripts/` | One script per experiment (named in each section below) |
 | `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules |
@@ -909,12 +909,130 @@ How often the BB check-calls a bet on the flop, then the turn too, then the rive
   favor the BB's range. A-high and K-high boards, where the BTN's range is strongest, are the worst. On
   every texture, small frequent donking with the whole range still loses vs donking selectively.
 
+## Experiment 16: Best sizes vs every open, the BTN's 2.25bb plan, and TexasSolver again
+
+`scripts/open_size_study.py` (train / solve / report). The whole-hand model (experiment 15) is trained
+at BTN opens of **2.0, 2.25, 2.5 and 3.0bb**, with preflop ranges from the preflop solver at each size.
+It has a bigger sizing menu so it can pick its own sizes:
+
+| Street | BB leads | BTN bets | Raises (either player) |
+|---|---|---|---|
+| flop | 1/3 or 3/4 pot (donk) | 1/3 or 3/4 pot | 2.5x or 4x |
+| turn | 1/2 or pot | 1/2 or pot | 2.5x or 4x |
+| river | 1/2 or pot | 1/2, pot or 1.5x | 2.5x or 4x |
+
+The generalized model reproduces experiment 15 exactly when given its old sizes. Each open size took
+16–23 min to train (250 batches × 60k hands) and was evaluated exactly on 150k hands.
+
+### The BB vs each open size
+
+| BTN open | BB preflop fold / call / 3-bet (to) | BB net per called pot | BTN bets the flop when checked to | BB vs 1/3 c-bet: fold / call / raise 2.5x / raise 4x |
+|---|---|---|---|---|
+| 2.0 | 1% / 76% / 23% (6.5) | −0.85 | 78% | 48 / 21 / 19 / 12% |
+| 2.25 | 10% / 69% / 21% (7.3) | −0.85 | 75% | 46 / 19 / 23 / 12% |
+| 2.5 | 19% / 61% / 20% (8.1) | −0.81 | 72% | 45 / 22 / 22 / 12% |
+| 3.0 | 35% / 47% / 18% (9.75) | −0.84 | 69% | 40 / 26 / 24 / 10% |
+
+![BB vs 1/3 c-bet by open](output/open_sizes/bb_vs_flop_13.png)
+
+* **Bigger opens get a tighter BB, and its postflop results barely change** (−0.81 to −0.85bb per called
+  pot). The adjustment happens preflop (folding 1% → 35%); afterwards the BB folds less to c-bets
+  (48% → 40%) because its range is stronger, and the BTN c-bets less (78% → 69%).
+* **Raise sizes depend on the street:**
+  * **Flop:** the BB prefers the **small 2.5x check-raise** (19–24% vs a 1/3 c-bet, 12% vs a 3/4 c-bet),
+    with 4x as a smaller, stronger part (10–12% / 5%).
+  * **Turn:** vs a half-pot bet the **4x raise** is used more (10–11%) than 2.5x (7–10%).
+  * **River:** vs a half-pot bet the BB raises almost only **4x** (15%, vs 2% at 2.5x), a polarized
+    nuts-or-bluff raise. Vs pot and overbets it raises rarely, and small.
+* **BB leads:**
+  * flop donks are rare: 9–11%, mostly 1/3 pot (5–7%)
+  * turn leads grow with the open: 12% → 18%, split evenly between 1/2 and pot
+  * the river is where the BB leads most: ~31% (1/2 pot 18%, pot 13%)
+
+### The BTN's 2.25bb plan: c-bet, turn barrel, river
+
+![BTN flop c-bet by hand](output/open_sizes/btn_flop_cbet_by_hand.png)
+
+* **Flop c-bet: 75% of flops** (1/3 pot 40%, 3/4 pot 36%).
+  * **By board:** A-high flops are bet almost always (check 11%, mostly 3/4 pot); K-high mostly 1/3 pot
+    (50%); low, connected and single-suit flops are checked 34–36% of the time.
+  * **By hand:** two pair+ goes big (65–78% 3/4 pot). Overpairs, weak top pair and middle pair go small
+    (55–56% 1/3 pot). Weak pairs and overcards check (65–66%). Air bets 86% (split small / big), and
+    draws bet small (strong draws 52% at 1/3).
+* **Turn barrel after a called c-bet:**
+  * value keeps betting: straights 99%, sets 92%, two pair 84%, mostly pot-size
+  * top pair barrels 66–73%
+  * middle and weak pairs check (83–94%) to control the pot
+  * draws semi-bluff: weak draws 81%, strong draws 56%
+  * air barrels 42%
+
+![BTN turn barrel](output/open_sizes/btn_turn_barrel.png)
+
+* **River after a called barrel: the bluffs are the missed weak draws.**
+  * value overbets: straights+ bet 100% (65% at 1.5x), sets 99% (49% at 1.5x), two pair 86%
+  * top pair mostly checks (64–78%)
+  * the main bluff is **missed gutshots / backdoors: they bet 83%, 54% as a 1.5x overbet**
+  * pure air bets only 25% and missed strong draws 23%. Hands with a little showdown value check;
+    the weakest missed draws bluff big.
+
+![BTN river bets](output/open_sizes/btn_river_bets.png)
+
+### The most probable lines (2.25bb)
+
+Across all called pots, the most common outcomes are short:
+
+| Line | Probability | BTN holds (strong / pair / draw / air) |
+|---|---|---|
+| BTN bets 3/4, BB folds | 19.0% | 10 / 26 / 18 / 46% |
+| BTN bets 1/3, BB folds | 16.5% | 3 / 39 / 18 / 40% |
+| checked down on every street | 4.1% | 0 / 62 / 8 / 31% |
+| flop checked through, BTN bets pot on the turn, BB folds | 3.3% | 3 / 34 / 21 / 42% |
+| BTN bets 1/3, BB raises 2.5x, BTN folds | 2.0% | 0 / 2 / 2 / 97% |
+
+**When the BTN c-bets and barrels and gets called twice,** the river goes:
+* **check-check** in 47% of these lines (most common: 3/4 then 1/2, 17%; 3/4 then pot, 16%)
+* **a BTN 1.5x overbet** in 25% (the BB folds to it in 16%)
+
+The BTN's river overbets hold 17% strong hands, 12% pairs, 38% missed draws and 33% air: mostly bluffs.
+37% of the BTN's air ends with a flop c-bet the BB folds to.
+
+### TexasSolver comparison (flop decisions, medium tree)
+
+Solved at **2.25bb (12 flops)** and, new, **3.0bb (6 flops)** with that open's ranges (0.25–0.29%
+exploitability, 2–8 min each, three at a time).
+
+| Decision | 2.25bb: solver / model / correlation | 3.0bb: solver / model / correlation |
+|---|---|---|
+| BTN c-bets | 67% / 70% / **0.97** | 61% / 66% / 0.86 |
+| BTN bets small (1/3) | 25% / 35% / 0.89 | 33% / 39% / **0.98** |
+| BB folds vs 1/3 | 29% / 42% / 0.78 | 35% / 41% / 0.88 |
+| BB raises vs 1/3 | 18% / 29% / 0.13 | 15% / 29% / **0.94** |
+| BB folds vs 3/4 | 52% / 60% / 0.83 | 55% / 57% / 0.76 |
+| BB calls vs 3/4 | 38% / 25% / **0.94** | 38% / 29% / 0.50 |
+
+![C-bet scatter 2.25](output/open_sizes/solver_cbet_scatter_225.png)
+
+* **Much closer than the street-by-street model.** C-bet frequency per flop correlates **0.97** with the
+  solver at 2.25bb (0.88 in experiment 14), and the BTN's c-bet by hand is close: air 87% vs 76%,
+  top pair 74–76% vs 75–82%, two pair+ 90–96% vs 100%.
+* **The old "BB folds pairs" error is gone:** the model now folds pairs and draws 0–5% to a small
+  c-bet, like the solver.
+* **It tracks how the open size changes things.** On K♥8♦3♣ the solver's c-bet drops from 100% at
+  2.25bb to 59% at 3.0bb (the BB's tighter calling range has more kings); the model goes 83% → 56%.
+* **The remaining gap: the BB check-raises too much and calls too little.** It raises middle pair 54%
+  and weak top pair 64% vs the solver's 7–18%. The pattern across flops matches at 3.0bb (r = 0.94),
+  but the level is about twice the solver's. Likely causes (not yet tested):
+  * the model's BTN bluffs air about 10 points more than the solver, which makes raising profitable
+  * the model can raise a cheaper 2.5x, while the solver's raise is about 3x
+  * the solver's tree has no turn or river raises, so a flop raise there carries less threat
+
+![Check-raise by hand](output/open_sizes/solver_xr_by_bucket_225.png)
+
 ## Next steps
 
-1. **Solver comparison for the full-hand model:** rerun experiment 14 against `fullgame.py` to see if
-   learning all streets together and finer buckets close the hand-level gaps.
-2. **Preflop bluffs from postflop play:** feed the full-hand model's postflop values back into the
-   preflop solver, so 3-bet bluffs (A5s, suited connectors) get their real postflop value.
-3. **Selective donking:** let the BB donk with a forced frequency only on its best boards (low, single-suit,
-   paired) and measure the value vs never donking.
+1. **Fix the BB's check-raise level:** give the model a ~3x raise like the solver's, and test whether
+   the BTN's extra air c-bets are what make raising so profitable.
+2. **Preflop bluffs from postflop play:** feed the whole-hand model's postflop values back into the
+   preflop solver, so 3-bet bluffs (A5s, suited connectors) get their real value.
+3. **Selective donking:** force donks only on the BB's best boards (low, single-suit, paired).
 4. **Stack depth and multiway** play.

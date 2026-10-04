@@ -13,10 +13,12 @@ Each street (BTN opened 2.25bb preflop, BB called):
 
     BB:   check | lead (size j)                (flop lead = "donk", only if enabled)
       after a check:  BTN  check | bet (size k)
-                      BB   fold | call | raise to 3x
+                      BB   fold | call | raise (multiple r)
                       BTN  fold | call
-      after a lead:   BTN  fold | call | raise to 3x
+      after a lead:   BTN  fold | call | raise (multiple r)
                       BB   fold | call
+
+Sizes default to SIZES / RAISE_X; opts["sizes"] and opts["raises"] override them.
 
 Decisions are learned per (board texture, line, hand bucket[, size]):
   * texture: the flop / turn / river textures of experiments 8, 11 and 12
@@ -57,22 +59,34 @@ NODES = {"bb_first": ("bb", False), "btn_vs_check": ("btn", False), "bb_vs_bet":
          "btn_vs_xr": ("btn", True), "btn_vs_lead": ("btn", True), "bb_vs_raise": ("bb", True)}
 
 
+def street_sizes(s, opts):
+    """(lead sizes, bet sizes) on street s; opts["sizes"] overrides SIZES, and the flop lead needs opts["donk"]."""
+    sz = (opts.get("sizes") or SIZES)[s]
+    return (tuple(sz["lead"]) if (s > 0 or opts.get("donk")) else ()), tuple(sz["bet"])
+
+
+def raise_sizes(opts):
+    """Raise multiples available to whoever faces a bet or lead (opts["raises"], default 3x only)."""
+    return tuple(opts.get("raises", (RAISE_X,)))
+
+
 def n_actions(kind, s, opts):
-    n_lead = len(SIZES[s]["lead"]) if (s > 0 or opts.get("donk")) else 0
-    n_bet = len(SIZES[s]["bet"])
-    return {"bb_first": (None, 1 + n_lead), "btn_vs_check": (None, 1 + n_bet), "bb_vs_bet": (n_bet, 3),
-            "btn_vs_xr": (n_bet, 2), "btn_vs_lead": (n_lead, 3), "bb_vs_raise": (n_lead, 2)}[kind]
+    """(size dimensions, number of actions) for a node kind on street s."""
+    n_lead, n_bet = (len(x) for x in street_sizes(s, opts))
+    n_raise = len(raise_sizes(opts))
+    return {"bb_first": ((), 1 + n_lead), "btn_vs_check": ((), 1 + n_bet), "bb_vs_bet": ((n_bet,), 2 + n_raise),
+            "btn_vs_xr": ((n_bet, n_raise), 2), "btn_vs_lead": ((n_lead,), 2 + n_raise),
+            "bb_vs_raise": ((n_lead, n_raise), 2)}[kind]
 
 
 def table_shapes(opts):
     shapes = {}
     for s in range(3):
         for kind in NODES:
-            k, a = n_actions(kind, s, opts)
-            if k == 0:
+            dims, a = n_actions(kind, s, opts)
+            if 0 in dims:
                 continue
-            base = (N_TEX[s], N_LINES[s], NB)
-            shapes[(s, kind)] = base + ((k,) if k else ()) + (a,)
+            shapes[(s, kind)] = (N_TEX[s], N_LINES[s], NB) + dims + (a,)
     return shapes
 
 
@@ -156,8 +170,14 @@ def deal(rng, i, j):
 
 # ----------------------------------------------------------------------------- the game
 
-AGGRESSIVE = {"bb_first": lambda a: a >= 1, "btn_vs_check": lambda a: a >= 1, "bb_vs_bet": lambda a: a == 2,
-              "btn_vs_xr": lambda a: False, "btn_vs_lead": lambda a: a == 2, "bb_vs_raise": lambda a: False}
+AGGRESSIVE = {"bb_first": lambda a: a >= 1, "btn_vs_check": lambda a: a >= 1, "bb_vs_bet": lambda a: a >= 2,
+              "btn_vs_xr": lambda a: False, "btn_vs_lead": lambda a: a >= 2, "bb_vs_raise": lambda a: False}
+FLOP_CLASS = [0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 3, 3]     # BTN flop bucket -> strong / pair / draw / air (line stats)
+
+
+def is_check_call(code):
+    """BB checked, the BTN bet (any size), the BB called."""
+    return code.startswith("xb") and code.endswith("c") and "r" not in code
 
 
 class Game:
@@ -177,8 +197,8 @@ class Game:
                 p = o["force_donk"]
                 return np.array([1 - p, p]), False, None
         if o.get("slowplay") is not None and s == 0 and kind == "bb_vs_bet" and b in STRONG:
-            sp = o["slowplay"]
-            return np.array([0.0, sp, 1 - sp]), False, None
+            sp, nr = o["slowplay"], len(sig) - 2
+            return np.array([0.0, sp] + [(1 - sp) / nr] * nr), False, None
         if o.get("no_early_bluffs") and s < 2 and player == "bb" and b in WEAK:
             allowed = np.array([not AGGRESSIVE[kind](a) for a in range(len(sig))])
             if not allowed.all():
@@ -224,17 +244,23 @@ class Game:
     def street(self, s, P, left, pin, line, hist, rc):
         h = self.h
         if s == 3 or left <= 1e-9:
+            if self.mode == "eval":
+                self.acc.line(hist, rc, h.btn[0])
             return h.r * P - pin
         t, bk, tb = h.tex[s], h.bb[s], h.btn[s]
-        leads = SIZES[s]["lead"] if (s > 0 or self.opts.get("donk")) else ()
-        bets = SIZES[s]["bet"]
+        leads, bets = street_sizes(s, self.opts)
+        raises = raise_sizes(self.opts)
+        rc_now = [rc]
 
         def nxt(P2, left2, pin2, aggressor, code):
-            if self.mode == "eval" and code == "xc" and all(c == "xc" for c in hist):
+            if self.mode == "eval" and is_check_call(code) and all(is_check_call(c) for c in hist):
                 self.acc.callchain[s, h.bb[0]] += rc_now[0]      # BB has check-called every street so far
             return self.street(s + 1, P2, left2, pin2, line_index(aggressor, P2, left2), hist + (code,), rc_now[0])
 
-        rc_now = [rc]
+        def end(value, code):                                    # a fold ends the hand
+            if self.mode == "eval":
+                self.acc.line(hist + (code,), rc_now[0], h.btn[0])
+            return value
 
         def wrap(f):
             def g(r):
@@ -245,29 +271,32 @@ class Game:
         def btn_vs_check():
             def bet(k):
                 b = min(bets[k] * P, left)
-                R = min(RAISE_X * b, left)
 
-                def xr():
-                    return self.decide(s, "btn_vs_xr", (t, line, tb, k), "btn",
-                                       [wrap(lambda: -pin - b), wrap(lambda: nxt(P + 2 * R, left - R, pin + R, 2, "xrc"))],
+                def xr(r):
+                    R = min(raises[r] * b, left)
+                    return self.decide(s, "btn_vs_xr", (t, line, tb, k, r), "btn",
+                                       [wrap(lambda: end(-pin - b, f"xb{k}r{r}f")),
+                                        wrap(lambda: nxt(P + 2 * R, left - R, pin + R, 2, f"xb{k}r{r}c"))],
                                        rc_now[0])
                 return self.decide(s, "bb_vs_bet", (t, line, bk, k), "bb",
-                                   [wrap(lambda: P - pin), wrap(lambda: nxt(P + 2 * b, left - b, pin + b, 1, "xc")),
-                                    wrap(xr)], rc_now[0])
+                                   [wrap(lambda: end(P - pin, f"xb{k}f")),
+                                    wrap(lambda: nxt(P + 2 * b, left - b, pin + b, 1, f"xb{k}c"))]
+                                   + [wrap(lambda r=r: xr(r)) for r in range(len(raises))], rc_now[0])
             acts = [wrap(lambda: nxt(P, left, pin, 0, "xx"))] + [wrap(lambda k=k: bet(k)) for k in range(len(bets))]
             return self.decide(s, "btn_vs_check", (t, line, tb), "btn", acts, rc_now[0])
 
         def lead(j):
             b = min(leads[j] * P, left)
-            R = min(RAISE_X * b, left)
 
-            def raised():
-                return self.decide(s, "bb_vs_raise", (t, line, bk, j), "bb",
-                                   [wrap(lambda: P + b - pin), wrap(lambda: nxt(P + 2 * R, left - R, pin + R, 1, "lrc"))],
-                                   rc_now[0])
+            def raised(r):
+                R = min(raises[r] * b, left)
+                return self.decide(s, "bb_vs_raise", (t, line, bk, j, r), "bb",
+                                   [wrap(lambda: end(P + b - pin, f"l{j}r{r}f")),
+                                    wrap(lambda: nxt(P + 2 * R, left - R, pin + R, 1, f"l{j}r{r}c"))], rc_now[0])
             return self.decide(s, "btn_vs_lead", (t, line, tb, j), "btn",
-                               [wrap(lambda: -pin), wrap(lambda: nxt(P + 2 * b, left - b, pin + b, 2, "lc")),
-                                wrap(raised)], rc_now[0])
+                               [wrap(lambda: end(-pin, f"l{j}f")),
+                                wrap(lambda: nxt(P + 2 * b, left - b, pin + b, 2, f"l{j}c"))]
+                               + [wrap(lambda r=r: raised(r)) for r in range(len(raises))], rc_now[0])
 
         if not leads:
             return btn_vs_check()
@@ -299,6 +328,14 @@ class EvalAcc:
         self.value_by_flop = np.zeros(N_TEX[0])
         self.n_by_flop = np.zeros(N_TEX[0])
         self.value_by_flop_bucket = np.zeros(NB)
+        self.lines = {}                      # full betting line -> reach by BTN flop class (strong/pair/draw/air)
+
+    def line(self, seq, rc, btn_flop_bucket):
+        key = "/".join(seq)
+        arr = self.lines.get(key)
+        if arr is None:
+            arr = self.lines[key] = np.zeros(4)
+        arr[FLOP_CLASS[btn_flop_bucket]] += rc
 
     def node(self, key, cell, sig, rc, player, s, kind, h):
         self.strat[key][cell] += rc * sig
@@ -411,6 +448,8 @@ def evaluate(btn_range, bb_range, sigma, opts, s=2.25, stack=100, n=200_000, see
             acc.decisions[p] += other.decisions[p]
         for name in ("callchain", "n_flop_bucket", "value_by_flop", "n_by_flop", "value_by_flop_bucket"):
             setattr(acc, name, getattr(acc, name) + getattr(other, name))
+        for key, arr in other.lines.items():
+            acc.lines[key] = acc.lines.get(key, 0) + arr
     total = sum(p[1] for p in parts)
     count = sum(p[2] for p in parts)
     return total / count, acc

@@ -1,0 +1,461 @@
+open,flop,player,bucket,weight,solver_bet,model_bet,solver_fold,model_fold,solver_raise,model_raise
+2.25,As 7d 2c,btn,set / trips,9.0,1.0,0.976,,,,
+2.25,As 7d 2c,btn,two pair,18.0,1.0,0.987,,,,
+2.25,As 7d 2c,bb_vs_small,two pair,9.0,,,0.0,0.003,1.0,0.979
+2.25,As 7d 2c,bb_vs_big,two pair,9.0,,,0.0,0.0,1.0,0.959
+2.25,As 7d 2c,btn,"top pair, T+ kicker",48.0,1.0,0.906,,,,
+2.25,As 7d 2c,btn,"top pair, weak kicker",72.0,1.0,0.857,,,,
+2.25,As 7d 2c,bb_vs_small,"top pair, weak kicker",26.938,,,0.0,0.001,0.427,0.981
+2.25,As 7d 2c,bb_vs_big,"top pair, weak kicker",26.938,,,0.0,0.0,0.011,0.588
+2.25,As 7d 2c,btn,middle pair,108.264,1.0,0.859,,,,
+2.25,As 7d 2c,bb_vs_small,middle pair,111.0,,,0.0,0.001,0.075,0.931
+2.25,As 7d 2c,bb_vs_big,middle pair,111.0,,,0.0,0.005,0.008,0.188
+2.25,As 7d 2c,btn,weak pair,60.11,1.0,0.832,,,,
+2.25,As 7d 2c,bb_vs_small,weak pair,66.0,,,0.0,0.014,0.058,0.337
+2.25,As 7d 2c,bb_vs_big,weak pair,66.0,,,0.0,0.023,0.109,0.386
+2.25,As 7d 2c,btn,weak draw,101.996,1.0,0.983,,,,
+2.25,As 7d 2c,bb_vs_small,weak draw,153.104,,,0.006,0.077,0.272,0.257
+2.25,As 7d 2c,bb_vs_big,weak draw,153.104,,,0.422,0.73,0.092,0.145
+2.25,As 7d 2c,btn,air,381.978,1.0,0.999,,,,
+2.25,As 7d 2c,bb_vs_small,air,468.971,,,0.729,0.993,0.015,0.005
+2.25,As 7d 2c,bb_vs_big,air,468.971,,,0.969,0.997,0.0,0.003
+2.25,Ah Kd 5h,btn,set / trips,9.0,1.0,0.979,,,,
+2.25,Ah Kd 5h,btn,two pair,27.0,1.0,0.983,,,,
+2.25,Ah Kd 5h,bb_vs_small,two pair,14.963,,,0.0,0.0,1.0,0.964
+2.25,Ah Kd 5h,bb_vs_big,two pair,14.963,,,0.0,0.003,0.514,0.929
+2.25,Ah Kd 5h,btn,"top pair, T+ kicker",36.0,1.0,0.931,,,,
+2.25,Ah Kd 5h,btn,"top pair, weak kicker",84.0,0.999,0.947,,,,
+2.25,Ah Kd 5h,bb_vs_small,"top pair, weak kicker",26.993,,,0.0,0.0,0.476,0.972
+2.25,Ah Kd 5h,bb_vs_big,"top pair, weak kicker",26.993,,,0.0,0.002,0.0,0.158
+2.25,Ah Kd 5h,btn,middle pair,119.999,0.986,0.595,,,,
+2.25,Ah Kd 5h,bb_vs_small,middle pair,82.785,,,0.0,0.001,0.079,0.932
+2.25,Ah Kd 5h,bb_vs_big,middle pair,82.785,,,0.0,0.001,0.016,0.138
+2.25,Ah Kd 5h,btn,weak pair,98.994,0.98,0.797,,,,
+2.25,Ah Kd 5h,bb_vs_small,weak pair,110.999,,,0.0,0.002,0.1,0.449
+2.25,Ah Kd 5h,bb_vs_big,weak pair,110.999,,,0.122,0.03,0.061,0.317
+2.25,Ah Kd 5h,btn,strong draw,29.036,1.0,0.967,,,,
+2.25,Ah Kd 5h,bb_vs_small,strong draw,42.0,,,0.0,0.0,0.397,0.977
+2.25,Ah Kd 5h,bb_vs_big,strong draw,42.0,,,0.0,0.001,0.1,0.832
+2.25,Ah Kd 5h,btn,weak draw,71.036,0.996,0.961,,,,
+2.25,Ah Kd 5h,bb_vs_small,weak draw,95.707,,,0.072,0.013,0.269,0.496
+2.25,Ah Kd 5h,bb_vs_big,weak draw,95.707,,,0.408,0.662,0.053,0.085
+2.25,Ah Kd 5h,btn,air,300.41,0.99,0.994,,,,
+2.25,Ah Kd 5h,bb_vs_small,air,449.989,,,0.841,0.986,0.033,0.006
+2.25,Ah Kd 5h,bb_vs_big,air,449.989,,,1.0,0.998,0.0,0.002
+2.25,Kh 8d 3c,btn,set / trips,9.0,1.0,0.986,,,,
+2.25,Kh 8d 3c,btn,two pair,18.0,1.0,0.985,,,,
+2.25,Kh 8d 3c,bb_vs_small,two pair,20.0,,,0.0,0.0,1.0,0.965
+2.25,Kh 8d 3c,bb_vs_big,two pair,20.0,,,0.0,0.003,0.704,0.939
+2.25,Kh 8d 3c,btn,overpair,6.0,1.0,0.674,,,,
+2.25,Kh 8d 3c,btn,"top pair, T+ kicker",48.0,1.0,0.947,,,,
+2.25,Kh 8d 3c,bb_vs_small,"top pair, T+ kicker",1.676,,,0.0,0.016,1.0,0.781
+2.25,Kh 8d 3c,bb_vs_big,"top pair, T+ kicker",1.676,,,0.0,0.024,0.793,0.717
+2.25,Kh 8d 3c,btn,"top pair, weak kicker",71.999,0.996,0.818,,,,
+2.25,Kh 8d 3c,bb_vs_small,"top pair, weak kicker",69.109,,,0.0,0.0,0.327,0.884
+2.25,Kh 8d 3c,bb_vs_big,"top pair, weak kicker",69.109,,,0.0,0.002,0.037,0.215
+2.25,Kh 8d 3c,btn,middle pair,96.266,0.996,0.812,,,,
+2.25,Kh 8d 3c,bb_vs_small,middle pair,99.0,,,0.0,0.001,0.071,0.643
+2.25,Kh 8d 3c,bb_vs_big,middle pair,99.0,,,0.0,0.008,0.025,0.14
+2.25,Kh 8d 3c,btn,weak pair,68.997,0.993,0.279,,,,
+2.25,Kh 8d 3c,bb_vs_small,weak pair,80.995,,,0.0,0.003,0.171,0.825
+2.25,Kh 8d 3c,bb_vs_big,weak pair,80.995,,,0.0,0.038,0.136,0.523
+2.25,Kh 8d 3c,btn,weak draw,99.11,0.993,0.916,,,,
+2.25,Kh 8d 3c,bb_vs_small,weak draw,99.0,,,0.011,0.032,0.397,0.522
+2.25,Kh 8d 3c,bb_vs_big,weak draw,99.0,,,0.655,0.765,0.107,0.158
+2.25,Kh 8d 3c,btn,air,381.013,0.995,0.895,,,,
+2.25,Kh 8d 3c,bb_vs_small,air,440.62,,,0.583,0.986,0.05,0.014
+2.25,Kh 8d 3c,bb_vs_big,air,440.62,,,0.835,0.988,0.014,0.011
+2.25,Qd Jh 4d,btn,set / trips,9.0,1.0,0.985,,,,
+2.25,Qd Jh 4d,btn,two pair,26.998,1.0,0.99,,,,
+2.25,Qd Jh 4d,bb_vs_small,two pair,24.831,,,0.0,0.0,1.0,0.972
+2.25,Qd Jh 4d,bb_vs_big,two pair,24.831,,,0.0,0.0,0.547,0.888
+2.25,Qd Jh 4d,btn,overpair,12.0,1.0,0.831,,,,
+2.25,Qd Jh 4d,btn,"top pair, T+ kicker",36.0,1.0,0.986,,,,
+2.25,Qd Jh 4d,bb_vs_small,"top pair, T+ kicker",9.0,,,0.0,0.001,0.969,0.974
+2.25,Qd Jh 4d,bb_vs_big,"top pair, T+ kicker",9.0,,,0.0,0.004,0.051,0.302
+2.25,Qd Jh 4d,btn,"top pair, weak kicker",83.996,0.689,0.887,,,,
+2.25,Qd Jh 4d,bb_vs_small,"top pair, weak kicker",84.0,,,0.0,0.0,0.153,0.944
+2.25,Qd Jh 4d,bb_vs_big,"top pair, weak kicker",84.0,,,0.0,0.001,0.015,0.044
+2.25,Qd Jh 4d,btn,middle pair,119.994,0.571,0.795,,,,
+2.25,Qd Jh 4d,bb_vs_small,middle pair,93.0,,,0.0,0.001,0.075,0.776
+2.25,Qd Jh 4d,bb_vs_big,middle pair,93.0,,,0.0,0.018,0.04,0.068
+2.25,Qd Jh 4d,btn,weak pair,74.999,0.528,0.062,,,,
+2.25,Qd Jh 4d,bb_vs_small,weak pair,107.985,,,0.0,0.003,0.158,0.593
+2.25,Qd Jh 4d,bb_vs_big,weak pair,107.985,,,0.366,0.173,0.088,0.401
+2.25,Qd Jh 4d,btn,strong draw,60.036,1.0,0.989,,,,
+2.25,Qd Jh 4d,bb_vs_small,strong draw,51.27,,,0.0,0.001,0.538,0.974
+2.25,Qd Jh 4d,bb_vs_big,strong draw,51.27,,,0.0,0.001,0.165,0.849
+2.25,Qd Jh 4d,btn,weak draw,98.035,0.626,0.646,,,,
+2.25,Qd Jh 4d,bb_vs_small,weak draw,73.109,,,0.138,0.014,0.206,0.506
+2.25,Qd Jh 4d,bb_vs_big,weak draw,73.109,,,0.601,0.528,0.06,0.072
+2.25,Qd Jh 4d,btn,air,258.42,0.737,0.817,,,,
+2.25,Qd Jh 4d,bb_vs_small,air,349.922,,,0.776,0.985,0.053,0.014
+2.25,Qd Jh 4d,bb_vs_big,air,349.922,,,0.98,0.998,0.001,0.002
+2.25,Td 9h 6c,btn,straight or better,12.358,1.0,0.991,,,,
+2.25,Td 9h 6c,bb_vs_small,straight or better,16.0,,,0.0,0.0,1.0,0.992
+2.25,Td 9h 6c,bb_vs_big,straight or better,16.0,,,0.0,0.0,1.0,0.988
+2.25,Td 9h 6c,btn,set / trips,9.0,1.0,0.976,,,,
+2.25,Td 9h 6c,btn,two pair,19.998,1.0,0.756,,,,
+2.25,Td 9h 6c,bb_vs_small,two pair,27.0,,,0.0,0.006,0.999,0.904
+2.25,Td 9h 6c,bb_vs_big,two pair,27.0,,,0.0,0.015,0.219,0.809
+2.25,Td 9h 6c,btn,overpair,24.0,0.734,0.817,,,,
+2.25,Td 9h 6c,btn,"top pair, T+ kicker",48.0,0.873,0.481,,,,
+2.25,Td 9h 6c,bb_vs_small,"top pair, T+ kicker",19.676,,,0.0,0.008,0.343,0.816
+2.25,Td 9h 6c,bb_vs_big,"top pair, T+ kicker",19.676,,,0.0,0.033,0.001,0.248
+2.25,Td 9h 6c,btn,"top pair, weak kicker",42.107,0.578,0.682,,,,
+2.25,Td 9h 6c,bb_vs_small,"top pair, weak kicker",72.0,,,0.0,0.006,0.146,0.421
+2.25,Td 9h 6c,bb_vs_big,"top pair, weak kicker",72.0,,,0.0,0.037,0.034,0.231
+2.25,Td 9h 6c,btn,middle pair,74.996,0.378,0.711,,,,
+2.25,Td 9h 6c,bb_vs_small,middle pair,87.102,,,0.0,0.004,0.046,0.357
+2.25,Td 9h 6c,bb_vs_big,middle pair,87.102,,,0.001,0.028,0.032,0.183
+2.25,Td 9h 6c,btn,weak pair,89.998,0.173,0.029,,,,
+2.25,Td 9h 6c,bb_vs_small,weak pair,90.0,,,0.0,0.004,0.066,0.361
+2.25,Td 9h 6c,bb_vs_big,weak pair,90.0,,,0.101,0.181,0.085,0.205
+2.25,Td 9h 6c,btn,strong draw,32.0,1.0,0.943,,,,
+2.25,Td 9h 6c,bb_vs_small,strong draw,27.711,,,0.0,0.007,0.758,0.905
+2.25,Td 9h 6c,bb_vs_big,strong draw,27.711,,,0.0,0.011,0.403,0.698
+2.25,Td 9h 6c,btn,weak draw,200.997,0.457,0.636,,,,
+2.25,Td 9h 6c,bb_vs_small,weak draw,213.999,,,0.068,0.023,0.287,0.174
+2.25,Td 9h 6c,bb_vs_big,weak draw,213.999,,,0.624,0.642,0.113,0.165
+2.25,Td 9h 6c,btn,overcards,39.0,0.257,0.139,,,,
+2.25,Td 9h 6c,btn,air,207.988,0.609,0.896,,,,
+2.25,Td 9h 6c,bb_vs_small,air,245.912,,,0.803,0.947,0.002,0.041
+2.25,Td 9h 6c,bb_vs_big,air,245.912,,,1.0,0.992,0.0,0.007
+2.25,8s 6s 4d,bb_vs_small,straight or better,16.0,,,0.0,0.001,1.0,0.991
+2.25,8s 6s 4d,bb_vs_big,straight or better,16.0,,,0.0,0.001,1.0,0.983
+2.25,8s 6s 4d,btn,set / trips,9.0,1.0,0.954,,,,
+2.25,8s 6s 4d,btn,two pair,3.0,1.0,0.769,,,,
+2.25,8s 6s 4d,bb_vs_small,two pair,27.0,,,0.0,0.005,0.779,0.656
+2.25,8s 6s 4d,bb_vs_big,two pair,27.0,,,0.0,0.006,0.603,0.54
+2.25,8s 6s 4d,btn,overpair,36.0,0.555,0.717,,,,
+2.25,8s 6s 4d,btn,"top pair, T+ kicker",59.999,0.544,0.688,,,,
+2.25,8s 6s 4d,bb_vs_small,"top pair, T+ kicker",48.0,,,0.0,0.007,0.102,0.314
+2.25,8s 6s 4d,bb_vs_big,"top pair, T+ kicker",48.0,,,0.0,0.054,0.084,0.149
+2.25,8s 6s 4d,btn,"top pair, weak kicker",21.268,0.411,0.616,,,,
+2.25,8s 6s 4d,bb_vs_small,"top pair, weak kicker",42.0,,,0.0,0.005,0.064,0.422
+2.25,8s 6s 4d,bb_vs_big,"top pair, weak kicker",42.0,,,0.001,0.031,0.083,0.098
+2.25,8s 6s 4d,btn,middle pair,71.996,0.182,0.599,,,,
+2.25,8s 6s 4d,bb_vs_small,middle pair,90.0,,,0.0,0.009,0.012,0.099
+2.25,8s 6s 4d,bb_vs_big,middle pair,90.0,,,0.039,0.024,0.089,0.074
+2.25,8s 6s 4d,btn,weak pair,68.996,0.099,0.059,,,,
+2.25,8s 6s 4d,bb_vs_small,weak pair,107.985,,,0.0,0.004,0.067,0.39
+2.25,8s 6s 4d,bb_vs_big,weak pair,107.985,,,0.301,0.335,0.072,0.274
+2.25,8s 6s 4d,btn,strong draw,51.034,0.933,0.991,,,,
+2.25,8s 6s 4d,bb_vs_small,strong draw,58.036,,,0.0,0.003,0.405,0.937
+2.25,8s 6s 4d,bb_vs_big,strong draw,58.036,,,0.0,0.007,0.387,0.55
+2.25,8s 6s 4d,btn,weak draw,191.026,0.203,0.354,,,,
+2.25,8s 6s 4d,bb_vs_small,weak draw,185.962,,,0.076,0.055,0.181,0.075
+2.25,8s 6s 4d,bb_vs_big,weak draw,185.962,,,0.567,0.831,0.13,0.099
+2.25,8s 6s 4d,btn,overcards,196.0,0.172,0.363,,,,
+2.25,8s 6s 4d,bb_vs_small,overcards,78.018,,,0.241,0.69,0.193,0.037
+2.25,8s 6s 4d,bb_vs_big,overcards,78.018,,,0.946,0.981,0.009,0.018
+2.25,8s 6s 4d,btn,air,114.069,0.405,0.957,,,,
+2.25,8s 6s 4d,bb_vs_small,air,139.997,,,0.849,0.949,0.037,0.046
+2.25,8s 6s 4d,bb_vs_big,air,139.997,,,1.0,0.995,0.0,0.005
+2.25,7c 5d 3h,bb_vs_small,straight or better,16.0,,,0.0,0.0,1.0,0.992
+2.25,7c 5d 3h,bb_vs_big,straight or better,16.0,,,0.0,0.0,1.0,0.988
+2.25,7c 5d 3h,btn,set / trips,9.0,1.0,0.976,,,,
+2.25,7c 5d 3h,bb_vs_small,two pair,20.0,,,0.0,0.006,1.0,0.904
+2.25,7c 5d 3h,bb_vs_big,two pair,20.0,,,0.0,0.015,0.885,0.809
+2.25,7c 5d 3h,btn,overpair,42.0,0.632,0.817,,,,
+2.25,7c 5d 3h,btn,"top pair, T+ kicker",59.998,0.599,0.481,,,,
+2.25,7c 5d 3h,bb_vs_small,"top pair, T+ kicker",48.0,,,0.0,0.008,0.231,0.816
+2.25,7c 5d 3h,bb_vs_big,"top pair, T+ kicker",48.0,,,0.0,0.033,0.086,0.248
+2.25,7c 5d 3h,btn,"top pair, weak kicker",24.266,0.267,0.682,,,,
+2.25,7c 5d 3h,bb_vs_small,"top pair, weak kicker",51.0,,,0.0,0.006,0.145,0.421
+2.25,7c 5d 3h,bb_vs_big,"top pair, weak kicker",51.0,,,0.0,0.037,0.082,0.231
+2.25,7c 5d 3h,btn,middle pair,68.994,0.172,0.711,,,,
+2.25,7c 5d 3h,bb_vs_small,middle pair,107.944,,,0.0,0.004,0.011,0.357
+2.25,7c 5d 3h,bb_vs_big,middle pair,107.944,,,0.058,0.028,0.077,0.183
+2.25,7c 5d 3h,btn,weak pair,62.997,0.108,0.029,,,,
+2.25,7c 5d 3h,bb_vs_small,weak pair,80.995,,,0.0,0.004,0.073,0.361
+2.25,7c 5d 3h,bb_vs_big,weak pair,80.995,,,0.375,0.181,0.109,0.205
+2.25,7c 5d 3h,btn,strong draw,4.0,1.0,0.943,,,,
+2.25,7c 5d 3h,bb_vs_small,strong draw,20.0,,,0.0,0.007,0.594,0.905
+2.25,7c 5d 3h,bb_vs_big,strong draw,20.0,,,0.0,0.011,0.641,0.698
+2.25,7c 5d 3h,btn,weak draw,253.1,0.267,0.636,,,,
+2.25,7c 5d 3h,bb_vs_small,weak draw,259.092,,,0.059,0.023,0.234,0.174
+2.25,7c 5d 3h,bb_vs_big,weak draw,259.092,,,0.472,0.642,0.203,0.165
+2.25,7c 5d 3h,btn,overcards,259.998,0.222,0.139,,,,
+2.25,7c 5d 3h,bb_vs_small,overcards,140.981,,,0.401,0.806,0.068,0.028
+2.25,7c 5d 3h,bb_vs_big,overcards,140.981,,,1.0,0.958,0.0,0.034
+2.25,7c 5d 3h,btn,air,39.035,0.204,0.896,,,,
+2.25,7c 5d 3h,bb_vs_small,air,54.0,,,1.0,0.947,0.0,0.041
+2.25,7c 5d 3h,bb_vs_big,air,54.0,,,1.0,0.992,0.0,0.007
+2.25,Jh 7h 2h,btn,straight or better,33.999,1.0,0.92,,,,
+2.25,Jh 7h 2h,bb_vs_small,straight or better,32.036,,,0.0,0.005,0.999,0.966
+2.25,Jh 7h 2h,bb_vs_big,straight or better,32.036,,,0.0,0.007,0.999,0.842
+2.25,Jh 7h 2h,btn,set / trips,9.0,1.0,0.835,,,,
+2.25,Jh 7h 2h,btn,two pair,17.999,1.0,0.866,,,,
+2.25,Jh 7h 2h,bb_vs_small,two pair,21.0,,,0.0,0.014,0.818,0.402
+2.25,Jh 7h 2h,bb_vs_big,two pair,21.0,,,0.0,0.032,0.196,0.223
+2.25,Jh 7h 2h,btn,overpair,18.0,0.999,0.798,,,,
+2.25,Jh 7h 2h,btn,"top pair, T+ kicker",48.0,0.998,0.525,,,,
+2.25,Jh 7h 2h,bb_vs_small,"top pair, T+ kicker",17.783,,,0.0,0.079,0.283,0.261
+2.25,Jh 7h 2h,bb_vs_big,"top pair, T+ kicker",17.783,,,0.0,0.037,0.035,0.442
+2.25,Jh 7h 2h,btn,"top pair, weak kicker",71.993,0.461,0.242,,,,
+2.25,Jh 7h 2h,bb_vs_small,"top pair, weak kicker",72.0,,,0.0,0.044,0.048,0.14
+2.25,Jh 7h 2h,bb_vs_big,"top pair, weak kicker",72.0,,,0.0,0.314,0.044,0.044
+2.25,Jh 7h 2h,btn,middle pair,90.265,0.476,0.472,,,,
+2.25,Jh 7h 2h,bb_vs_small,middle pair,99.0,,,0.0,0.027,0.189,0.385
+2.25,Jh 7h 2h,bb_vs_big,middle pair,99.0,,,0.063,0.547,0.123,0.072
+2.25,Jh 7h 2h,btn,weak pair,60.111,0.632,0.612,,,,
+2.25,Jh 7h 2h,bb_vs_small,weak pair,63.0,,,0.001,0.042,0.382,0.778
+2.25,Jh 7h 2h,bb_vs_big,weak pair,63.0,,,0.363,0.209,0.18,0.671
+2.25,Jh 7h 2h,btn,strong draw,173.993,0.598,0.544,,,,
+2.25,Jh 7h 2h,bb_vs_small,strong draw,205.068,,,0.0,0.124,0.223,0.201
+2.25,Jh 7h 2h,bb_vs_big,strong draw,205.068,,,0.148,0.264,0.189,0.121
+2.25,Jh 7h 2h,btn,weak draw,26.999,0.943,0.253,,,,
+2.25,Jh 7h 2h,bb_vs_small,weak draw,27.0,,,0.001,0.637,0.265,0.291
+2.25,Jh 7h 2h,bb_vs_big,weak draw,27.0,,,0.85,0.887,0.146,0.085
+2.25,Jh 7h 2h,btn,overcards,27.0,0.511,0.361,,,,
+2.25,Jh 7h 2h,btn,air,221.991,0.543,0.857,,,,
+2.25,Jh 7h 2h,bb_vs_small,air,274.177,,,0.421,0.963,0.044,0.035
+2.25,Jh 7h 2h,bb_vs_big,air,274.177,,,1.0,0.987,0.0,0.013
+2.25,Kd Kc 4s,btn,straight or better,10.0,1.0,0.627,,,,
+2.25,Kd Kc 4s,bb_vs_small,straight or better,6.0,,,0.0,0.0,1.0,0.923
+2.25,Kd Kc 4s,bb_vs_big,straight or better,6.0,,,0.0,0.008,1.0,0.666
+2.25,Kd Kc 4s,btn,set / trips,88.0,1.0,0.95,,,,
+2.25,Kd Kc 4s,bb_vs_small,set / trips,55.19,,,0.0,0.0,0.837,0.986
+2.25,Kd Kc 4s,bb_vs_big,set / trips,55.19,,,0.0,0.003,0.463,0.742
+2.25,Kd Kc 4s,btn,overpair,6.0,0.95,0.797,,,,
+2.25,Kd Kc 4s,btn,middle pair,86.997,0.94,0.966,,,,
+2.25,Kd Kc 4s,bb_vs_small,middle pair,119.985,,,0.0,0.03,0.068,0.62
+2.25,Kd Kc 4s,bb_vs_big,middle pair,119.985,,,0.0,0.426,0.108,0.267
+2.25,Kd Kc 4s,btn,weak pair,12.0,1.0,0.837,,,,
+2.25,Kd Kc 4s,btn,weak draw,120.109,0.99,0.523,,,,
+2.25,Kd Kc 4s,bb_vs_small,weak draw,126.0,,,0.032,0.491,0.528,0.246
+2.25,Kd Kc 4s,bb_vs_big,weak draw,126.0,,,0.445,0.863,0.287,0.128
+2.25,Kd Kc 4s,btn,air,456.37,0.941,0.872,,,,
+2.25,Kd Kc 4s,bb_vs_small,air,497.633,,,0.629,0.649,0.11,0.24
+2.25,Kd Kc 4s,bb_vs_big,air,497.633,,,0.823,0.842,0.043,0.156
+2.25,7h 7d 2s,btn,straight or better,4.0,1.0,0.892,,,,
+2.25,7h 7d 2s,bb_vs_small,straight or better,1.0,,,0.0,0.001,1.0,0.923
+2.25,7h 7d 2s,bb_vs_big,straight or better,1.0,,,0.0,0.001,1.0,0.734
+2.25,7h 7d 2s,btn,set / trips,56.176,1.0,0.965,,,,
+2.25,7h 7d 2s,bb_vs_small,set / trips,74.0,,,0.0,0.0,0.865,0.993
+2.25,7h 7d 2s,bb_vs_big,set / trips,74.0,,,0.0,0.0,0.605,0.922
+2.25,7h 7d 2s,btn,overpair,42.0,0.205,0.966,,,,
+2.25,7h 7d 2s,btn,middle pair,72.11,0.788,0.954,,,,
+2.25,7h 7d 2s,bb_vs_small,middle pair,75.0,,,0.0,0.051,0.068,0.819
+2.25,7h 7d 2s,bb_vs_big,middle pair,75.0,,,0.0,0.508,0.127,0.263
+2.25,7h 7d 2s,btn,weak draw,131.996,0.725,0.591,,,,
+2.25,7h 7d 2s,bb_vs_small,weak draw,114.109,,,0.001,0.11,0.577,0.458
+2.25,7h 7d 2s,bb_vs_big,weak draw,114.109,,,0.363,0.709,0.303,0.266
+2.25,7h 7d 2s,btn,overcards,272.997,0.364,0.514,,,,
+2.25,7h 7d 2s,bb_vs_small,overcards,153.981,,,0.104,0.122,0.284,0.119
+2.25,7h 7d 2s,bb_vs_big,overcards,153.981,,,0.64,0.765,0.168,0.211
+2.25,7h 7d 2s,btn,air,238.981,0.482,0.684,,,,
+2.25,7h 7d 2s,bb_vs_small,air,389.903,,,0.718,0.785,0.098,0.143
+2.25,7h 7d 2s,bb_vs_big,air,389.903,,,0.853,0.834,0.057,0.164
+2.25,Ts 5c 2d,btn,set / trips,9.0,1.0,0.985,,,,
+2.25,Ts 5c 2d,btn,two pair,9.073,1.0,0.973,,,,
+2.25,Ts 5c 2d,bb_vs_small,two pair,20.0,,,0.0,0.004,1.0,0.965
+2.25,Ts 5c 2d,bb_vs_big,two pair,20.0,,,0.0,0.001,1.0,0.958
+2.25,Ts 5c 2d,btn,overpair,24.0,1.0,0.975,,,,
+2.25,Ts 5c 2d,btn,"top pair, T+ kicker",48.0,1.0,0.991,,,,
+2.25,Ts 5c 2d,bb_vs_small,"top pair, T+ kicker",19.676,,,0.0,0.004,0.823,0.916
+2.25,Ts 5c 2d,bb_vs_big,"top pair, T+ kicker",19.676,,,0.0,0.001,0.186,0.923
+2.25,Ts 5c 2d,btn,"top pair, weak kicker",53.994,0.729,0.943,,,,
+2.25,Ts 5c 2d,bb_vs_small,"top pair, weak kicker",72.0,,,0.0,0.003,0.15,0.927
+2.25,Ts 5c 2d,bb_vs_big,"top pair, weak kicker",72.0,,,0.0,0.002,0.038,0.142
+2.25,Ts 5c 2d,btn,middle pair,74.997,0.686,0.951,,,,
+2.25,Ts 5c 2d,bb_vs_small,middle pair,116.944,,,0.0,0.004,0.132,0.44
+2.25,Ts 5c 2d,bb_vs_big,middle pair,116.944,,,0.0,0.015,0.043,0.255
+2.25,Ts 5c 2d,btn,weak pair,59.997,0.615,0.117,,,,
+2.25,Ts 5c 2d,bb_vs_small,weak pair,63.0,,,0.0,0.005,0.085,0.15
+2.25,Ts 5c 2d,bb_vs_big,weak pair,63.0,,,0.0,0.081,0.148,0.444
+2.25,Ts 5c 2d,bb_vs_small,strong draw,15.996,,,0.0,0.006,0.861,0.946
+2.25,Ts 5c 2d,bb_vs_big,strong draw,15.996,,,0.0,0.005,0.505,0.893
+2.25,Ts 5c 2d,btn,weak draw,133.998,0.804,0.795,,,,
+2.25,Ts 5c 2d,bb_vs_small,weak draw,131.1,,,0.0,0.009,0.36,0.426
+2.25,Ts 5c 2d,bb_vs_big,weak draw,131.1,,,0.282,0.455,0.168,0.094
+2.25,Ts 5c 2d,btn,overcards,78.0,0.601,0.206,,,,
+2.25,Ts 5c 2d,bb_vs_small,overcards,11.711,,,0.0,0.075,0.498,0.271
+2.25,Ts 5c 2d,bb_vs_big,overcards,11.711,,,0.0,0.866,0.103,0.079
+2.25,Ts 5c 2d,btn,air,324.343,0.586,0.708,,,,
+2.25,Ts 5c 2d,bb_vs_small,air,353.026,,,0.393,0.908,0.036,0.051
+2.25,Ts 5c 2d,bb_vs_big,air,353.026,,,0.977,0.995,0.005,0.005
+2.25,9c 6c 5d,btn,straight or better,12.358,1.0,0.983,,,,
+2.25,9c 6c 5d,bb_vs_small,straight or better,16.0,,,0.0,0.001,1.0,0.991
+2.25,9c 6c 5d,bb_vs_big,straight or better,16.0,,,0.0,0.001,1.0,0.983
+2.25,9c 6c 5d,btn,set / trips,9.0,1.0,0.954,,,,
+2.25,9c 6c 5d,btn,two pair,4.999,1.0,0.769,,,,
+2.25,9c 6c 5d,bb_vs_small,two pair,27.0,,,0.0,0.005,0.812,0.656
+2.25,9c 6c 5d,bb_vs_big,two pair,27.0,,,0.0,0.006,0.297,0.54
+2.25,9c 6c 5d,btn,overpair,30.0,0.594,0.717,,,,
+2.25,9c 6c 5d,btn,"top pair, T+ kicker",60.0,0.51,0.688,,,,
+2.25,9c 6c 5d,bb_vs_small,"top pair, T+ kicker",45.109,,,0.0,0.007,0.074,0.314
+2.25,9c 6c 5d,bb_vs_big,"top pair, T+ kicker",45.109,,,0.0,0.054,0.04,0.149
+2.25,9c 6c 5d,btn,"top pair, weak kicker",23.997,0.715,0.616,,,,
+2.25,9c 6c 5d,bb_vs_small,"top pair, weak kicker",41.993,,,0.0,0.005,0.097,0.422
+2.25,9c 6c 5d,bb_vs_big,"top pair, weak kicker",41.993,,,0.0,0.031,0.046,0.098
+2.25,9c 6c 5d,btn,middle pair,77.996,0.255,0.599,,,,
+2.25,9c 6c 5d,bb_vs_small,middle pair,90.0,,,0.0,0.009,0.001,0.099
+2.25,9c 6c 5d,bb_vs_big,middle pair,90.0,,,0.062,0.024,0.038,0.074
+2.25,9c 6c 5d,btn,weak pair,77.994,0.13,0.059,,,,
+2.25,9c 6c 5d,bb_vs_small,weak pair,107.944,,,0.0,0.004,0.059,0.39
+2.25,9c 6c 5d,bb_vs_big,weak pair,107.944,,,0.285,0.335,0.059,0.274
+2.25,9c 6c 5d,btn,strong draw,34.037,1.0,0.991,,,,
+2.25,9c 6c 5d,bb_vs_small,strong draw,58.996,,,0.0,0.003,0.445,0.937
+2.25,9c 6c 5d,bb_vs_big,strong draw,58.996,,,0.001,0.007,0.303,0.55
+2.25,9c 6c 5d,btn,weak draw,174.032,0.3,0.354,,,,
+2.25,9c 6c 5d,bb_vs_small,weak draw,164.999,,,0.064,0.055,0.213,0.075
+2.25,9c 6c 5d,bb_vs_big,weak draw,164.999,,,0.548,0.831,0.162,0.099
+2.25,9c 6c 5d,btn,overcards,140.0,0.264,0.363,,,,
+2.25,9c 6c 5d,bb_vs_small,overcards,37.945,,,0.066,0.69,0.263,0.037
+2.25,9c 6c 5d,bb_vs_big,overcards,37.945,,,0.914,0.981,0.031,0.018
+2.25,9c 6c 5d,btn,air,172.065,0.403,0.957,,,,
+2.25,9c 6c 5d,bb_vs_small,air,203.99,,,0.786,0.949,0.058,0.046
+2.25,9c 6c 5d,bb_vs_big,air,203.99,,,0.977,0.995,0.001,0.005
+3.0,As 7d 2c,btn,set / trips,9.0,1.0,0.977,,,,
+3.0,As 7d 2c,btn,two pair,18.0,1.0,0.991,,,,
+3.0,As 7d 2c,bb_vs_small,two pair,8.997,,,0.0,0.0,1.0,0.973
+3.0,As 7d 2c,bb_vs_big,two pair,8.997,,,0.0,0.0,0.616,0.869
+3.0,As 7d 2c,btn,"top pair, T+ kicker",48.0,1.0,0.834,,,,
+3.0,As 7d 2c,btn,"top pair, weak kicker",72.0,1.0,0.833,,,,
+3.0,As 7d 2c,bb_vs_small,"top pair, weak kicker",38.742,,,0.0,0.001,0.216,0.748
+3.0,As 7d 2c,bb_vs_big,"top pair, weak kicker",38.742,,,0.0,0.001,0.002,0.219
+3.0,As 7d 2c,btn,middle pair,108.916,1.0,0.681,,,,
+3.0,As 7d 2c,bb_vs_small,middle pair,78.0,,,0.0,0.001,0.07,0.437
+3.0,As 7d 2c,bb_vs_big,middle pair,78.0,,,0.0,0.002,0.018,0.081
+3.0,As 7d 2c,btn,weak pair,50.995,1.0,0.188,,,,
+3.0,As 7d 2c,bb_vs_small,weak pair,27.0,,,0.0,0.002,0.118,0.421
+3.0,As 7d 2c,bb_vs_big,weak pair,27.0,,,0.0,0.027,0.171,0.166
+3.0,As 7d 2c,btn,weak draw,101.774,1.0,0.98,,,,
+3.0,As 7d 2c,bb_vs_small,weak draw,97.129,,,0.055,0.02,0.273,0.292
+3.0,As 7d 2c,bb_vs_big,weak draw,97.129,,,0.555,0.624,0.062,0.121
+3.0,As 7d 2c,btn,air,345.667,1.0,0.998,,,,
+3.0,As 7d 2c,bb_vs_small,air,312.935,,,0.809,0.939,0.014,0.056
+3.0,As 7d 2c,bb_vs_big,air,312.935,,,0.944,0.981,0.0,0.019
+3.0,Kh 8d 3c,btn,set / trips,9.0,1.0,0.973,,,,
+3.0,Kh 8d 3c,btn,two pair,18.0,1.0,0.98,,,,
+3.0,Kh 8d 3c,bb_vs_small,two pair,18.0,,,0.0,0.0,1.0,0.977
+3.0,Kh 8d 3c,bb_vs_big,two pair,18.0,,,0.0,0.002,0.185,0.898
+3.0,Kh 8d 3c,btn,overpair,6.0,1.0,0.68,,,,
+3.0,Kh 8d 3c,btn,"top pair, T+ kicker",48.0,1.0,0.872,,,,
+3.0,Kh 8d 3c,bb_vs_small,"top pair, T+ kicker",13.932,,,0.0,0.002,0.379,0.836
+3.0,Kh 8d 3c,bb_vs_big,"top pair, T+ kicker",13.932,,,0.0,0.037,0.046,0.474
+3.0,Kh 8d 3c,btn,"top pair, weak kicker",71.999,0.403,0.524,,,,
+3.0,Kh 8d 3c,bb_vs_small,"top pair, weak kicker",71.999,,,0.0,0.0,0.057,0.471
+3.0,Kh 8d 3c,bb_vs_big,"top pair, weak kicker",71.999,,,0.0,0.011,0.0,0.094
+3.0,Kh 8d 3c,btn,middle pair,96.584,0.516,0.467,,,,
+3.0,Kh 8d 3c,bb_vs_small,middle pair,66.0,,,0.0,0.001,0.022,0.464
+3.0,Kh 8d 3c,bb_vs_big,middle pair,66.0,,,0.0,0.029,0.022,0.236
+3.0,Kh 8d 3c,btn,weak pair,57.229,0.574,0.074,,,,
+3.0,Kh 8d 3c,bb_vs_small,weak pair,29.656,,,0.0,0.005,0.116,0.82
+3.0,Kh 8d 3c,bb_vs_big,weak pair,29.656,,,0.0,0.095,0.092,0.352
+3.0,Kh 8d 3c,btn,weak draw,101.905,0.713,0.504,,,,
+3.0,Kh 8d 3c,bb_vs_small,weak draw,79.426,,,0.282,0.033,0.309,0.391
+3.0,Kh 8d 3c,bb_vs_big,weak draw,79.426,,,0.69,0.917,0.022,0.054
+3.0,Kh 8d 3c,btn,air,345.668,0.512,0.622,,,,
+3.0,Kh 8d 3c,bb_vs_small,air,264.17,,,0.633,0.951,0.038,0.048
+3.0,Kh 8d 3c,bb_vs_big,air,264.17,,,0.887,0.965,0.001,0.034
+3.0,Td 9h 6c,btn,straight or better,12.721,1.0,0.993,,,,
+3.0,Td 9h 6c,bb_vs_small,straight or better,16.0,,,0.0,0.0,1.0,0.984
+3.0,Td 9h 6c,bb_vs_big,straight or better,16.0,,,0.0,0.0,0.879,0.983
+3.0,Td 9h 6c,btn,set / trips,9.0,1.0,0.983,,,,
+3.0,Td 9h 6c,btn,two pair,12.999,1.0,0.841,,,,
+3.0,Td 9h 6c,bb_vs_small,two pair,12.665,,,0.0,0.017,0.882,0.91
+3.0,Td 9h 6c,bb_vs_big,two pair,12.665,,,0.0,0.011,0.148,0.848
+3.0,Td 9h 6c,btn,overpair,24.0,0.685,0.922,,,,
+3.0,Td 9h 6c,btn,"top pair, T+ kicker",48.0,0.477,0.829,,,,
+3.0,Td 9h 6c,bb_vs_small,"top pair, T+ kicker",27.47,,,0.0,0.004,0.111,0.376
+3.0,Td 9h 6c,bb_vs_big,"top pair, T+ kicker",27.47,,,0.0,0.011,0.015,0.323
+3.0,Td 9h 6c,btn,"top pair, weak kicker",30.212,0.425,0.749,,,,
+3.0,Td 9h 6c,bb_vs_small,"top pair, weak kicker",32.669,,,0.0,0.005,0.079,0.454
+3.0,Td 9h 6c,bb_vs_big,"top pair, weak kicker",32.669,,,0.053,0.011,0.111,0.257
+3.0,Td 9h 6c,btn,middle pair,74.482,0.109,0.668,,,,
+3.0,Td 9h 6c,bb_vs_small,middle pair,63.0,,,0.0,0.004,0.045,0.7
+3.0,Td 9h 6c,bb_vs_big,middle pair,63.0,,,0.096,0.016,0.06,0.085
+3.0,Td 9h 6c,btn,weak pair,92.992,0.045,0.036,,,,
+3.0,Td 9h 6c,bb_vs_small,weak pair,55.779,,,0.0,0.008,0.092,0.555
+3.0,Td 9h 6c,bb_vs_big,weak pair,55.779,,,0.374,0.165,0.074,0.052
+3.0,Td 9h 6c,btn,strong draw,31.999,0.963,0.974,,,,
+3.0,Td 9h 6c,bb_vs_small,strong draw,27.998,,,0.0,0.001,0.54,0.923
+3.0,Td 9h 6c,bb_vs_big,strong draw,27.998,,,0.0,0.004,0.324,0.933
+3.0,Td 9h 6c,btn,weak draw,201.605,0.224,0.745,,,,
+3.0,Td 9h 6c,bb_vs_small,weak draw,140.532,,,0.198,0.004,0.203,0.172
+3.0,Td 9h 6c,bb_vs_big,weak draw,140.532,,,0.705,0.373,0.099,0.176
+3.0,Td 9h 6c,btn,overcards,39.0,0.009,0.625,,,,
+3.0,Td 9h 6c,btn,air,183.751,0.458,0.54,,,,
+3.0,Td 9h 6c,bb_vs_small,air,171.295,,,0.934,0.974,0.0,0.019
+3.0,Td 9h 6c,bb_vs_big,air,171.295,,,1.0,0.999,0.0,0.001
+3.0,7c 5d 3h,bb_vs_small,straight or better,3.992,,,0.0,0.0,1.0,0.984
+3.0,7c 5d 3h,bb_vs_big,straight or better,3.992,,,0.0,0.0,1.0,0.983
+3.0,7c 5d 3h,btn,set / trips,9.0,1.0,0.983,,,,
+3.0,7c 5d 3h,btn,two pair,0.274,1.0,0.841,,,,
+3.0,7c 5d 3h,bb_vs_small,two pair,2.0,,,0.0,0.017,1.0,0.91
+3.0,7c 5d 3h,bb_vs_big,two pair,2.0,,,0.0,0.011,1.0,0.848
+3.0,7c 5d 3h,btn,overpair,42.0,1.0,0.922,,,,
+3.0,7c 5d 3h,btn,"top pair, T+ kicker",59.993,1.0,0.829,,,,
+3.0,7c 5d 3h,bb_vs_small,"top pair, T+ kicker",48.0,,,0.0,0.004,0.373,0.376
+3.0,7c 5d 3h,bb_vs_big,"top pair, T+ kicker",48.0,,,0.0,0.011,0.138,0.323
+3.0,7c 5d 3h,btn,"top pair, weak kicker",24.512,0.888,0.749,,,,
+3.0,7c 5d 3h,bb_vs_small,"top pair, weak kicker",27.0,,,0.0,0.005,0.155,0.454
+3.0,7c 5d 3h,bb_vs_big,"top pair, weak kicker",27.0,,,0.0,0.011,0.017,0.257
+3.0,7c 5d 3h,btn,middle pair,62.542,0.594,0.668,,,,
+3.0,7c 5d 3h,bb_vs_small,middle pair,59.984,,,0.0,0.004,0.057,0.7
+3.0,7c 5d 3h,bb_vs_big,middle pair,59.984,,,0.0,0.016,0.008,0.085
+3.0,7c 5d 3h,btn,weak pair,51.229,0.3,0.036,,,,
+3.0,7c 5d 3h,bb_vs_small,weak pair,41.656,,,0.0,0.008,0.043,0.555
+3.0,7c 5d 3h,bb_vs_big,weak pair,41.656,,,0.189,0.165,0.071,0.052
+3.0,7c 5d 3h,btn,strong draw,3.999,1.0,0.974,,,,
+3.0,7c 5d 3h,bb_vs_small,strong draw,4.0,,,0.0,0.001,0.938,0.923
+3.0,7c 5d 3h,bb_vs_big,strong draw,4.0,,,0.0,0.004,0.625,0.933
+3.0,7c 5d 3h,btn,weak draw,240.748,0.668,0.745,,,,
+3.0,7c 5d 3h,bb_vs_small,weak draw,185.133,,,0.046,0.004,0.133,0.172
+3.0,7c 5d 3h,bb_vs_big,weak draw,185.133,,,0.46,0.373,0.088,0.176
+3.0,7c 5d 3h,btn,overcards,259.998,0.473,0.625,,,,
+3.0,7c 5d 3h,bb_vs_small,overcards,158.069,,,0.7,0.665,0.056,0.072
+3.0,7c 5d 3h,bb_vs_big,overcards,158.069,,,1.0,0.979,0.0,0.02
+3.0,7c 5d 3h,btn,air,26.995,0.495,0.54,,,,
+3.0,7c 5d 3h,bb_vs_small,air,27.0,,,1.0,0.974,0.0,0.019
+3.0,7c 5d 3h,bb_vs_big,air,27.0,,,1.0,0.999,0.0,0.001
+3.0,Kd Kc 4s,btn,straight or better,10.0,1.0,0.796,,,,
+3.0,Kd Kc 4s,bb_vs_small,straight or better,6.0,,,0.0,0.001,1.0,0.731
+3.0,Kd Kc 4s,bb_vs_big,straight or better,6.0,,,0.0,0.003,1.0,0.35
+3.0,Kd Kc 4s,btn,set / trips,88.0,0.992,0.94,,,,
+3.0,Kd Kc 4s,bb_vs_small,set / trips,65.288,,,0.0,0.0,0.519,0.965
+3.0,Kd Kc 4s,bb_vs_big,set / trips,65.288,,,0.0,0.001,0.234,0.869
+3.0,Kd Kc 4s,btn,overpair,6.0,0.0,0.579,,,,
+3.0,Kd Kc 4s,btn,middle pair,86.822,0.581,0.894,,,,
+3.0,Kd Kc 4s,bb_vs_small,middle pair,33.964,,,0.0,0.039,0.128,0.477
+3.0,Kd Kc 4s,bb_vs_big,middle pair,33.964,,,0.001,0.252,0.1,0.105
+3.0,Kd Kc 4s,btn,weak pair,12.0,1.0,0.48,,,,
+3.0,Kd Kc 4s,btn,weak draw,120.194,0.7,0.404,,,,
+3.0,Kd Kc 4s,bb_vs_small,weak draw,96.118,,,0.103,0.595,0.548,0.337
+3.0,Kd Kc 4s,bb_vs_big,weak draw,96.118,,,0.559,0.782,0.137,0.189
+3.0,Kd Kc 4s,btn,air,408.7,0.619,0.662,,,,
+3.0,Kd Kc 4s,bb_vs_small,air,329.734,,,0.665,0.639,0.066,0.251
+3.0,Kd Kc 4s,bb_vs_big,air,329.734,,,0.787,0.824,0.05,0.167
+3.0,Jh 7h 2h,btn,straight or better,33.925,1.0,0.898,,,,
+3.0,Jh 7h 2h,bb_vs_small,straight or better,27.362,,,0.0,0.001,1.0,0.839
+3.0,Jh 7h 2h,bb_vs_big,straight or better,27.362,,,0.0,0.006,0.793,0.555
+3.0,Jh 7h 2h,btn,set / trips,9.0,1.0,0.904,,,,
+3.0,Jh 7h 2h,btn,two pair,11.997,1.0,0.478,,,,
+3.0,Jh 7h 2h,bb_vs_small,two pair,12.0,,,0.0,0.051,0.544,0.766
+3.0,Jh 7h 2h,bb_vs_big,two pair,12.0,,,0.0,0.064,0.335,0.58
+3.0,Jh 7h 2h,btn,overpair,18.0,0.91,0.459,,,,
+3.0,Jh 7h 2h,btn,"top pair, T+ kicker",48.0,0.692,0.516,,,,
+3.0,Jh 7h 2h,bb_vs_small,"top pair, T+ kicker",22.438,,,0.0,0.056,0.118,0.188
+3.0,Jh 7h 2h,bb_vs_big,"top pair, T+ kicker",22.438,,,0.0,0.351,0.039,0.339
+3.0,Jh 7h 2h,btn,"top pair, weak kicker",62.813,0.132,0.309,,,,
+3.0,Jh 7h 2h,bb_vs_small,"top pair, weak kicker",53.984,,,0.0,0.04,0.064,0.15
+3.0,Jh 7h 2h,bb_vs_big,"top pair, weak kicker",53.984,,,0.01,0.465,0.078,0.131
+3.0,Jh 7h 2h,btn,middle pair,90.918,0.157,0.404,,,,
+3.0,Jh 7h 2h,bb_vs_small,middle pair,66.0,,,0.001,0.025,0.187,0.756
+3.0,Jh 7h 2h,bb_vs_big,middle pair,66.0,,,0.388,0.232,0.087,0.283
+3.0,Jh 7h 2h,btn,weak pair,59.997,0.509,0.114,,,,
+3.0,Jh 7h 2h,bb_vs_small,weak pair,35.995,,,0.004,0.014,0.356,0.861
+3.0,Jh 7h 2h,bb_vs_big,weak pair,35.995,,,0.528,0.126,0.181,0.313
+3.0,Jh 7h 2h,btn,strong draw,161.995,0.407,0.615,,,,
+3.0,Jh 7h 2h,bb_vs_small,strong draw,125.188,,,0.001,0.026,0.257,0.345
+3.0,Jh 7h 2h,bb_vs_big,strong draw,125.188,,,0.243,0.082,0.241,0.132
+3.0,Jh 7h 2h,btn,weak draw,26.998,0.811,0.453,,,,
+3.0,Jh 7h 2h,bb_vs_small,weak draw,26.498,,,0.028,0.751,0.279,0.148
+3.0,Jh 7h 2h,bb_vs_big,weak draw,26.498,,,1.0,0.869,0.0,0.079
+3.0,Jh 7h 2h,btn,overcards,27.0,0.004,0.224,,,,
+3.0,Jh 7h 2h,btn,air,209.772,0.437,0.772,,,,
+3.0,Jh 7h 2h,bb_vs_small,air,180.776,,,0.833,0.927,0.004,0.07
+3.0,Jh 7h 2h,bb_vs_big,air,180.776,,,1.0,0.983,0.0,0.017

@@ -43,15 +43,22 @@ from preflop.flopgame import BUCKETS, TEXTURES, bucket, texture
 from preflop.plots import grouped_bars, scatter_compare
 
 SOLVER_DIR = ROOT / "tools" / "TexasSolver-v0.2.0-MacOs"
-TREE = sys.argv[2] if len(sys.argv) > 2 else "medium"
-OUT = ROOT / "output" / "solver_compare" / TREE
-RAW = ROOT / "output" / "solver_compare" / "raw" / TREE     # configs + JSON results (gitignored: large)
+import os
+
+# Settings can also come from the environment, so other scripts can import this module:
+#   SOLVER_TREE (medium / simple / full), SOLVER_OPEN (BTN open size, default 2.25),
+#   SOLVER_RANGES (npz with btn_range / bb_range for that open; default: the 2.25bb ranges).
+TREE = os.environ.get("SOLVER_TREE") or (sys.argv[2] if __name__ == "__main__" and len(sys.argv) > 2 else "medium")
+OPEN = float(os.environ.get("SOLVER_OPEN", 2.25))
+_tag = TREE if OPEN == 2.25 else f"{TREE}_open{OPEN:g}"
+OUT = ROOT / "output" / "solver_compare" / _tag
+RAW = ROOT / "output" / "solver_compare" / "raw" / _tag     # configs + JSON results (gitignored: large)
 OUT.mkdir(parents=True, exist_ok=True)
 RAW.mkdir(parents=True, exist_ok=True)
-POLICIES = ROOT / "output" / "cbet_frequency" / "flop_policies.npz"
+POLICIES = Path(os.environ.get("SOLVER_RANGES", ROOT / "output" / "cbet_frequency" / "flop_policies.npz"))
 MODEL = ROOT / "output" / "bet_sizing" / "flop.npz"
 
-POT, STACK = 4.5, 97.75
+POT, STACK = 2 * OPEN, 100 - OPEN
 RAISE_PCT = 50
 THREADS = 3                             # per solve; several flops run in parallel (PARALLEL)
 PARALLEL = int(__import__("os").environ.get("SOLVER_PARALLEL", 5))
@@ -274,6 +281,7 @@ def report():
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "compare"
     if cmd == "solve":
-        solve(FLOPS)
+        flops = os.environ.get("SOLVER_FLOPS")
+        solve(flops.split(",") if flops else FLOPS)
     else:
         report()

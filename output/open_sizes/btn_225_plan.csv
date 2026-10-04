@@ -1,0 +1,45 @@
+street,group,check,bet small,bet big,weight,bet 1/2,bet pot,bet 1.5x
+flop,all flops,0.246,0.395,0.359,,,,
+flop,A-high,0.111,0.389,0.501,,,,
+flop,K-high,0.224,0.501,0.275,,,,
+flop,Q/J-high,0.253,0.437,0.31,,,,
+flop,T-high or lower,0.356,0.298,0.346,,,,
+flop,paired,0.252,0.437,0.311,,,,
+flop,monotone,0.345,0.291,0.364,,,,
+flop,connected,0.356,0.261,0.384,,,,
+flop,straight or better,0.084,0.212,0.704,,,,
+flop,set / trips,0.047,0.301,0.652,,,,
+flop,two pair,0.057,0.165,0.778,,,,
+flop,overpair,0.162,0.549,0.289,,,,
+flop,"top pair, T+ kicker",0.13,0.326,0.544,,,,
+flop,"top pair, weak kicker",0.162,0.557,0.281,,,,
+flop,middle pair,0.238,0.558,0.204,,,,
+flop,weak pair,0.653,0.19,0.158,,,,
+flop,strong draw,0.098,0.523,0.379,,,,
+flop,weak draw,0.283,0.367,0.35,,,,
+flop,overcards,0.663,0.187,0.15,,,,
+flop,air,0.139,0.416,0.444,,,,
+turn (after a called c-bet),straight or better,0.009,0.34,0.651,932.781,,,
+turn (after a called c-bet),set / trips,0.083,0.359,0.558,716.866,,,
+turn (after a called c-bet),two pair,0.156,0.353,0.491,799.527,,,
+turn (after a called c-bet),overpair,0.47,0.319,0.211,455.772,,,
+turn (after a called c-bet),"top pair, T+ kicker",0.274,0.269,0.457,1195.615,,,
+turn (after a called c-bet),"top pair, weak kicker",0.344,0.433,0.222,1575.371,,,
+turn (after a called c-bet),middle pair,0.829,0.142,0.029,2479.956,,,
+turn (after a called c-bet),weak pair,0.94,0.012,0.048,2299.859,,,
+turn (after a called c-bet),strong draw,0.444,0.152,0.404,2396.501,,,
+turn (after a called c-bet),weak draw,0.194,0.41,0.396,2725.837,,,
+turn (after a called c-bet),overcards,0.772,0.117,0.111,507.451,,,
+turn (after a called c-bet),air,0.581,0.138,0.28,5384.006,,,
+river (after a called barrel),straight or better,0.0,,,1586.671,0.036,0.317,0.647
+river (after a called barrel),set / trips,0.012,,,609.247,0.182,0.315,0.491
+river (after a called barrel),two pair,0.144,,,676.045,0.348,0.271,0.237
+river (after a called barrel),overpair,0.544,,,216.173,0.087,0.241,0.128
+river (after a called barrel),"top pair, T+ kicker",0.635,,,743.695,0.131,0.197,0.037
+river (after a called barrel),"top pair, weak kicker",0.782,,,1076.045,0.14,0.063,0.015
+river (after a called barrel),middle pair,0.96,,,1167.473,0.027,0.008,0.005
+river (after a called barrel),weak pair,0.924,,,838.809,0.011,0.027,0.038
+river (after a called barrel),missed strong draw,0.769,,,876.38,0.044,0.077,0.109
+river (after a called barrel),missed weak draw,0.168,,,1234.89,0.058,0.231,0.544
+river (after a called barrel),overcards,0.916,,,112.015,0.016,0.031,0.037
+river (after a called barrel),air,0.747,,,2187.367,0.065,0.086,0.102

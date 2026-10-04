@@ -1,0 +1,16 @@
+line,prob,btn_strong (two pair+),btn_one pair,btn_draw,btn_air,readable,share_of_barrel_lines
+xb1c/xb0c/xx,0.0043,0.043,0.3932,0.1582,0.4056,"flop: BTN bets 3/4, BB calls | turn: BTN bets 1/2, BB calls | river: check-check | showdown",0.1687
+xb1c/xb1c/xx,0.0042,0.0312,0.2189,0.1864,0.5635,"flop: BTN bets 3/4, BB calls | turn: BTN bets pot, BB calls | river: check-check | showdown",0.1626
+xb0c/xb0c/xx,0.0018,0.0034,0.3501,0.237,0.4096,"flop: BTN bets 1/3, BB calls | turn: BTN bets 1/2, BB calls | river: check-check | showdown",0.0695
+xb0c/xb1c/xx,0.0017,0.0077,0.2166,0.2759,0.4998,"flop: BTN bets 1/3, BB calls | turn: BTN bets pot, BB calls | river: check-check | showdown",0.0672
+xb1c/xb0c/xb2f,0.0017,0.181,0.1165,0.3582,0.3444,"flop: BTN bets 3/4, BB calls | turn: BTN bets 1/2, BB calls | river: BTN bets 1.5x, BB folds",0.065
+xb1c/xb1c/xb2f,0.0015,0.2267,0.0824,0.3275,0.3634,"flop: BTN bets 3/4, BB calls | turn: BTN bets pot, BB calls | river: BTN bets 1.5x, BB folds",0.0573
+xb1c/xb0c/xb1f,0.0007,0.2281,0.2084,0.2637,0.2998,"flop: BTN bets 3/4, BB calls | turn: BTN bets 1/2, BB calls | river: BTN bets pot, BB folds",0.0281
+xb1c/xb1c/xb2c,0.0007,0.2242,0.0834,0.3455,0.3469,"flop: BTN bets 3/4, BB calls | turn: BTN bets pot, BB calls | river: BTN bets 1.5x, BB calls | showdown",0.0277
+xb1c/xb1c/xb1f,0.0006,0.2656,0.1547,0.2458,0.3339,"flop: BTN bets 3/4, BB calls | turn: BTN bets pot, BB calls | river: BTN bets pot, BB folds",0.0243
+xb0c/xb1c/xb2f,0.0006,0.1075,0.1134,0.4629,0.3162,"flop: BTN bets 1/3, BB calls | turn: BTN bets pot, BB calls | river: BTN bets 1.5x, BB folds",0.0229
+xb1c/xb0c/xb2c,0.0006,0.1737,0.1329,0.3664,0.3269,"flop: BTN bets 3/4, BB calls | turn: BTN bets 1/2, BB calls | river: BTN bets 1.5x, BB calls | showdown",0.0228
+xb0c/xb0c/xb2f,0.0005,0.0848,0.2447,0.393,0.2775,"flop: BTN bets 1/3, BB calls | turn: BTN bets 1/2, BB calls | river: BTN bets 1.5x, BB folds",0.0177
+xb1c/xb1c/xb1c,0.0004,0.2678,0.1391,0.2619,0.3312,"flop: BTN bets 3/4, BB calls | turn: BTN bets pot, BB calls | river: BTN bets pot, BB calls | showdown",0.0156
+xb0c/xb0c/xb2c,0.0003,0.0878,0.2525,0.426,0.2338,"flop: BTN bets 1/3, BB calls | turn: BTN bets 1/2, BB calls | river: BTN bets 1.5x, BB calls | showdown",0.0134
+xb0c/xb0c/xb1f,0.0003,0.0662,0.3385,0.3157,0.2797,"flop: BTN bets 1/3, BB calls | turn: BTN bets 1/2, BB calls | river: BTN bets pot, BB folds",0.0133

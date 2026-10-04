@@ -12,3 +12,5 @@ tools/
 output/solver_compare/raw/
 output/fullgame/cache/
 output/fullgame_quick/
+output/open_sizes/cache/
+output/open_sizes_quick/
