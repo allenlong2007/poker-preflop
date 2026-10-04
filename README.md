@@ -1028,11 +1028,101 @@ exploitability, 2–8 min each, three at a time).
 
 ![Check-raise by hand](output/open_sizes/solver_xr_by_bucket_225.png)
 
+## Experiment 17: The BTN's 2.25bb ranges, and exploiting a BB that donks often
+
+`scripts/donk_exploit_study.py`, using the 2.25bb whole-hand model from experiment 16 (same sizes).
+
+### The BTN's opening and c-bet ranges
+
+![BTN opening range](output/donk_exploit/btn_open_range.png)
+
+* **The BTN opens 68% of hands at 2.25bb.**
+* **It c-bets 75% of flops when the BB checks:** 39% at 1/3 pot, 35% at 3/4 pot (averaged over random flops).
+  * **A-high flops: 89%. T-high-or-lower flops: 64%.**
+* **Most hands c-bet 70–80%.** The exceptions check more:
+  * **small pocket pairs** (22–66: 44–57%) keep showdown value
+  * **big offsuit broadways** (AKo 55%, AQo 62%, AJo 63%) bet A-high flops ~85% but check low flops
+    two-thirds of the time (32–33%): they have overcards and showdown value, not much to bet for
+  * **overpairs bet more on low boards:** AA c-bets 95% on A-high and 89% on low flops, KK 77% / 87%
+
+![BTN c-bet range](output/donk_exploit/btn_cbet_range.png)
+
+Per-hand c-bet ranges on A-high and low flops, and the share bet big:
+`btn_cbet_range_A-high.png`, `btn_cbet_range_T-high_or_lower.png`, `btn_cbet_big_share.png`,
+data in `btn_ranges_225.csv`.
+
+### Exploiting three frequent donkers
+
+Each BB opponent donks 1/3 pot with fixed frequencies by hand. Everything else is re-learned, so the
+BTN learns a best response:
+
+| Opponent | Donk rate by hand (value / middle-weak pair / draw / air) | Donks the flop | Donks are value / pair / draw / air | BTN with equilibrium play | BTN best response | Gain (bb / 100 called pots) |
+|---|---|---|---|---|---|---|
+| value donker | 90 / 30 / 30 / 5% | 27% | 44 / 23 / 25 / 8% | +0.94 | +1.06 | **+12** |
+| balanced donker | 80 / 30 / 50 / 25% | 39% | 27 / 16 / 28 / 29% | +0.93 | +1.00 | **+6** |
+| bluffy donker | 60 / 30 / 60 / 50% | 49% | 16 / 12 / 27 / 45% | +0.97 | +1.16 | **+19** |
+
+(Against an equilibrium BB, which donks ~9%, the BTN nets +0.85bb per called pot.)
+
+![Exploit value](output/donk_exploit/exploit_value.png)
+
+* **Donking often loses for the BB even when the BTN doesn't adjust:** the BTN's ordinary strategy
+  already earns +0.09bb more per called pot.
+* **The best response depends on what the donks contain:**
+
+| BTN hand vs a 1/3-pot donk | vs equilibrium BB | vs value donker | vs balanced | vs bluffy donker |
+|---|---|---|---|---|
+| air: fold / raise | 45% / 26% | **92% / 4%** | 23% / 39% | **2% / 70%** |
+| overcards: fold / raise | 10% / 35% | 72% / 6% | 13% / 22% | 1% / 50% |
+| middle pair: raise | 50% | 35% | 48% | **85%** |
+| sets: raise (rest call) | 88% | **48%** | 82% | 97% |
+| top pair T+ kicker: raise | 73% | 85% | 86% | 95% |
+
+* **Vs the value donker:** fold air and overcards (92% / 72%), and **slowplay sets** (raise only 48%; just
+  call the rest so the donker keeps betting its strong hands). Top pair and two pair still raise.
+* **Vs the bluffy donker:** **raise almost everything** (air 70%, middle pair 85%) and fold nothing.
+  The donks are 45% air, so a raise wins the pot right away most of the time.
+* **Vs the balanced donker:** close to equilibrium play, so there's less to gain (+6).
+
+![BTN vs donks, bluffy](output/donk_exploit/btn_vs_donk_bluffy.png)
+
+### Figuring out the donker during a session (Bayesian inference)
+
+The BTN starts not knowing which donker it faces: equal prior on the three profiles. After every hand it
+updates the posterior from what it can see:
+* did the BB donk?
+* if the BTN called or raised, did the BB fold, or what did it show down?
+
+The likelihoods were estimated from 300k simulated hands per profile. Once one profile has ≥ 70%
+posterior, the BTN switches to that profile's best response. 300 sessions × 400 hands per opponent and
+strategy:
+
+![Inference speed](output/donk_exploit/inference_speed.png)
+
+| Opponent | Hands until the posterior on the truth hits 90% (median) | BTN static | BTN adaptive | adaptive + probe raises | BTN knows the truth |
+|---|---|---|---|---|---|
+| value donker | 35–45 | 101 | **106** | 100 | 106 |
+| balanced donker | 83–92 | 99 | 99 | 104 | 101 |
+| bluffy donker | 42–49 | 102 | **121** | 110 | 124 |
+
+(BTN result in bb per 100 called pots; the standard error is about ±4.)
+
+* **The donker is identified within ~40 hands, or ~90 for the balanced one.** The balanced profile sits
+  between the other two, so it takes the most evidence. By 150 hands the posterior on the truth averages
+  88–96%.
+* **Adapting captures nearly all the exploit:** vs the bluffy donker the adaptive BTN earns 121 vs 124 for a
+  BTN that knew all along, and vs the value donker 106 vs 106.
+* **Probe raises didn't help.** Raising medium hands into donks early (40% of the time until 90% sure) did
+  not identify the opponent any faster. The donk *frequency* and the showdowns already carry most of
+  the information. It cost EV vs the value donker (−6) and the bluffy donker (−11 vs plain adaptive),
+  because probing raises the wrong hands at the wrong time. The best response already raises a lot vs
+  bluffy donkers; a separate "test raise" adds risk without much new information.
+
 ## Next steps
 
-1. **Fix the BB's check-raise level:** give the model a ~3x raise like the solver's, and test whether
-   the BTN's extra air c-bets are what make raising so profitable.
-2. **Preflop bluffs from postflop play:** feed the whole-hand model's postflop values back into the
-   preflop solver, so 3-bet bluffs (A5s, suited connectors) get their real value.
-3. **Selective donking:** force donks only on the BB's best boards (low, single-suit, paired).
+1. **Fix the BB's check-raise level** (experiment 16): give the model a ~3x raise like the solver's and test
+   whether the BTN's extra air c-bets make raising too profitable.
+2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
+   histories, instead of picking from three fixed profiles.
+3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.
 4. **Stack depth and multiway** play.

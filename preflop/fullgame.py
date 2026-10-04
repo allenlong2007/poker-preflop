@@ -183,14 +183,21 @@ def is_check_call(code):
 class Game:
     """One sampled hand, played in 'train' mode (external-sampling MCCFR) or 'eval' mode (exact expectation)."""
 
-    def __init__(self, h, sigma, opts, mode, trav=None, rng=None, acc=None, wt=1.0):
+    def __init__(self, h, sigma, opts, mode, trav=None, rng=None, acc=None, wt=1.0, override=None):
         self.h, self.sigma, self.opts, self.mode = h, sigma, opts, mode
         self.trav, self.rng, self.acc, self.wt = trav, rng, acc, wt
+        self.override = override          # sample mode: f(street, kind, cell, player, sigma) -> sigma or None
+        self.final = None                 # sample mode: the hand's complete betting line
 
     # Policy at a decision, after any forced choices or banned actions for this experiment.
     def policy(self, s, kind, cell, player):
         sig = self.sigma[(s, kind)][cell]
         o, b = self.opts, cell[2]
+        if o.get("donk_profile") is not None and s == 0 and kind == "bb_first":
+            p = float(o["donk_profile"][b])                 # opponent profile: P(donk 1/3 pot | flop bucket)
+            out = np.zeros(len(sig))
+            out[0], out[1] = 1 - p, p
+            return out, False, None
         if o.get("force_donk") is not None and s == 0 and kind == "bb_first":
             ft = cell[0]
             if o.get("force_donk_textures") is None or ft in o["force_donk_textures"]:
@@ -218,6 +225,17 @@ class Game:
                 if p > 1e-6:
                     v += p * acts[a](rc * p)
             return v
+        if self.mode == "sample":                           # play one concrete hand: sample every decision
+            if self.override is not None:
+                forced = self.override(s, kind, cell, player, sig)
+                if forced is not None:
+                    sig = forced
+            x, c = self.rng.random(), 0.0
+            for a, p in enumerate(sig):
+                c += p
+                if x < c:
+                    return acts[a](1.0)
+            return acts[len(sig) - 1](1.0)
         if player == self.trav:
             sgn = 1.0 if player == "btn" else -1.0
             if not learn:
@@ -246,6 +264,7 @@ class Game:
         if s == 3 or left <= 1e-9:
             if self.mode == "eval":
                 self.acc.line(hist, rc, h.btn[0])
+            self.final = hist + ("showdown",)
             return h.r * P - pin
         t, bk, tb = h.tex[s], h.bb[s], h.btn[s]
         leads, bets = street_sizes(s, self.opts)
@@ -260,6 +279,7 @@ class Game:
         def end(value, code):                                    # a fold ends the hand
             if self.mode == "eval":
                 self.acc.line(hist + (code,), rc_now[0], h.btn[0])
+            self.final = hist + (code,)
             return value
 
         def wrap(f):
@@ -384,6 +404,11 @@ def _eval_worker(job):
         acc.n_flop_bucket[h.bb[0]] += 1
         acc.value_by_flop_bucket[h.bb[0]] += v
     return acc, total, len(hands)
+
+
+def merge_policies(btn_sigma, bb_sigma):
+    """One policy dict where the BTN's decisions come from btn_sigma and the BB's from bb_sigma."""
+    return {k: (btn_sigma[k] if NODES[k[1]][0] == "btn" else bb_sigma[k]) for k in btn_sigma}
 
 
 def _pool_map(fn, jobs):
