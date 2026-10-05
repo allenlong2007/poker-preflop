@@ -180,23 +180,29 @@ def small_multiples(panels, title, xlabel, path, legend_title=""):
     plt.close(fig)
 
 
-def heatmap(df, title, xlabel, ylabel, path, fmt="num", figsize=(8, 4.8)):
+def heatmap(df, title, xlabel, ylabel, path, fmt="num", figsize=(8, 4.8), diverging=False):
     """Generic heatmap of a DataFrame (index = rows, columns = columns); darker = larger.
 
-    fmt: "num" (one decimal) or "pct". NaN cells are left blank.
+    fmt: "num" (one decimal), "signed" (+/- one decimal) or "pct". NaN cells are left blank.
+    diverging=True: red below zero, blue above, centred on 0 (for gains and losses).
     """
     fig, ax = plt.subplots(figsize=figsize)
-    vals = df.values
-    im = ax.imshow(vals, cmap=BLUES, aspect="auto")
-    lo, hi = np.nanmin(vals), np.nanmax(vals)
+    vals = df.values.astype(float)
+    if diverging:
+        m = np.nanmax(np.abs(vals)) or 1.0
+        im = ax.imshow(vals, cmap=DIVERGING, aspect="auto", vmin=-m, vmax=m)
+        lo, hi = -m, m
+    else:
+        im = ax.imshow(vals, cmap=BLUES, aspect="auto")
+        lo, hi = np.nanmin(vals), np.nanmax(vals)
     for r in range(vals.shape[0]):
         for c in range(vals.shape[1]):
             v = vals[r, c]
             if v != v:
                 continue
-            dark = (v - lo) / (hi - lo + 1e-12) > 0.55
-            ax.text(c, r, f"{v:.0%}" if fmt == "pct" else f"{v:.1f}", ha="center", va="center",
-                    fontsize=7.5, color="white" if dark else INK)
+            dark = (abs(v) / hi > 0.55) if diverging else ((v - lo) / (hi - lo + 1e-12) > 0.55)
+            text = f"{v:.0%}" if fmt == "pct" else f"{v:+.1f}" if fmt == "signed" else f"{v:.1f}"
+            ax.text(c, r, text, ha="center", va="center", fontsize=7.5, color="white" if dark else INK)
     lab = lambda v: f"{v:g}" if isinstance(v, (int, float, np.floating)) else str(v)
     ax.set_xticks(range(len(df.columns)), [lab(c) for c in df.columns],
                   rotation=30 if any(isinstance(c, str) for c in df.columns) else 0, ha="right"

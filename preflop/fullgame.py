@@ -220,6 +220,12 @@ class Game:
         key = (s, kind)
         if self.mode == "eval":
             self.acc.node(key, cell, sig, rc, player, s, kind, self.h)
+            if key in self.opts.get("eval_all", ()):
+                # "What if" values: play out every action (even ones the strategy never takes), so the
+                # value of each option vs the opponent's actual responses can be compared.
+                vals = [acts[a](rc * p) for a, p in enumerate(sig)]
+                self.acc.action_value(key, cell, vals, rc)
+                return float(sum(p * v for p, v in zip(sig, vals)))
             v = 0.0
             for a, p in enumerate(sig):
                 if p > 1e-6:
@@ -349,6 +355,10 @@ class EvalAcc:
         self.n_by_flop = np.zeros(N_TEX[0])
         self.value_by_flop_bucket = np.zeros(NB)
         self.lines = {}                      # full betting line -> reach by BTN flop class (strong/pair/draw/air)
+        self.avals = {k: np.zeros(v) for k, v in shapes.items()}       # reach x value of each action ("what if")
+
+    def action_value(self, key, cell, vals, rc):
+        self.avals[key][cell] += rc * np.asarray(vals)
 
     def line(self, seq, rc, btn_flop_bucket):
         key = "/".join(seq)
@@ -465,7 +475,7 @@ def evaluate(btn_range, bb_range, sigma, opts, s=2.25, stack=100, n=200_000, see
     parts = _pool_map(_eval_worker, jobs)
     acc = parts[0][0]
     for other, _, _ in parts[1:]:
-        for name in ("strat", "reach"):
+        for name in ("strat", "reach", "avals"):
             for k in getattr(acc, name):
                 getattr(acc, name)[k] += getattr(other, name)[k]
         for p in ("btn", "bb"):

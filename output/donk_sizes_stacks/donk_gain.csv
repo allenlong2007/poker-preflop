@@ -1,0 +1,193 @@
+open_bb,board,bb_hand,weight,gain 1/4,gain 1/2,gain 3/4,gain pot,best
+2.0,A-high,two pair+,455.0,-1.2006,-1.2506,-1.1247,-1.0087,check
+2.0,A-high,overpair / top pair,462.0,-0.3662,-0.8623,-1.4669,-1.3523,check
+2.0,A-high,middle / weak pair,4413.0,-0.2142,-0.4045,-0.5194,-0.7637,check
+2.0,A-high,draw,4202.0,-0.1819,-0.2616,-0.4587,-0.7018,check
+2.0,A-high,overcards / air,10754.0,-0.3156,-0.339,-0.3973,-0.5525,check
+2.0,A-high,all hands,20286.0,-0.2868,-0.3696,-0.4773,-0.6578,check
+2.0,K-high,two pair+,650.0,-0.6965,-0.54,-0.4724,-0.4245,check
+2.0,K-high,overpair / top pair,1340.0,-0.1289,-0.643,-1.216,-1.34,check
+2.0,K-high,middle / weak pair,3625.0,-0.2125,-0.258,-0.4402,-0.5068,check
+2.0,K-high,draw,3030.0,-0.1166,-0.2177,-0.3509,-0.469,check
+2.0,K-high,overcards / air,8270.0,-0.2021,-0.344,-0.4151,-0.4941,check
+2.0,K-high,all hands,16915.0,-0.2022,-0.3341,-0.4746,-0.5567,check
+2.0,Q/J-high,two pair+,1030.0,-0.4982,-0.501,-0.5919,-0.4786,check
+2.0,Q/J-high,overpair / top pair,2156.0,-0.2499,-0.6508,-0.8392,-1.0561,check
+2.0,Q/J-high,middle / weak pair,5361.0,-0.194,-0.2073,-0.3176,-0.4954,check
+2.0,Q/J-high,draw,5013.0,-0.0915,-0.2053,-0.3099,-0.3163,check
+2.0,Q/J-high,overcards / air,11657.0,-0.1563,-0.2358,-0.3024,-0.2996,check
+2.0,Q/J-high,all hands,25217.0,-0.1734,-0.27,-0.3648,-0.4165,check
+2.0,T-high or lower,two pair+,1773.0,-0.4236,-0.3208,-0.3321,-0.1805,check
+2.0,T-high or lower,overpair / top pair,3107.0,-0.0957,-0.2428,-0.4175,-0.5079,check
+2.0,T-high or lower,middle / weak pair,6315.0,-0.17,-0.2068,-0.2275,-0.3596,check
+2.0,T-high or lower,draw,7356.0,-0.085,-0.1376,-0.227,-0.2533,check
+2.0,T-high or lower,overcards / air,11866.0,-0.1382,-0.1013,-0.1321,-0.1872,check
+2.0,T-high or lower,all hands,30417.0,-0.1442,-0.1592,-0.2157,-0.2713,check
+2.0,paired,two pair+,1382.0,-0.4117,-0.4593,-0.4054,-0.3252,check
+2.0,paired,overpair / top pair,787.0,0.0283,-0.1285,-0.4892,-0.9854,1/4
+2.0,paired,middle / weak pair,1053.0,-0.1483,-0.2061,-0.2713,-0.6492,check
+2.0,paired,draw,2526.0,-0.0566,-0.0598,-0.2857,-0.375,check
+2.0,paired,overcards / air,10429.0,-0.162,-0.1054,-0.1256,-0.2133,check
+2.0,paired,all hands,16177.0,-0.1567,-0.1362,-0.2017,-0.314,check
+2.0,monotone,two pair+,323.0,-0.596,-0.9133,-0.3685,-0.6175,check
+2.0,monotone,overpair / top pair,440.0,-0.2667,-0.5037,-0.8218,-0.5913,check
+2.0,monotone,middle / weak pair,1189.0,-0.2247,-0.2474,-0.4247,-0.3826,check
+2.0,monotone,draw,1607.0,-0.2805,-0.3795,-0.5774,-0.8095,check
+2.0,monotone,overcards / air,1339.0,-0.1213,-0.3871,-0.5683,-0.7679,check
+2.0,monotone,all hands,4898.0,-0.243,-0.3959,-0.546,-0.6622,check
+2.0,connected,two pair+,918.0,-0.79,-0.3452,-0.3551,-0.2569,check
+2.0,connected,overpair / top pair,1639.0,-0.1188,-0.3303,-0.5095,-0.5093,check
+2.0,connected,middle / weak pair,4144.0,-0.2259,-0.3318,-0.4095,-0.4409,check
+2.0,connected,draw,6151.0,-0.0821,-0.2274,-0.2585,-0.3342,check
+2.0,connected,overcards / air,4498.0,-0.3985,-0.4458,-0.5443,-0.4983,check
+2.0,connected,all hands,17350.0,-0.2394,-0.3249,-0.3975,-0.4147,check
+2.0,all flops,two pair+,3908.0,-0.5791,-0.513,-0.5162,-0.3961,check
+2.0,all flops,overpair / top pair,7065.0,-0.1667,-0.4837,-0.7663,-0.8883,check
+2.0,all flops,middle / weak pair,19714.0,-0.1943,-0.2606,-0.3564,-0.5141,check
+2.0,all flops,draw,19601.0,-0.1123,-0.1939,-0.317,-0.3989,check
+2.0,all flops,overcards / air,42547.0,-0.2004,-0.2454,-0.3008,-0.37,check
+2.0,all flops,all hands,92835.0,-0.1939,-0.2672,-0.3605,-0.4472,check
+2.25,A-high,two pair+,464.0,-1.219,-1.209,-1.254,-1.0157,check
+2.25,A-high,overpair / top pair,719.0,-0.1854,-0.9859,-1.4094,-1.788,check
+2.25,A-high,middle / weak pair,4399.0,-0.2804,-0.4417,-0.6165,-0.7257,check
+2.25,A-high,draw,4397.0,-0.1678,-0.4232,-0.47,-0.6726,check
+2.25,A-high,overcards / air,10453.0,-0.3693,-0.381,-0.531,-0.5892,check
+2.25,A-high,all hands,20432.0,-0.3196,-0.4432,-0.5836,-0.6884,check
+2.25,K-high,two pair+,616.0,-0.6051,-0.5267,-0.899,-1.1683,check
+2.25,K-high,overpair / top pair,1471.0,-0.2054,-0.8227,-1.0823,-1.493,check
+2.25,K-high,middle / weak pair,3632.0,-0.2539,-0.3756,-0.4744,-0.5688,check
+2.25,K-high,draw,3247.0,-0.1531,-0.2742,-0.3068,-0.3861,check
+2.25,K-high,overcards / air,7785.0,-0.1263,-0.2876,-0.344,-0.4557,check
+2.25,K-high,all hands,16751.0,-0.1837,-0.3598,-0.4503,-0.584,check
+2.25,Q/J-high,two pair+,1095.0,-0.4675,-0.3935,-0.5107,-0.622,check
+2.25,Q/J-high,overpair / top pair,2670.0,-0.2134,-0.6277,-1.0088,-0.9963,check
+2.25,Q/J-high,middle / weak pair,5202.0,-0.2529,-0.2616,-0.3414,-0.3584,check
+2.25,Q/J-high,draw,5142.0,-0.1211,-0.3062,-0.3492,-0.5339,check
+2.25,Q/J-high,overcards / air,10951.0,-0.1052,-0.1719,-0.248,-0.2732,check
+2.25,Q/J-high,all hands,25060.0,-0.1665,-0.2763,-0.3807,-0.4366,check
+2.25,T-high or lower,two pair+,1636.0,-0.5517,-0.3547,-0.1502,-0.3082,check
+2.25,T-high or lower,overpair / top pair,3161.0,-0.1225,-0.3032,-0.4549,-0.5496,check
+2.25,T-high or lower,middle / weak pair,5714.0,-0.1836,-0.3452,-0.3322,-0.4856,check
+2.25,T-high or lower,draw,7532.0,-0.0944,-0.1623,-0.2407,-0.2415,check
+2.25,T-high or lower,overcards / air,12267.0,-0.1268,-0.1923,-0.2621,-0.3041,check
+2.25,T-high or lower,all hands,30310.0,-0.152,-0.234,-0.284,-0.3486,check
+2.25,paired,two pair+,1348.0,-0.5587,-0.4684,-0.3127,-0.4122,check
+2.25,paired,overpair / top pair,852.0,-0.0528,-0.2702,-0.5036,-0.9021,check
+2.25,paired,middle / weak pair,992.0,-0.2383,-0.1899,-0.2377,-0.5087,check
+2.25,paired,draw,2752.0,-0.0266,-0.2156,-0.3013,-0.5625,check
+2.25,paired,overcards / air,9982.0,-0.1501,-0.1216,-0.1198,-0.2458,check
+2.25,paired,all hands,15926.0,-0.1636,-0.1794,-0.1954,-0.3661,check
+2.25,monotone,two pair+,317.0,-0.7111,-0.5114,-0.7507,-1.0092,check
+2.25,monotone,overpair / top pair,416.0,-0.4787,-0.6568,-0.8413,-0.8784,check
+2.25,monotone,middle / weak pair,1121.0,-0.2346,-0.4035,-0.3685,-0.5503,check
+2.25,monotone,draw,1538.0,-0.3259,-0.5277,-0.7357,-0.9723,check
+2.25,monotone,overcards / air,1369.0,-0.1104,-0.492,-0.5307,-0.7582,check
+2.25,monotone,all hands,4761.0,-0.2815,-0.4984,-0.6005,-0.8056,check
+2.25,connected,two pair+,909.0,-0.8009,-0.3393,-0.4723,-0.4987,check
+2.25,connected,overpair / top pair,1721.0,-0.0679,-0.2938,-0.3835,-0.405,check
+2.25,connected,middle / weak pair,3933.0,-0.219,-0.4562,-0.4923,-0.5809,check
+2.25,connected,draw,6170.0,-0.1598,-0.2349,-0.2483,-0.2507,check
+2.25,connected,overcards / air,4392.0,-0.2892,-0.5648,-0.7299,-0.6964,check
+2.25,connected,all hands,17125.0,-0.2314,-0.3818,-0.4533,-0.4695,check
+2.25,all flops,two pair+,3811.0,-0.6174,-0.4977,-0.5092,-0.6235,check
+2.25,all flops,overpair / top pair,8021.0,-0.1736,-0.5677,-0.8399,-0.9823,check
+2.25,all flops,middle / weak pair,18947.0,-0.2386,-0.3505,-0.428,-0.5224,check
+2.25,all flops,draw,20318.0,-0.1264,-0.2731,-0.3283,-0.4319,check
+2.25,all flops,overcards / air,41456.0,-0.1822,-0.2524,-0.3415,-0.3963,check
+2.25,all flops,all hands,92553.0,-0.1987,-0.3144,-0.4064,-0.49,check
+2.5,A-high,two pair+,548.0,-1.2492,-1.3987,-1.1545,-1.3377,check
+2.5,A-high,overpair / top pair,812.0,-0.2117,-1.0863,-1.3947,-1.7406,check
+2.5,A-high,middle / weak pair,4292.0,-0.4052,-0.5802,-0.7217,-0.9978,check
+2.5,A-high,draw,4472.0,-0.3067,-0.3728,-0.4396,-0.5287,check
+2.5,A-high,overcards / air,10046.0,-0.3029,-0.2819,-0.3633,-0.4148,check
+2.5,A-high,all hands,20170.0,-0.3476,-0.4282,-0.5195,-0.6425,check
+2.5,K-high,two pair+,710.0,-0.7953,-0.5556,-0.644,-0.3418,check
+2.5,K-high,overpair / top pair,1864.0,-0.1846,-0.7629,-1.0527,-1.2669,check
+2.5,K-high,middle / weak pair,3193.0,-0.2807,-0.2529,-0.4633,-0.6825,check
+2.5,K-high,draw,3357.0,-0.0512,-0.2888,-0.4336,-0.5183,check
+2.5,K-high,overcards / air,7303.0,-0.116,-0.1856,-0.2777,-0.3702,check
+2.5,K-high,all hands,16427.0,-0.1719,-0.3013,-0.4494,-0.5617,check
+2.5,Q/J-high,two pair+,1152.0,-0.4198,-0.4642,-0.5419,-0.7395,check
+2.5,Q/J-high,overpair / top pair,2938.0,-0.1994,-0.7391,-0.9521,-1.1749,check
+2.5,Q/J-high,middle / weak pair,4889.0,-0.3243,-0.3942,-0.6072,-0.7496,check
+2.5,Q/J-high,draw,5313.0,-0.1492,-0.2278,-0.2273,-0.2946,check
+2.5,Q/J-high,overcards / air,10784.0,-0.1504,-0.1781,-0.2659,-0.2906,check
+2.5,Q/J-high,all hands,25076.0,-0.2022,-0.3096,-0.4174,-0.5051,check
+2.5,T-high or lower,two pair+,1463.0,-0.5543,-0.3534,-0.3393,-0.4583,check
+2.5,T-high or lower,overpair / top pair,3361.0,-0.133,-0.346,-0.4229,-0.5592,check
+2.5,T-high or lower,middle / weak pair,5286.0,-0.2002,-0.3143,-0.4491,-0.6156,check
+2.5,T-high or lower,draw,7649.0,-0.1707,-0.2418,-0.2381,-0.2426,check
+2.5,T-high or lower,overcards / air,12794.0,-0.1352,-0.1698,-0.2209,-0.2769,check
+2.5,T-high or lower,all hands,30553.0,-0.1751,-0.241,-0.2925,-0.3667,check
+2.5,paired,two pair+,1335.0,-0.5398,-0.3649,-0.5317,-0.698,check
+2.5,paired,overpair / top pair,978.0,-0.0166,-0.3724,-0.8017,-1.3629,check
+2.5,paired,middle / weak pair,918.0,-0.1212,-0.1777,-0.4499,-0.5851,check
+2.5,paired,draw,2880.0,-0.0389,-0.1636,-0.1776,-0.3163,check
+2.5,paired,overcards / air,9878.0,-0.1209,-0.1536,-0.2313,-0.2961,check
+2.5,paired,all hands,15989.0,-0.1347,-0.1878,-0.2941,-0.4151,check
+2.5,monotone,two pair+,363.0,-0.5383,-1.0604,-0.7894,-0.3535,check
+2.5,monotone,overpair / top pair,484.0,-0.1831,-1.0078,-0.9645,-0.9739,check
+2.5,monotone,middle / weak pair,1038.0,-0.1216,-0.4196,-0.7904,-0.8333,check
+2.5,monotone,draw,1494.0,-0.2779,-0.5025,-0.5901,-0.6743,check
+2.5,monotone,overcards / air,1318.0,-0.0728,-0.2563,-0.4204,-0.454,check
+2.5,monotone,all hands,4697.0,-0.1961,-0.5103,-0.6407,-0.6537,check
+2.5,connected,two pair+,886.0,-0.7359,-0.7849,-0.5452,-0.5719,check
+2.5,connected,overpair / top pair,1893.0,-0.1855,-0.4065,-0.2848,-0.5315,check
+2.5,connected,middle / weak pair,3863.0,-0.2505,-0.4855,-0.6103,-0.818,check
+2.5,connected,draw,6141.0,-0.1781,-0.276,-0.3077,-0.3589,check
+2.5,connected,overcards / air,4316.0,-0.2696,-0.3315,-0.4667,-0.4274,check
+2.5,connected,all hands,17099.0,-0.2473,-0.3781,-0.426,-0.5101,check
+2.5,all flops,two pair+,3873.0,-0.6568,-0.5713,-0.5708,-0.645,check
+2.5,all flops,overpair / top pair,8975.0,-0.1726,-0.6282,-0.8148,-1.0146,check
+2.5,all flops,middle / weak pair,17660.0,-0.2989,-0.3899,-0.5617,-0.7577,check
+2.5,all flops,draw,20791.0,-0.1752,-0.274,-0.3102,-0.3619,check
+2.5,all flops,overcards / air,40927.0,-0.177,-0.2023,-0.2779,-0.331,check
+2.5,all flops,all hands,92226.0,-0.2196,-0.3113,-0.4041,-0.4994,check
+3.0,A-high,two pair+,604.0,-1.2193,-1.0691,-1.1075,-1.2377,check
+3.0,A-high,overpair / top pair,1438.0,-0.3639,-1.216,-1.7408,-2.0563,check
+3.0,A-high,middle / weak pair,4020.0,-0.6777,-0.7116,-0.9695,-1.0447,check
+3.0,A-high,draw,4254.0,-0.2735,-0.4416,-0.5754,-0.6201,check
+3.0,A-high,overcards / air,9511.0,-0.1955,-0.2512,-0.2786,-0.3067,check
+3.0,A-high,all hands,19827.0,-0.3534,-0.4803,-0.6136,-0.6788,check
+3.0,K-high,two pair+,793.0,-0.6146,-0.5716,-0.6715,-0.5536,check
+3.0,K-high,overpair / top pair,2491.0,-0.1037,-0.6757,-1.1825,-1.3609,check
+3.0,K-high,middle / weak pair,2905.0,-0.4673,-0.6389,-0.6594,-0.8529,check
+3.0,K-high,draw,3257.0,-0.1794,-0.2618,-0.2337,-0.2143,check
+3.0,K-high,overcards / air,6560.0,-0.0646,-0.2017,-0.2902,-0.3572,check
+3.0,K-high,all hands,16006.0,-0.1944,-0.3854,-0.5034,-0.584,check
+3.0,Q/J-high,two pair+,1257.0,-0.5397,-0.4378,-0.407,-0.4768,check
+3.0,Q/J-high,overpair / top pair,3645.0,-0.1702,-0.3042,-0.3958,-0.6395,check
+3.0,Q/J-high,middle / weak pair,4060.0,-0.6418,-0.5688,-0.6776,-0.7265,check
+3.0,Q/J-high,draw,5447.0,-0.1164,-0.3726,-0.5988,-0.6756,check
+3.0,Q/J-high,overcards / air,10388.0,-0.0919,-0.1722,-0.2055,-0.1894,check
+3.0,Q/J-high,all hands,24797.0,-0.2215,-0.314,-0.4074,-0.4649,check
+3.0,T-high or lower,two pair+,1093.0,-0.788,-0.6698,-0.3337,-0.3507,check
+3.0,T-high or lower,overpair / top pair,3277.0,-0.1418,-0.5034,-0.7703,-1.0534,check
+3.0,T-high or lower,middle / weak pair,4701.0,-0.3142,-0.4194,-0.4611,-0.6259,check
+3.0,T-high or lower,draw,7680.0,-0.159,-0.2524,-0.4144,-0.5049,check
+3.0,T-high or lower,overcards / air,14416.0,-0.2798,-0.2965,-0.3516,-0.3599,check
+3.0,T-high or lower,all hands,31167.0,-0.2585,-0.339,-0.427,-0.5083,check
+3.0,paired,two pair+,1285.0,-0.4652,-0.3751,-0.2704,-0.3194,check
+3.0,paired,overpair / top pair,1006.0,-0.1966,-0.4462,-0.887,-1.7667,check
+3.0,paired,middle / weak pair,770.0,-0.3535,-0.3065,-0.5468,-0.9305,check
+3.0,paired,draw,2869.0,-0.0504,-0.1411,-0.2649,-0.3499,check
+3.0,paired,overcards / air,9683.0,-0.1406,-0.1591,-0.239,-0.3073,check
+3.0,paired,all hands,15613.0,-0.1649,-0.1993,-0.3033,-0.4409,check
+3.0,monotone,two pair+,389.0,-0.6305,-0.8191,-1.1804,-1.202,check
+3.0,monotone,overpair / top pair,628.0,-0.551,-0.8058,-1.1355,-1.3536,check
+3.0,monotone,middle / weak pair,919.0,-0.2474,-0.5229,-0.5187,-0.7956,check
+3.0,monotone,draw,1463.0,-0.5369,-0.7485,-0.8694,-0.9999,check
+3.0,monotone,overcards / air,1432.0,-0.1537,-0.4409,-0.5356,-0.6537,check
+3.0,monotone,all hands,4831.0,-0.3776,-0.6276,-0.7634,-0.9207,check
+3.0,connected,two pair+,871.0,-1.0115,-0.8955,-0.5031,-0.855,check
+3.0,connected,overpair / top pair,2029.0,-0.1817,-0.5715,-0.7336,-1.0798,check
+3.0,connected,middle / weak pair,3528.0,-0.3918,-0.5386,-0.5671,-0.4595,check
+3.0,connected,draw,5995.0,-0.2793,-0.3655,-0.5049,-0.5098,check
+3.0,connected,overcards / air,4736.0,-0.2721,-0.3906,-0.465,-0.4426,check
+3.0,connected,all hands,17159.0,-0.3261,-0.4593,-0.5336,-0.5658,check
+3.0,all flops,two pair+,3747.0,-0.7375,-0.6356,-0.5545,-0.5789,check
+3.0,all flops,overpair / top pair,10851.0,-0.172,-0.5705,-0.8677,-1.1179,check
+3.0,all flops,middle / weak pair,15686.0,-0.5205,-0.5736,-0.6841,-0.8013,check
+3.0,all flops,draw,20638.0,-0.1745,-0.3246,-0.4677,-0.5278,check
+3.0,all flops,overcards / air,40875.0,-0.1779,-0.2392,-0.2876,-0.3038,check
+3.0,all flops,all hands,91797.0,-0.2578,-0.3709,-0.4753,-0.5466,check

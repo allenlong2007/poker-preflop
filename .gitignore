@@ -16,3 +16,5 @@ output/open_sizes/cache/
 output/open_sizes_quick/
 output/donk_exploit/cache/
 output/donk_exploit_quick/
+output/donk_sizes_stacks/cache/
+output/donk_sizes_stacks_quick/

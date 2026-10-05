@@ -1,0 +1,25 @@
+stack_bb,prob,line
+25,0.1715,"flop: BTN bets 1/3, BB folds"
+25,0.1057,"flop: BTN bets 3/4, BB folds"
+25,0.0527,"flop: check-check | turn: BTN bets pot, BB folds"
+25,0.0525,flop: check-check | turn: check-check | river: check-check | showdown
+25,0.0271,"flop: check-check | turn: BTN bets 1/2, BB folds"
+25,0.0237,"flop: BTN bets 1/3, BB raises 2.5x, BTN folds"
+25,0.0206,"flop: check-check | turn: BB leads pot, BTN folds"
+25,0.019,"flop: BB leads 3/4, BTN folds"
+50,0.1625,"flop: BTN bets 3/4, BB folds"
+50,0.1467,"flop: BTN bets 1/3, BB folds"
+50,0.0513,flop: check-check | turn: check-check | river: check-check | showdown
+50,0.0353,"flop: check-check | turn: BTN bets pot, BB folds"
+50,0.0246,"flop: check-check | turn: BTN bets 1/2, BB folds"
+50,0.0201,"flop: BB leads 3/4, BTN folds"
+50,0.0173,"flop: BTN bets 1/3, BB raises 2.5x, BTN folds"
+50,0.0141,"flop: BTN bets 3/4, BB raises 2.5x, BTN folds"
+100,0.19,"flop: BTN bets 3/4, BB folds"
+100,0.1649,"flop: BTN bets 1/3, BB folds"
+100,0.0409,flop: check-check | turn: check-check | river: check-check | showdown
+100,0.0325,"flop: check-check | turn: BTN bets pot, BB folds"
+100,0.0204,"flop: BTN bets 1/3, BB raises 2.5x, BTN folds"
+100,0.0182,"flop: check-check | turn: BTN bets 1/2, BB folds"
+100,0.0173,"flop: BB leads 3/4, BTN folds"
+100,0.0172,"flop: BTN bets 1/3, BB raises 4x, BTN folds"

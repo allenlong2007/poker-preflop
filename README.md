@@ -1118,6 +1118,85 @@ strategy:
   because probing raises the wrong hands at the wrong time. The best response already raises a lot vs
   bluffy donkers; a separate "test raise" adds risk without much new information.
 
+## Experiment 18: Donk sizes × open sizes, and the BTN as the short stack
+
+`scripts/donk_size_stack_study.py` (`donk` / `stacks` / `report`).
+
+### Part A: four donk sizes at four open sizes
+
+At BTN opens of 2.0 / 2.25 / 2.5 / 3.0bb (pots of 4 / 4.5 / 5 / 6bb), the BB may donk **1/4, 1/2, 3/4 or
+pot**; everything else matches experiment 16. Each open was trained for 250 batches (24–35 min).
+
+**"What if" evaluation (new in `fullgame.py`):** for every board and BB hand, every flop option is played
+out against the BTN's actual responses. That gives the value of donking each size vs checking in that spot.
+
+| BTN open (pot) | BB donks (learned) | 1/4 | 1/2 | 3/4 | pot | Avg cost of donking vs checking, 1/4 → pot (bb / 100 called pots) |
+|---|---|---|---|---|---|---|
+| 2.0 (4bb) | 13% | 4.7% | 3.4% | 2.8% | 2.0% | −19 / −27 / −36 / −45 |
+| 2.25 (4.5bb) | 14% | 5.2% | 3.2% | 3.1% | 2.1% | −20 / −31 / −41 / −49 |
+| 2.5 (5bb) | 14% | 5.1% | 3.4% | 2.7% | 2.4% | −22 / −31 / −40 / −50 |
+| 3.0 (6bb) | 15% | 6.5% | 3.7% | 2.7% | 2.3% | −26 / −37 / −48 / −55 |
+
+* **Checking is the better default at every open size and on every board type.** Averaged over all of
+  the BB's hands, donking costs more the bigger it is (−0.2bb per called pot at 1/4 pot, −0.5 at pot)
+  and more in bigger pots (3.0bb opens).
+* **The smallest donk (1/4 pot) is the least bad and the most used.** Bigger pots push the BB to donk
+  slightly more (13% → 15%), mostly at 1/4.
+* **Donking is break-even (within 1bb / 100 of checking) in about a quarter of spots** (22–28%), mainly:
+  * **paired boards with top pair:** break-even 71% of the time, donking mostly 1/4–1/2 pot
+  * **connected boards with two pair+:** 66%, sizes split toward 3/4–pot
+  * **K-high boards with two pair+:** 51%
+  * **low boards (T-high or lower) with draws or air:** 35–38%
+  * **A-high boards almost never:** ≤ 15%
+* **The BTN folds more vs bigger donks** (11–13% vs 1/4, 46–48% vs pot) **and raises the small donk a lot**
+  (53–62% vs 1/4 pot): a tiny donk invites a raise.
+* **Caveat:** in some spots the learned average strategy donks more than the what-if values justify
+  (e.g. two pair+ on A-high: donks 23%, but break-even in only 9% of those spots). Those cells look
+  under-converged; the what-if values, measured against the BTN's actual responses, are the safer guide.
+
+![Where the BB donks](output/donk_sizes_stacks/donk_used_2_25.png)
+
+### Part B: the BTN as the short stack
+
+**Only the effective (smaller) stack matters heads-up.** A 50bb BTN vs a 150bb BB plays exactly a 50bb game,
+because chips beyond the shorter stack can't be won or lost. The study compares 25 / 50 / 100bb effective
+at a 2.25bb open (100bb = experiment 16's model).
+
+| | 25bb | 50bb | 100bb |
+|---|---|---|---|
+| stack-to-pot ratio after the call | 5.1 | 10.6 | 21.7 |
+| BTN's best open size (preflop model) | **2.25bb** | 2.75bb | 2.75bb |
+| BTN opens (at 2.25bb) | 66% | 71% | 68% |
+| BB fold / call / 3-bet | 11 / 68 / 21% | 9 / 73 / 18% | 10 / 69 / 21% |
+| BB 3-bet size | **13.5bb (near all-in)** | 7.3bb | 7.3bb |
+| BTN folds / jams vs a 3-bet | **65% / 11%** | 49% / 12% | 42% / 8% |
+| BB calls a BTN jam | **100%** | 38% | 20% |
+| BTN c-bets (1/3 / 3/4) | **62%** (41 / 21) | 68% (35 / 33) | 75% (40 / 36) |
+| BTN barrels the turn after a called c-bet | 58% | 53% | 51% |
+| BTN bets the river after a called barrel | 60% | 52% | 47% |
+| BB vs 1/3 c-bet: fold / call / raise | 48 / 19 / 33% | 47 / 23 / 30% | 46 / 19 / 35% |
+| stacks all-in before the river | **3.0%** | 0.6% | ~0% |
+| BB net per called pot | −0.74 | −0.74 | −0.85 |
+
+![Best open by stack](output/donk_sizes_stacks/best_open_by_stack.png)
+
+* **Preflop at 25bb, everything becomes "all-in or fold" after a 3-bet.** The BB's best 3-bet is 13.5bb
+  (over half the stack); the BTN folds 65% to it, jams 11%, and the BB always calls the jam. The BTN's
+  best open shrinks to 2.25bb (2.0–2.25 are about equal), since raises are a bigger share of the stack.
+* **The BTN's postflop edge shrinks with the stack:** the BB loses 0.74bb per called pot at 25–50bb vs 0.85
+  at 100bb. There's less room to use position over three streets.
+* **Short-stacked, the BTN c-bets less and smaller** (62%, mostly 1/3 pot), **but follows through more**
+  (turn barrel 58%, river bet after a barrel 60%): with a low stack-to-pot ratio, a hand that bets the flop
+  is often committed.
+* **By hand at 25bb:**
+  * **strong hands slowplay more:** two pair+ c-bets only 61–72% (vs 92–95% at 100bb), since the stack is
+    easy to get in later
+  * **top pairs bet almost always** (91–94%)
+  * **weak pairs check** (13%)
+  * **the BB check-raises top pair 92–93% vs a small c-bet**, effectively getting it in
+
+![BTN c-bet by stack](output/donk_sizes_stacks/stacks_btn_cbet.png)
+
 ## Next steps
 
 1. **Fix the BB's check-raise level** (experiment 16): give the model a ~3x raise like the solver's and test
