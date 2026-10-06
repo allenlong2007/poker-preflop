@@ -1314,6 +1314,113 @@ Data: `postflop_summary.csv`, `postflop_by_hand.csv`; also `post_hand_vs_third_f
   *relative* stack effect, not the absolute level.
 * One seed per configuration.
 
+## Experiment 20: BTN open-jams and limps for stacks under 20bb
+
+`preflop/shortstack.py` (new solver) and `scripts/short_stack_jam_limp.py` (~1 min).
+
+Experiments 1–19 followed the "never limp" rule, and the BTN could only fold or raise. At short stacks that
+leaves a lot out, so the new preflop tree has more options:
+
+```
+BTN:  fold | limp | raise to s | all-in
+  limp   -> BB: check | raise to r | all-in       (vs the raise, BTN: fold | call | all-in)
+  raise  -> BB: fold | call | all-in             (experiment 19: all-in is the best 3-bet at <= 30bb)
+  all-in -> BB: fold | call
+```
+
+* **Same assumptions as before.** Pots that see a flop use the realization formula with the BB's
+  stack-adjusted r_oop of 1.0 (experiment 19); all-in pots use raw equity.
+* **Sizes are chosen by each player.** For each stack the BB picks its best raise size vs a limp
+  (2.5–5bb) for every open size, and the BTN picks its best open (2.0–3.0bb) given that.
+* **Checks:**
+  * With limps and open-jams turned off, the new solver reproduces `solver.py` exactly (unit test).
+  * Every solution is within 0.04 milli-bb of an equilibrium.
+  * With limps off, it matches the known heads-up push/fold numbers: at 10bb the BTN shoves ~58% and the BB
+    calls ~37%.
+
+### What the BTN should do, by stack
+
+![BTN actions by stack](output/short_stack/btn_actions_by_stack.png)
+
+| Stack | Fold | Limp | Raise | All-in | Best open | BB calls an all-in | BTN EV (mbb / hand) |
+|---|---|---|---|---|---|---|---|
+| 6bb | 32% | 0% | 0% | **68%** | – | 54% | +38 |
+| 8bb | 30% | 15% | 0% | **55%** | – | 44% | +2 |
+| 10bb | 26% | 30% | 0% | **44%** | – | 37% | −24 |
+| 12bb | 23% | **44%** | 0% | 33% | – | 32% | −40 |
+| 15bb | 20% | **51%** | 4% | 25% | 2.25 | 26% | −50 |
+| 17bb | 19% | **52%** | 9% | 20% | 2.25 | 23% | −56 |
+| 20bb | 16% | **57%** | 18% | 8% | 2.25 | 20% | −58 |
+| 25bb | 16% | **55%** | 28% | 1% | 2.5 | 18% | −53 |
+
+* **Below 10bb: mostly all-in or fold.** At 8bb the BTN shoves 55%: any ace, any suited king, most suited
+  queens, broadways, pairs 22–99 (TT+ limp to trap) and suited connectors. It folds only trash (T2s, 9x–7x low suited and low offsuit).
+* **10–20bb: limping takes over.** The BTN limps 30–57%. That includes **trapping** with premiums
+  (AA, KK, QQ, JJ limp at 8–15bb), plus most medium offsuit hands that want to see a cheap flop.
+  * **The all-in range is the hands that play badly after the flop but have good equity when called**
+    (15bb): suited A7s–A2s, offsuit A9o–A2o and broadways, suited connectors 98s–53s, small pairs 22–44.
+  * **Small raises appear from ~15bb** (4%) and grow to 28% at 25bb.
+* **Open-jams fade out by 20–25bb** (8% at 20bb, 1% at 25bb).
+
+### What each option is worth
+
+![Option value](output/short_stack/option_value.png)
+
+| Stack | Value of limping | Value of open-jamming | Value of both (vs raise-only) |
+|---|---|---|---|
+| 6bb | 0 | **+141** | +144 |
+| 8bb | +6 | **+116** | +132 |
+| 10bb | +16 | **+84** | +112 |
+| 12bb | **+40** | +37 | +79 |
+| 15bb | **+37** | +29 | +75 |
+| 20bb | **+42** | +6 | +55 |
+| 25bb | **+44** | 0 | +47 |
+
+(milli-bb per hand the BTN loses if that option is removed)
+
+* **Open-jamming is worth the most at 10bb and below** (+84 to +141 mbb per hand), and almost nothing by 25bb.
+* **Limping is worth ~40 mbb per hand from 12bb up.** The "never limp" rule costs the BTN a lot at short
+  stacks in this model.
+* **Caveat on limps:** a limped pot uses the same realization formula as a raised pot, and the BB has r_oop = 1.0
+  at these depths (it realizes equity as well as the BTN). Limped pots have not been checked with the
+  whole-hand model yet.
+
+### How the BB should respond
+
+| Stack | vs a limp: check / raise / all-in | BB's raise size vs a limp | vs a raise: fold / call / all-in | Calls an all-in |
+|---|---|---|---|---|
+| 8bb | 50 / 18 / 33% | 3.5bb | (BTN never raises) | 44% |
+| 10bb | 53 / 15 / 32% | 3.5bb | (BTN never raises) | 37% |
+| 12bb | 57 / 14 / 30% | 3.5bb | (BTN never raises) | 32% |
+| 15bb | 60 / 18 / 22% | 3.5bb | 18 / 55 / 28% | 26% |
+| 20bb | 61 / 22 / 16% | 3bb | 17 / 60 / 23% | 20% |
+| 25bb | 61 / 29 / 10% | 3bb | 27 / 53 / 20% | 18% |
+
+![BB vs a limp, 12bb](output/short_stack/bb_vs_limp_12bb.png)
+
+* **Vs a limp, the BB is polarized three ways:**
+  * **raise small with premiums and strong kings/queens** (AA–99, AK–AJ suited, KQ, KJ), hoping to get
+    called or jammed on
+  * **jam with hands that want fold equity but play badly after the flop:** suited aces and kings, offsuit
+    aces, suited connectors, small and medium pairs
+  * **check the rest**, plus a few small-raise bluffs with junk (82o, 93o, 32s)
+* **Vs the BTN's all-in, call tighter as stacks grow:** 44% of hands at 8bb, 37% at 10bb, 26% at 15bb,
+  20% at 20bb.
+  * At 10bb that's any ace, any suited king, K5o+, Q6s+, J8s+, T8s+, and pairs.
+  * At 20bb it's A4s+, A7o+, K9s+, KJo+, Q9s+, J9s+, T8s+, and 33+.
+* **Vs a raise at 15–25bb, the BB rarely folds** (17–27%), calls 53–60%, and 3-bets all-in 20–28%. The
+  BTN's raising range is narrow, because most of its hands limp or jam.
+
+Per-hand charts: `btn_{8,10,12,15,20}bb.png`, `bb_vs_jam_*.png`, `bb_vs_limp_*.png`, `bb_vs_raise_{15,20}bb.png`;
+data in `summary.csv` and `by_hand.csv`.
+
+**What this changes:**
+* **Experiments 18–19 assumed the BTN never limps.** At 25bb this experiment has it limping 55% and
+  raising only 28%, so the raise-only results at 20–25bb describe a BTN that is giving up ~45 mbb per hand.
+* **The BTN's EV is negative from 10bb up in this model.** That's because the BB realizes as well as the
+  BTN at these depths. The position edge is only in the whole-hand models, which haven't been run for limped
+  pots.
+
 ## Next steps
 
 1. **Fix the BB's check-raise level** (experiment 16): give the model a ~3x raise like the solver's and test
@@ -1321,5 +1428,6 @@ Data: `postflop_summary.csv`, `postflop_by_hand.csv`; also `post_hand_vs_third_f
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
 3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.
-4. **Short stacks below 20bb:** add BTN open-jams and limps to the preflop tree.
+4. **Limped pots postflop:** run the whole-hand model on limped pots (pot 2bb) at 10–25bb to check the
+   preflop model's limping value.
 5. **Multiway** play.
