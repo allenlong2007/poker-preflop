@@ -20,3 +20,6 @@ output/donk_sizes_stacks/cache/
 output/donk_sizes_stacks_quick/
 output/bb_short_stack/cache/
 output/bb_short_stack_quick/
+output/limped_pots/cache/
+output/limped_pots_quick/
+output/limped_pots/resolve_baseline/

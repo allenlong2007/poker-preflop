@@ -1421,6 +1421,102 @@ data in `summary.csv` and `by_hand.csv`.
   BTN at these depths. The position edge is only in the whole-hand models, which haven't been run for limped
   pots.
 
+## Experiment 21: The whole-hand model on limped pots (10–25bb)
+
+`scripts/limped_pot_study.py` (`train` / `report`).
+
+Experiment 20 valued limped pots with the preflop realization formula only. Here the whole-hand model
+(experiment 16 sizes, 250 batches, 11–20 min per model) plays them out:
+
+* **Limped pots (2bb pot) at 10 / 12 / 15 / 20 / 25bb.** Ranges are experiment 20's: the BTN's limps vs the
+  BB's checks.
+* **Raised pots at 15 / 20 / 25bb**, with the BTN's raises vs the BB's calls, so limped and raised pots
+  are measured by the same model.
+
+### Limped pots are worth about twice what the preflop formula said
+
+![Limped pot value](output/limped_pots/limped_value.png)
+
+| | 10bb | 12bb | 15bb | 20bb | 25bb |
+|---|---|---|---|---|---|
+| BTN net per limped pot, whole-hand model | +0.44 (22%) | +0.39 (19%) | +0.40 (20%) | +0.32 (16%) | +0.31 (16%) |
+| same, preflop formula (experiment 20) | +0.22 (11%) | +0.19 (10%) | +0.17 (9%) | +0.14 (7%) | +0.12 (6%) |
+| BTN net per raised pot, whole-hand / formula | – | – | 25% / 17% | 24% / 15% | 19% / 12% |
+
+* **The formula undersells the BTN's position in every pot,** not just limped ones. Its BB realization of 1.0
+  implies the BB realizes as well as the BTN; the whole-hand model implies **0.57–0.64 in limped pots** and
+  **0.63–0.69 in raised pots**.
+* **Limped pots favor the BTN slightly more than raised pots:** the limped / raised ratio of implied r_oop
+  is 0.87, 1.02 and 0.92 at 15 / 20 / 25bb, pooled to **0.93**. Each pair of models has different ranges,
+  so the per-stack ratios are noisy.
+
+### Re-solving the preflop tree
+
+Two calibrations of experiment 20's tree:
+* **relative:** raised pots keep r_oop = 1.0 (experiment 19); limped pots get 1.0 × 0.93. This changes only
+  how limped pots compare with raised ones.
+* **absolute:** both pot types use the whole-hand model's implied r_oop. This puts the BTN's full
+  postflop edge into the preflop model.
+
+| Stack | Exp 20: fold / limp / raise / all-in | Relative | Absolute |
+|---|---|---|---|
+| 8bb | 30 / 15 / 0 / 55% | 28 / 18 / 0 / 54% | 24 / 31 / 0 / 45% |
+| 10bb | 26 / 30 / 0 / 44% | 24 / 34 / 0 / 42% | 15 / 57 / 7 / 22% |
+| 12bb | 23 / 44 / 0 / 33% | 22 / 46 / 0 / 32% | 10 / 61 / 21 / 7% |
+| 15bb | 20 / 51 / 4 / 25% | 17 / **58** / 1 / 24% | 2 / **79** / 14 / 5% |
+| 20bb | 16 / 57 / 18 / 8% | 15 / **62** / 16 / 7% | 2 / **70** / 28 / 1% |
+| 25bb | 16 / 55 / 28 / 1% | 14 / **61** / 25 / 0% | 1 / **76** / 23 / 0% |
+
+![Limping value by version](output/limped_pots/limp_value_versions.png)
+
+* **The limping result holds up and gets stronger.** Limping is worth **+47–55 mbb per hand at 12–25bb**
+  (relative), up from +37–44. With the BTN's full postflop edge (absolute) it's worth +47–77.
+* **Relative:** the BTN limps a bit more (58–63% at 15–25bb), folds a bit less, and open-jams about as
+  often.
+* **Absolute:** with its full postflop edge, the **BTN plays 98–99% of hands at 15–25bb** (limping 70–82%),
+  and its EV turns positive (+25 to +103 mbb per hand). That matches the usual heads-up picture, where the
+  SB / BTN has the edge. Below 10bb all-ins still dominate. The BB stops making small raises vs a limp and
+  instead **jams 23–58%** (more at shorter stacks) or checks.
+
+Data: `preflop_resolved.csv`, `realization.csv`; the re-solved charts are in `resolve_relative/` and
+`resolve_absolute/` (same files as `output/short_stack/`).
+
+### How limped pots are played
+
+| | 10bb | 12bb | 15bb | 20bb | 25bb |
+|---|---|---|---|---|---|
+| stack-to-pot ratio | 4.5 | 5.5 | 7.0 | 9.5 | 12.0 |
+| BB leads the flop | 7% | 9% | 10% | 12% | 13% |
+| BTN bets when checked to (1/3 / 3/4) | 70% (45 / 25) | 71% (47 / 23) | 69% (43 / 26) | 68% (40 / 28) | 67% (41 / 26) |
+| BB vs a flop bet: fold / call / raise | 54 / 22 / 24% | 52 / 21 / 26% | 51 / 25 / 24% | 50 / 25 / 25% | 49 / 24 / 27% |
+| BTN vs a lead: fold / call / raise | 26 / 34 / 41% | 28 / 33 / 39% | 28 / 34 / 39% | 30 / 32 / 38% | 29 / 36 / 34% |
+| BTN bets the turn after a checked flop | 61% | 54% | 52% | 50% | 51% |
+| checked down on every street | 4% | 5% | 5% | 5% | 6% |
+| all-in before the river | 4.3% | 2.9% | 1.8% | 0.7% | 0.2% |
+
+![BTN bets the flop, limped pots](output/limped_pots/limped_btn_bets_flop.png)
+
+* **When the BB checks, the BTN bets about 70%, like a c-bet.** Nobody has shown strength preflop, so the
+  BTN's position does the work.
+  * **air bets 72–79%** (mostly small)
+  * **top pairs bet 87–94%**
+  * **middle / weak pairs check more as stacks get deeper** (65% → 43%)
+  * **two pair+ slowplays at 10bb** (bets 60%) **but bets 90–95% at 15–25bb**
+* **The BB defends by hand strength:**
+  * **air folds 86–93%**
+  * **weak draws fold 26–40%**, much less than in raised pots (48–64%), because the limped pot gives a
+    better price against a small bet
+  * **top pairs and better almost never fold**, and raise 47–86%: two pair+ raises more as stacks get deeper
+* **The BB leads 7–13%,** mostly top pair (23–27%) and two pair+ (13–35%). The BTN raises those leads 34–41%.
+
+Data: `postflop_summary.csv`, `postflop_by_hand.csv`; also `limped_bb_leads_flop.png` and
+`limped_bb_folds_to_bet.png`.
+
+**Caveats:**
+* The whole-hand model's absolute realization has the same open question as experiment 16: its BB
+  check-raises about 2× as often as TexasSolver's. The relative version is the safer read.
+* One seed per model. The limped / raised ratio varies 0.87–1.02 across stacks.
+
 ## Next steps
 
 1. **Fix the BB's check-raise level** (experiment 16): give the model a ~3x raise like the solver's and test
@@ -1428,6 +1524,6 @@ data in `summary.csv` and `by_hand.csv`.
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
 3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.
-4. **Limped pots postflop:** run the whole-hand model on limped pots (pot 2bb) at 10–25bb to check the
-   preflop model's limping value.
+4. **One consistent realization:** feed the whole-hand model's values for raised *and* limped pots back
+   into experiments 18–20 at every stack (experiment 21's absolute version), once the check-raise level is fixed.
 5. **Multiway** play.

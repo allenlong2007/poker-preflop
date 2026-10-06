@@ -1,0 +1,49 @@
+model,stack_bb,pot_type,hand,btn_bets_flop,bb_leads_flop,bb_folds_to_bet,bb_raises_bet
+limp_10,10,limp,two pair+,0.604,0.131,0.001,0.468
+limp_10,10,limp,overpair / top pair,0.893,0.229,0.005,0.682
+limp_10,10,limp,middle / weak pair,0.647,0.078,0.126,0.4
+limp_10,10,limp,strong draw,0.652,0.123,0.026,0.482
+limp_10,10,limp,weak draw,0.529,0.106,0.395,0.365
+limp_10,10,limp,overcards / air,0.74,0.024,0.927,0.044
+limp_12,12,limp,two pair+,0.822,0.196,0.001,0.518
+limp_12,12,limp,overpair / top pair,0.933,0.271,0.007,0.733
+limp_12,12,limp,middle / weak pair,0.568,0.084,0.08,0.523
+limp_12,12,limp,strong draw,0.587,0.127,0.025,0.444
+limp_12,12,limp,weak draw,0.475,0.151,0.307,0.344
+limp_12,12,limp,overcards / air,0.778,0.043,0.888,0.055
+limp_15,15,limp,two pair+,0.895,0.243,0.001,0.634
+limp_15,15,limp,overpair / top pair,0.939,0.234,0.011,0.64
+limp_15,15,limp,middle / weak pair,0.473,0.093,0.054,0.355
+limp_15,15,limp,strong draw,0.672,0.174,0.02,0.502
+limp_15,15,limp,weak draw,0.485,0.139,0.324,0.389
+limp_15,15,limp,overcards / air,0.79,0.053,0.886,0.063
+limp_20,20,limp,two pair+,0.949,0.308,0.002,0.761
+limp_20,20,limp,overpair / top pair,0.922,0.272,0.016,0.639
+limp_20,20,limp,middle / weak pair,0.465,0.097,0.033,0.375
+limp_20,20,limp,strong draw,0.76,0.2,0.019,0.575
+limp_20,20,limp,weak draw,0.541,0.196,0.265,0.334
+limp_20,20,limp,overcards / air,0.736,0.072,0.882,0.077
+limp_25,25,limp,two pair+,0.954,0.352,0.003,0.861
+limp_25,25,limp,overpair / top pair,0.874,0.235,0.02,0.569
+limp_25,25,limp,middle / weak pair,0.434,0.099,0.046,0.472
+limp_25,25,limp,strong draw,0.833,0.181,0.02,0.624
+limp_25,25,limp,weak draw,0.593,0.16,0.279,0.333
+limp_25,25,limp,overcards / air,0.72,0.086,0.864,0.072
+raise_15,15,raise,two pair+,0.302,0.144,0.001,0.508
+raise_15,15,raise,overpair / top pair,0.563,0.333,0.007,0.825
+raise_15,15,raise,middle / weak pair,0.737,0.308,0.187,0.407
+raise_15,15,raise,strong draw,0.552,0.17,0.098,0.621
+raise_15,15,raise,weak draw,0.319,0.114,0.636,0.234
+raise_15,15,raise,overcards / air,0.663,0.084,0.949,0.032
+raise_20,20,raise,two pair+,0.626,0.117,0.001,0.429
+raise_20,20,raise,overpair / top pair,0.856,0.234,0.007,0.774
+raise_20,20,raise,middle / weak pair,0.562,0.082,0.125,0.299
+raise_20,20,raise,strong draw,0.624,0.165,0.052,0.555
+raise_20,20,raise,weak draw,0.388,0.083,0.629,0.243
+raise_20,20,raise,overcards / air,0.765,0.037,0.94,0.037
+raise_25,25,raise,two pair+,0.563,0.229,0.001,0.527
+raise_25,25,raise,overpair / top pair,0.873,0.264,0.006,0.795
+raise_25,25,raise,middle / weak pair,0.453,0.088,0.061,0.318
+raise_25,25,raise,strong draw,0.558,0.198,0.019,0.454
+raise_25,25,raise,weak draw,0.337,0.13,0.475,0.262
+raise_25,25,raise,overcards / air,0.714,0.059,0.898,0.065

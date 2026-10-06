@@ -25,19 +25,23 @@ class Node:
         self.name, self.player, self.children = name, player, children   # children: {action: Node | matrix}
 
 
-def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True):
-    x = E ** alpha * np.asarray(r_ip, float).reshape(-1, 1)
-    y = (1 - E) ** alpha * np.asarray(r_oop, float).reshape(1, -1)
-    share = x / (x + y)
+def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True, r_oop_limp=None):
+    """r_oop_limp: the BB's realization in limped pots (default: same as raised pots)."""
+    def share_for(ro):
+        x = E ** alpha * np.asarray(r_ip, float).reshape(-1, 1)
+        y = (1 - E) ** alpha * np.asarray(ro, float).reshape(1, -1)
+        return x / (x + y)
+    share = share_for(r_oop)
     n = len(E)
     const = lambda v: np.full((n, n), float(v))
     seen = lambda pot_to: 2 * pot_to * share - pot_to       # BTN profit when both put in pot_to and see a flop
+    limped = 2 * share_for(r_oop if r_oop_limp is None else r_oop_limp) - 1
     allin = 2 * stack * E - stack
 
     vs_jam = lambda name, win: Node(name, "bb", {"fold": const(win), "call": allin})
     root = {"fold": const(-0.5)}
     if limp:
-        vs_limp = {"check": seen(1.0)}
+        vs_limp = {"check": limped}
         if r < stack:
             vs_limp["raise"] = Node("btn_vs_iso", "btn", {"fold": const(-1), "call": seen(r),
                                                          "all-in": vs_jam("bb_vs_limp_reraise", r)})
@@ -114,9 +118,10 @@ class ShortResult:
         return float((br(self.root, W, "btn").sum() - game + br(self.root, W, "bb").sum() + game) / 2)
 
 
-def solve_short(E, W, s=2.0, r=3.0, stack=15, iters=3000, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True):
+def solve_short(E, W, s=2.0, r=3.0, stack=15, iters=3000, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True,
+                r_oop_limp=None):
     """Equilibrium of the short-stack tree for one open size s and one BB raise-vs-limp size r."""
-    root = build_tree(E, s, r, stack, r_ip, r_oop, alpha, limp, jam)
+    root = build_tree(E, s, r, stack, r_ip, r_oop, alpha, limp, jam, r_oop_limp)
     W = W / W.sum()
     n = len(W)
     nodes = list(_nodes(root))
