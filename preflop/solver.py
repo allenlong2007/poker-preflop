@@ -41,6 +41,8 @@ class Payoffs:
         self.call_open = 2 * s * share - s      # BB calls the open
         self.call_3bet = 2 * t * share - t      # BTN calls the 3-bet
         self.call_jam = 2 * stack * E - stack   # BB calls the all-in (no postflop, raw equity)
+        if t >= stack:                          # the 3-bet is all-in: calling it means no postflop
+            self.call_3bet = self.call_jam
 
 
 def _values(P, s2, s3, s4):

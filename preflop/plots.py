@@ -173,7 +173,8 @@ def small_multiples(panels, title, xlabel, path, legend_title=""):
         ax.set_title(ptitle, loc="left", fontsize=11, color=INK)
         ax.set_xlabel(xlabel, color=MUTED, fontsize=9)
         _style(ax)
-    axes[-1].legend(frameon=False, fontsize=9, labelcolor=INK, title=legend_title, title_fontsize=9)
+    axes[-1].legend(frameon=False, fontsize=9, labelcolor=INK, title=legend_title, title_fontsize=9,
+                    loc="center left", bbox_to_anchor=(1.01, 0.5))
     fig.suptitle(title, x=0.01, ha="left", fontsize=13, color=INK)
     fig.tight_layout()
     fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="white")

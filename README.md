@@ -1197,6 +1197,123 @@ at a 2.25bb open (100bb = experiment 16's model).
 
 ![BTN c-bet by stack](output/donk_sizes_stacks/stacks_btn_cbet.png)
 
+## Experiment 19: The BB's ranges and sizes when stacks are short, by BTN open size
+
+`scripts/bb_short_stack_study.py` (`preflop` / `postflop` / `report`).
+
+Only the effective (smaller) stack matters heads-up, so a 25bb BB vs a 175bb BTN plays exactly the same
+game as a 25bb BTN vs a 175bb BB (experiment 18). This study covers **20–100bb effective** against BTN opens
+of **2.0–3.0bb**.
+
+**What's new:**
+* **All-in 3-bets.** The BB can now 3-bet all-in, in addition to 2.5x–6x the open. Calling an all-in
+  3-bet means no postflop play (`solver.py`).
+* **Realization by stack.** The preflop model's BB realization (0.915) was fit at 100bb. The whole-hand
+  models from experiment 18 show how much better the BB does with shorter stacks, so r_oop is scaled by that
+  ratio: **1.00 at 20–25bb, 0.96 at 50bb, 0.92 at 100bb** (capped at 1.0, the BTN's level). With shallow
+  stacks there are fewer streets of betting left, so position is worth less.
+
+### Preflop: fold, call, 3-bet and the 3-bet size
+
+![BB vs open size, by stack](output/bb_short_stack/bb_freq_by_open.png)
+
+| Stack | BB's best 3-bet | BB folds vs 2.0 / 2.5 / 3.0 open | BB 3-bets | BTN folds to the 3-bet |
+|---|---|---|---|---|
+| 20bb | **all-in** vs every open | 0 / 18 / 38% | 24–25% | 55–70% |
+| 25bb | **all-in** vs every open | 0 / 16 / 37% | 22–23% | 64–76% |
+| 30bb | **all-in** vs every open | 0 / 15 / 37% | 21–22% | 70–80% |
+| 40bb | 6.5bb vs 2.0; **all-in** vs 2.25+ | 0 / 16 / 36% | 18–20% | 50% / 77–83% |
+| 50bb | 3.25x (6.5–8.1bb) vs 2.0–2.5; **all-in** vs 2.75+ | 0 / 16 / 35% | 17–19% | 50% / 82–84% |
+| 75–100bb | ~3.25x the open (6.5bb vs 2.0, 9.75bb vs 3.0) | 0–1 / 18–19 / 35% | 18–23% | 41–48% |
+
+![Best 3-bet size](output/bb_short_stack/bb_3bet_size.png)
+
+* **The fold rate depends on the open size, not the stack.** The BB folds almost nothing vs a 2.0bb open and
+  ~35–38% vs a 3.0bb open at every depth. A bigger open lays the BB a worse price, but that price is the same
+  at any stack.
+* **At 30bb and below, every 3-bet is all-in.** A jam earns the BB 5–15 milli-bb per hand more than the best
+  smaller 3-bet (only +2 at 20bb vs a 2.75–3.0bb open). A small 3-bet commits a third to half of the
+  stack anyway, and the BTN can jam over it.
+* **At 40–50bb it depends on the open:** a small 3-bet vs small opens, all-in vs big opens (2.25+ at 40bb,
+  2.75+ at 50bb). Vs a bigger open, a 3.25x 3-bet is already a large share of the stack. Near the switch
+  point the options are within a few milli-bb of each other, so either is fine.
+* **At 75bb and above, an all-in 3-bet is a clear mistake** (−38 to −90 milli-bb vs a small 3-bet). Several
+  3-bet sizes are about equally good: anything from ~3x to ~3.75x the open is within 2 milli-bb of the best.
+* **A wider BB range costs the BTN more when stacks are short:** the BTN folds 64–80% to an all-in 3-bet vs
+  41–48% to a small 3-bet at 100bb.
+
+![All-in vs small 3-bet](output/bb_short_stack/bb_jam_vs_small.png)
+
+**What the ranges look like (25bb):** the all-in range is the strong hands plus **every pair, suited aces,
+and suited connectors and one-gappers** (T9s–54s, 97s–64s). Offsuit hands like A2o–A8o, KJo, K9o and Q8o
+**call**. They have showdown value but aren't good enough to jam.
+
+![BB vs 2.25 open, 25bb](output/bb_short_stack/bb_range_25bb_2_25.png)
+
+| BB vs open | 2.0bb | 3.0bb |
+|---|---|---|
+| 25bb: jams | 23%: all pairs, A3s+, A9o+, KTs+, KQo, QTs+, suited connectors / one-gappers to 54s / 64s, 98o | 22%: similar, plus A2s and J7s |
+| 25bb: folds | nothing | 37%: offsuit hands below ~J6o / T7o, weak suited hands (T3s–T2s, 9x–7x low) |
+| 50bb: 3-bets | 19% to 6.5bb: all pairs, most suited aces, A7o+, KQo, KTs+, QTs+, T9s / 98s / 87s | 18% all-in: pairs, broadways, suited connectors; suited A5s–A2s now **call** |
+
+* **The bigger the open, the more the BB's continuing range shifts toward hands that play well all-in.**
+  Pairs and suited connectors keep jamming while the weakest offsuit hands fold.
+
+Per-hand charts: `bb_range_{25,50,100}bb_{open}.png`, `hands_3bet_{2,3}.png`, `hands_fold_{2,3}.png`.
+Data: `preflop_summary.csv`, `threebet_sizes.csv`, `notable_hands.csv`.
+
+### Postflop: how the short-stacked BB plays a called open
+
+Whole-hand models (experiment 16 sizes, 250 batches each) at 25 / 50bb for 2.0 / 2.25 / 3.0bb opens, using
+the BB's stack-adjusted calling ranges. 100bb = experiment 16's model (its ranges are slightly different).
+
+| | 25bb / 2.0 | 25bb / 2.25 | 25bb / 3.0 | 50bb / 2.0 | 50bb / 2.25 | 50bb / 3.0 | 100bb / 2.25 |
+|---|---|---|---|---|---|---|---|
+| stack-to-pot ratio after the call | 5.8 | 5.1 | **3.7** | 12.0 | 10.6 | 7.8 | 21.7 |
+| BB net per called pot | −0.80 (−20% of pot) | −0.86 (−19%) | −0.98 (−16%) | −0.72 (−18%) | −0.77 (−17%) | −0.86 (−14%) | −0.85 (−19%) |
+| BB donks the flop | 10% | 12% | **18%** | 9% | 11% | 12% | 9% |
+| BB vs 1/3 c-bet: fold / call / raise | 50 / 18 / 32% | 50 / 18 / 32% | 47 / 20 / 33% | 48 / 19 / 33% | 48 / 23 / 30% | 44 / 27 / 30% | 46 / 19 / 35% |
+| BB vs 3/4 c-bet: fold / call / raise | 60 / 24 / 16% | 60 / 23 / 17% | 64 / **11** / **25**% | 58 / 27 / 15% | 56 / 27 / 18% | 54 / 26 / 20% | 59 / 25 / 17% |
+| BB leads the turn after calling the flop | 14% | 16% | **35%** | 12% | 13% | 14% | 10% |
+| BB vs turn barrel: fold / call / raise | 48 / 31 / 21% | 47 / 28 / 25% | 48 / 23 / 30% | 48 / 37 / 15% | 47 / 36 / 17% | 49 / 34 / 18% | 50 / 38 / 12% |
+| BB vs river bet after a barrel: fold / call / raise | 46 / 25 / 28% | 44 / 21 / 35% | 43 / 20 / 37% | 53 / 28 / 19% | 53 / 28 / 19% | 52 / 23 / 25% | 54 / 35 / 11% |
+| all-in before the river | 2.5% | 3.0% | **8.4%** | 0.2% | 0.6% | 1.1% | ~0% |
+
+![BB vs a 1/3 c-bet](output/bb_short_stack/post_vs_cbet.png)
+
+* **Shorter stacks and bigger opens push the BB from calling to raising.** The fold rates barely move
+  (~45–50% vs a small c-bet everywhere). The turn and river raise rates are where the difference shows:
+  21–30% vs a turn barrel at 25bb vs 12% at 100bb, and 28–37% vs a river bet vs 11%. With a low
+  stack-to-pot ratio, a raise is often all-in, so calling and raising later merge into "get it in now".
+* **At 25bb vs a 3.0bb open (SPR 3.7) it's close to all-in-or-fold.** Vs a 3/4-pot c-bet the BB calls only
+  11% and raises 25%. It donks the flop 18% and leads the turn 35% after calling, and 8% of hands are all-in
+  before the river.
+* **The BB loses less, as a share of the pot, the bigger the open** (−20% → −16% at 25bb, −18% → −14% at
+  50bb). It defends a tighter range vs a big open, so the called pots are better for it. In bb, the bigger pot
+  still costs more.
+
+![BB check-raises by hand](output/bb_short_stack/post_hand_vs_third_raise.png)
+
+**By hand, vs a 1/3-pot c-bet:**
+* **top pair / overpair:** check-raises **86–93% at 25bb** vs 66–73% at 50bb. Short-stacked, raise and get it in.
+* **two pair+:** raises 70–79% at 25bb (the rest slowplay by calling) vs 76–92% at 50bb.
+* **middle / weak pairs:** raise less as the open grows. At 50bb it's 60% vs a 2.0 open and 28% vs a 3.0
+  open, where calling becomes the main play (71%).
+* **weak draws:** at 25bb vs a 3.0 open they raise 56% (vs 31–33% vs smaller opens), using fold equity
+  while it still exists.
+* **air:** folds 81–91% everywhere.
+
+Data: `postflop_summary.csv`, `postflop_by_hand.csv`; also `post_hand_vs_third_fold.png` and
+`post_hand_turn_vs_barrel_fold.png`.
+
+**Caveats:**
+* The preflop model has no BTN open-jam or limp, which matter at 20bb and below.
+* Its 3-bet pots use the same realization formula as single-raised pots.
+* The stack adjustment comes from three whole-hand models at a 2.25bb open and is extrapolated to 20bb.
+* The whole-hand model's BB realization is lower than the 0.915 fit even at 100bb. The study uses the
+  *relative* stack effect, not the absolute level.
+* One seed per configuration.
+
 ## Next steps
 
 1. **Fix the BB's check-raise level** (experiment 16): give the model a ~3x raise like the solver's and test
@@ -1204,4 +1321,5 @@ at a 2.25bb open (100bb = experiment 16's model).
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
 3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.
-4. **Stack depth and multiway** play.
+4. **Short stacks below 20bb:** add BTN open-jams and limps to the preflop tree.
+5. **Multiway** play.
