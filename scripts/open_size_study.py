@@ -219,7 +219,7 @@ def model_vs_solver(s, d, flops):
         btn_b = np.array([fg.fine_bucket(hole(c), cards) for c in s_btn.combo])
         m_btn = btn_sig[t, 0, btn_b]                                  # check, 1/3, 3/4
         bo = np.array([fg.fine_bucket(hole(c), cards) for c in s_bb.combo])
-        m_bb = bb_sig[t, 0, bo, s_bb["size"].to_numpy()]              # fold, call, raise 2.5x, raise 4x
+        m_bb = bb_sig[t, 0, bo, s_bb["size"].to_numpy()]              # fold, call, raise(s)
         w_btn = s_btn["class"].map(wbtn).to_numpy()
         w_bb = s_bb["class"].map(wbb).to_numpy() * first[t, 0, bo, 0]  # model BB range that checked
         w_bb_solver = s_bb["class"].map(wbb).to_numpy()
@@ -231,7 +231,7 @@ def model_vs_solver(s, d, flops):
         for k, size in enumerate(("small", "big")):
             sel = (s_bb["size"] == k).to_numpy()
             for a, sv, mv in (("fold", s_bb["fold"], m_bb[:, 0]), ("call", s_bb["call"], m_bb[:, 1]),
-                              ("raise", s_bb["raise"], m_bb[:, 2] + m_bb[:, 3])):
+                              ("raise", s_bb["raise"], m_bb[:, 2:].sum(1))):
                 row[f"solver_bb_{a}_vs_{size}"] = float((sv[sel] * w_bb_solver[sel]).sum() / w_bb_solver[sel].sum())
                 row[f"model_bb_{a}_vs_{size}"] = float((mv[sel] * w_bb[sel]).sum() / w_bb[sel].sum())
         rows.append(row)
@@ -250,7 +250,7 @@ def model_vs_solver(s, d, flops):
                                         "solver_fold": float((s_bb["fold"][mo] * w_bb_solver[mo]).sum() / w_bb_solver[mo].sum()),
                                         "model_fold": float((m_bb[mo, 0] * w_bb[mo]).sum() / max(w_bb[mo].sum(), 1e-12)),
                                         "solver_raise": float((s_bb["raise"][mo] * w_bb_solver[mo]).sum() / w_bb_solver[mo].sum()),
-                                        "model_raise": float(((m_bb[mo, 2] + m_bb[mo, 3]) * w_bb[mo]).sum() / max(w_bb[mo].sum(), 1e-12))})
+                                        "model_raise": float((m_bb[mo, 2:].sum(1) * w_bb[mo]).sum() / max(w_bb[mo].sum(), 1e-12))})
     return pd.DataFrame(rows), pd.DataFrame(bucket_rows)
 
 

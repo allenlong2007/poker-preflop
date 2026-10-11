@@ -23,3 +23,5 @@ output/bb_short_stack_quick/
 output/limped_pots/cache/
 output/limped_pots_quick/
 output/limped_pots/resolve_baseline/
+output/xr_level/cache/
+output/xr_level_quick/

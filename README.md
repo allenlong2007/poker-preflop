@@ -1517,13 +1517,71 @@ Data: `postflop_summary.csv`, `postflop_by_hand.csv`; also `limped_bb_leads_flop
   check-raises about 2× as often as TexasSolver's. The relative version is the safer read.
 * One seed per model. The limped / raised ratio varies 0.87–1.02 across stacks.
 
+## Experiment 22: Why the BB check-raised twice as often as TexasSolver
+
+`scripts/xr_level_study.py` (`train` / `report`). New in `fullgame.py`:
+* **`opts["raise_pot"]`:** raises use the solver's convention, raising by a fraction of the pot after
+  calling.
+* **`opts["raise_streets"]`:** limits which streets allow raises.
+
+The defaults are unchanged; a quick training run gives bit-identical values before and after.
+
+Experiment 16's whole-hand model check-raised a 1/3-pot c-bet **29%** of the time on the 12 solved 2.25bb
+flops, vs the solver's **18%**. Middle pair and weak top pair raised 54–64% vs 7–18%. Two of the suspected
+causes are about the game the model plays, so each was changed to match the solver's medium tree
+(2.25bb open, 100bb, 250 batches, same ranges):
+
+| Variant | What changes |
+|---|---|
+| **exp16** | experiment 16's model: raises of 2.5x or 4x the bet on every street, flop donks allowed |
+| **pot raise** | one raise size, the solver's: 50% of the pot after calling (3.5x a 1/3 bet, 2.7x a 3/4 bet) |
+| **solver tree** | the solver's whole tree: no flop donk, one turn / river size, raises on the flop only |
+
+### Result: the cheap 2.5x raise was the main cause
+
+![Check-raise by hand](output/xr_level/xr_by_bucket.png)
+
+| On the 12 solved flops | TexasSolver | exp16 | pot raise | solver tree |
+|---|---|---|---|---|
+| **BB check-raises vs 1/3** | **18%** | 29% | **20%** | **17%** |
+| BB calls vs 1/3 | 53% | 29% | 38% | 42% |
+| BB folds vs 1/3 | 29% | 42% | 42% | 42% |
+| BB check-raises vs 3/4 | 10% | 16% | 14% | 11% |
+| BB calls vs 3/4 | 38% | 25% | 25% | 30% |
+| BTN checks back | 33% | 30% | 25% | 43% |
+| BB net per called pot (all flops) | – | −0.85 | −0.88 | −0.83 |
+
+* **Making the raise as expensive as the solver's removes most of the gap** (29% → 20%), without
+  touching anything else.
+  * **weak top pair:** 64% → 33%
+  * **middle pair:** 54% → 24%
+  * **calling vs a small c-bet:** up from 29% to 38%
+  * A 2.5x raise risks little vs a 1/3-pot bet, so the model raised pairs that should call.
+* **The solver's full tree closes the rest** (17% vs 18%). Without turn and river raises, a flop raise
+  is the BB's only chance to raise. The remaining pairs then call like the solver's:
+  * **middle pair** raises 5% (solver 7%)
+  * **weak pair** 10% (solver 11%)
+  * **weak draws** 27% (solver 30%)
+* **The BTN's extra air c-bets were not the cause.** The pot-raise BTN c-bets air *more* (83% vs 78%),
+  yet the BB check-raises less.
+
+**What's still off:**
+* **The BB folds too much vs a small c-bet** (42% vs 29%) and calls too little (38–42% vs 53%).
+* **Two pair slowplays more than the solver's** (raises 57–62% vs 93%).
+* **Which flops get check-raised most still doesn't match the solver well** (per-flop correlation 0.35–0.42).
+  The level now matches; the board-by-board pattern doesn't yet.
+* **The BB's total result barely changes (−0.83 to −0.88bb per called pot),** so experiments 15–21's
+  values hold up. Their check-raise frequencies by hand (especially pairs) are too high.
+
+Data: `model_stats.csv`, `solver_agreement.csv`, `xr_by_bucket.csv`; also `xr_level.png`.
+
 ## Next steps
 
-1. **Fix the BB's check-raise level** (experiment 16): give the model a ~3x raise like the solver's and test
-   whether the BTN's extra air c-bets make raising too profitable.
+1. **Use pot-sized raises from now on** (`raise_pot=(0.5,)`, experiment 22), and look into why the BB
+   still folds too much to small c-bets (42% vs the solver's 29%).
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
 3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.
 4. **One consistent realization:** feed the whole-hand model's values for raised *and* limped pots back
-   into experiments 18–20 at every stack (experiment 21's absolute version), once the check-raise level is fixed.
+   into experiments 18–20 at every stack (experiment 21's absolute version), retrained with pot-sized raises.
 5. **Multiway** play.

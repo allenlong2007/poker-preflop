@@ -18,7 +18,9 @@ Each street (BTN opened 2.25bb preflop, BB called):
       after a lead:   BTN  fold | call | raise (multiple r)
                       BB   fold | call
 
-Sizes default to SIZES / RAISE_X; opts["sizes"] and opts["raises"] override them.
+Sizes default to SIZES / RAISE_X; opts["sizes"] and opts["raises"] override them. opts["raise_pot"]
+switches raises to TexasSolver's convention (raise by a fraction of the pot after calling), and
+opts["raise_streets"] limits which streets allow raises (default: all).
 
 Decisions are learned per (board texture, line, hand bucket[, size]):
   * texture: the flop / turn / river textures of experiments 8, 11 and 12
@@ -65,15 +67,23 @@ def street_sizes(s, opts):
     return (tuple(sz["lead"]) if (s > 0 or opts.get("donk")) else ()), tuple(sz["bet"])
 
 
-def raise_sizes(opts):
-    """Raise multiples available to whoever faces a bet or lead (opts["raises"], default 3x only)."""
-    return tuple(opts.get("raises", (RAISE_X,)))
+def raise_sizes(opts, s=0):
+    """Raise options for whoever faces a bet or lead on street s: multiples of the bet (opts["raises"],
+    default 3x only), or pot fractions if opts["raise_pot"] is set; none on streets not in opts["raise_streets"]."""
+    if s not in opts.get("raise_streets", (0, 1, 2)):
+        return ()
+    return tuple(opts["raise_pot"]) if opts.get("raise_pot") else tuple(opts.get("raises", (RAISE_X,)))
+
+
+def raise_to(opts, size, b, P):
+    """Total raise for raise option `size` vs a bet b into a pot P (before the bet)."""
+    return b + size * (P + 2 * b) if opts.get("raise_pot") else size * b
 
 
 def n_actions(kind, s, opts):
     """(size dimensions, number of actions) for a node kind on street s."""
     n_lead, n_bet = (len(x) for x in street_sizes(s, opts))
-    n_raise = len(raise_sizes(opts))
+    n_raise = len(raise_sizes(opts, s))
     return {"bb_first": ((), 1 + n_lead), "btn_vs_check": ((), 1 + n_bet), "bb_vs_bet": ((n_bet,), 2 + n_raise),
             "btn_vs_xr": ((n_bet, n_raise), 2), "btn_vs_lead": ((n_lead,), 2 + n_raise),
             "bb_vs_raise": ((n_lead, n_raise), 2)}[kind]
@@ -274,7 +284,7 @@ class Game:
             return h.r * P - pin
         t, bk, tb = h.tex[s], h.bb[s], h.btn[s]
         leads, bets = street_sizes(s, self.opts)
-        raises = raise_sizes(self.opts)
+        raises = raise_sizes(self.opts, s)
         rc_now = [rc]
 
         def nxt(P2, left2, pin2, aggressor, code):
@@ -299,7 +309,7 @@ class Game:
                 b = min(bets[k] * P, left)
 
                 def xr(r):
-                    R = min(raises[r] * b, left)
+                    R = min(raise_to(self.opts, raises[r], b, P), left)
                     return self.decide(s, "btn_vs_xr", (t, line, tb, k, r), "btn",
                                        [wrap(lambda: end(-pin - b, f"xb{k}r{r}f")),
                                         wrap(lambda: nxt(P + 2 * R, left - R, pin + R, 2, f"xb{k}r{r}c"))],
@@ -315,7 +325,7 @@ class Game:
             b = min(leads[j] * P, left)
 
             def raised(r):
-                R = min(raises[r] * b, left)
+                R = min(raise_to(self.opts, raises[r], b, P), left)
                 return self.decide(s, "bb_vs_raise", (t, line, bk, j, r), "bb",
                                    [wrap(lambda: end(P + b - pin, f"l{j}r{r}f")),
                                     wrap(lambda: nxt(P + 2 * R, left - R, pin + R, 1, f"l{j}r{r}c"))], rc_now[0])
