@@ -15,6 +15,7 @@ Each model is compared with the solver on the 12 solved 2.25bb flops.
 Usage:
     python scripts/xr_level_study.py train      (~25-35 min per model, cached)
     python scripts/xr_level_study.py report
+    python scripts/xr_level_study.py whatif     (~3 min: fold / call / raise values by hand, solver-tree model)
 """
 import os
 import sys
@@ -136,9 +137,37 @@ def report():
     print(piv.round(2).to_string())
 
 
+def whatif():
+    """Value of folding, calling and raising a flop c-bet for each BB hand group, vs the BTN's actual play.
+
+    Values are averaged over all boards in a hand group (per-cell values are too noisy to compare)."""
+    d = np.load(path_for("solver tree"))
+    sigma = {(int(k.split("_")[1]), "_".join(k.split("_")[2:])): d[k] for k in d.files if k.startswith("sigma_")}
+    opts = {**VARIANTS["solver tree"], "eval_all": {(0, "bb_vs_bet")}}
+    r = oss.ranges_for(2.25)
+    _, acc = fg.evaluate(r["btn_range"], r["bb_range"], sigma, opts, s=2.25, stack=100, n=60_000)
+    av, reach, strat = -acc.avals[(0, "bb_vs_bet")], acc.reach[(0, "bb_vs_bet")], acc.strat[(0, "bb_vs_bet")]
+    rows = []
+    for size, sname in enumerate(("1/3", "3/4")):
+        for b, name in enumerate(fg.BUCKETS):
+            rr = reach[:, :, b, size].sum()
+            if rr <= 0:
+                continue
+            v = av[:, :, b, size].reshape(-1, av.shape[-1]).sum(0) / rr
+            f = strat[:, :, b, size].reshape(-1, strat.shape[-1]).sum(0) / rr
+            rows.append({"vs": sname, "hand": name, "share": rr / reach[..., size].sum(),
+                         "call_minus_fold": v[1] - v[0], "raise_minus_call": v[2] - v[1],
+                         "fold": f[0], "call": f[1], "raise": f[2]})
+    df = pd.DataFrame(rows)
+    df.round(4).to_csv(OUT / "whatif_by_hand.csv", index=False)
+    print(df.round(3).to_string(index=False))
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "report"
-    if cmd == "train":
+    if cmd == "whatif":
+        whatif()
+    elif cmd == "train":
         for name in sys.argv[2:] or [v for v in VARIANTS if v != "exp16"]:
             train(name.replace("_", " "))
     else:

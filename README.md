@@ -1575,10 +1575,46 @@ causes are about the game the model plays, so each was changed to match the solv
 
 Data: `model_stats.csv`, `solver_agreement.csv`, `xr_by_bucket.csv`; also `xr_level.png`.
 
+### Why the BB still folds too much to a small c-bet
+
+The remaining gap (42% vs 29% folds vs 1/3 pot) comes almost entirely from two hand groups. On the 12 solved
+flops, solver tree vs TexasSolver:
+
+| BB hand vs 1/3 c-bet | Solver folds | Model folds |
+|---|---|---|
+| **air** | 68% | 91% |
+| **overcards** | 22% | 65% |
+| weak draw | 5% | 10% |
+| every made hand / strong draw | 0% | 1–4% |
+
+**Not backdoor draws.** Splitting the solver's own strategy shows overcards folded 18% without a backdoor
+draw and 23% with one. The difference is **ace-high:** the solver folds ace-high air only 15%, vs 72% for
+other air.
+
+**"What if" values** (`whatif` subcommand, `whatif_by_hand.csv`): each option played out vs the BTN's actual
+play, averaged over all boards:
+
+| BB hand (share of hands facing a 1/3 c-bet) | Call minus fold | Model folds |
+|---|---|---|
+| air (46%) | −0.26bb | 92% |
+| overcards (2%) | +0.06bb | 39% |
+| weak draw (14%) | +0.49bb | 12% |
+| middle pair (11%) | +1.84bb | 2% |
+
+* **The model treats all air the same, so it folds nearly all of it.** Calling with the average air hand
+  loses 0.26bb. The solver sees individual cards and keeps the ace-high and backdoor hands, where calling
+  is roughly break-even. Air is 46% of the BB's checking range, so this alone accounts for ~10 of the
+  13-point gap.
+* **Overcards are almost break-even for the model** (+0.06bb for calling), so how it mixes them barely
+  matters in EV.
+* **So the remaining fold gap comes from the 12 coarse hand groups, not from a learning error.** It costs
+  little: the hands involved are close to break-even. An "ace-high air" group would be the next refinement
+  if this matters.
+
 ## Next steps
 
-1. **Use pot-sized raises from now on** (`raise_pot=(0.5,)`, experiment 22), and look into why the BB
-   still folds too much to small c-bets (42% vs the solver's 29%).
+1. **Use pot-sized raises from now on** (`raise_pot=(0.5,)`, experiment 22). Optionally split "air" into
+   ace-high / other, so the BB can defend ace-high air like the solver.
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
 3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.
