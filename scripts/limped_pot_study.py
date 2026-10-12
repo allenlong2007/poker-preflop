@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 import short_stack_jam_limp as exp20
 from bb_short_stack_study import cell_mask, node_freq
-from open_size_study import OPTS
+from open_size_study import OPTS_POT as OPTS
 from preflop import fullgame as fg
 from preflop.cards import HANDS, n_combos
 from preflop.plots import grouped_bars, heatmap, stacked_bars

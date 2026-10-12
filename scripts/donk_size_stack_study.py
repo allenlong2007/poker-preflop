@@ -1,12 +1,13 @@
 """Experiment 18: donk sizes x open sizes, and the BTN as the short stack.
 
 Part A (donk sizes). At BTN opens of 2.0 / 2.25 / 2.5 / 3.0bb (pots of 4-6bb), the BB may donk the
-flop 1/4, 1/2, 3/4 or pot (other sizes as in experiment 16). The whole-hand model learns which sizes
+flop 1/4, 1/2, 3/4 or pot (other sizes as in experiment 16; raises are the solver's 50%-pot raise,
+experiment 22). The whole-hand model learns which sizes
 it uses. A "what if" evaluation then plays out every flop option for every board and hand against
 the BTN's actual responses, giving the value of donking each size vs checking.
 
 Part B (short stacks). Only the effective (smaller) stack matters heads-up: a 50bb BTN vs a 150bb BB
-plays a 50bb game. At 25 / 50 / 100bb effective (2.25bb open; 100bb = experiment 16's model):
+plays a 50bb game. At 25 / 50 / 100bb effective (2.25bb open):
 the best open size, preflop ranges incl. all-ins, and the whole-hand model's BTN and BB strategies.
 
 Usage:
@@ -25,7 +26,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
-from open_size_study import OPTS, RAISES, SIZES, line_text
+from open_size_study import OPTS_POT, SIZES, line_text
 from preflop import fullgame as fg
 from preflop.cards import HANDS, n_combos
 from preflop.flopgame import TEXTURES as FLOP_TEXTURES
@@ -40,12 +41,11 @@ OUT.mkdir(parents=True, exist_ok=True)
 CACHE.mkdir(exist_ok=True)
 BATCHES, HANDS_PER_BATCH, EVAL_HANDS = (2, 15_000, 3_000) if QUICK else (250, 60_000, 100_000)
 FIT = ROOT / "output" / "simulated_realization_pot_odds" / "simulated_fit.csv"
-EXP16 = ROOT / "output" / "open_sizes" / "cache" / "model_2_25.npz"
 
 OPENS = [2.0, 2.25, 2.5, 3.0]
 DONK_SIZES = (1 / 4, 1 / 2, 3 / 4, 1.0)
 DONK_NAMES = ["1/4", "1/2", "3/4", "pot"]
-DONK_OPTS = {"donk": True, "raises": RAISES, "eval_all": {(0, "bb_first")},
+DONK_OPTS = {"donk": True, "raise_pot": (0.5,), "eval_all": {(0, "bb_first")},
              "sizes": ({"lead": DONK_SIZES, "bet": SIZES[0]["bet"]}, SIZES[1], SIZES[2])}
 STACKS = [25, 50, 100]
 STACK_OPEN = 2.25
@@ -222,7 +222,7 @@ def report_donk():
         for j, n in enumerate(DONK_NAMES):
             m = cell_mask(d["reach_0_btn_vs_lead"].shape, size=j)
             f, w = node_freq(d, 0, "btn_vs_lead", m)
-            resp.append({"open_bb": s, "donk": n, "btn_fold": f[0], "btn_call": f[1], "btn_raise": f[2] + f[3]})
+            resp.append({"open_bb": s, "donk": n, "btn_fold": f[0], "btn_call": f[1], "btn_raise": f[2:].sum()})
     pd.DataFrame(resp).round(3).to_csv(OUT / "btn_vs_donk_size.csv", index=False)
     print(freq.round(3).to_string(index=False))
     print(allh[allh.board == "all flops"].round(4).to_string(index=False))
@@ -236,7 +236,7 @@ def report_stacks():
     rows = []
     for stack in STACKS:
         p = preflop(STACK_OPEN, stack)
-        path = EXP16 if stack == 100 else CACHE / f"stack_{stack}.npz"
+        path = CACHE / f"stack_{stack}.npz"
         if not path.exists():
             continue
         d = np.load(path)
@@ -249,7 +249,7 @@ def report_stacks():
         row.update({"btn_flop_check": f[0], "btn_cbet_1/3": f[1], "btn_cbet_3/4": f[2]})
         for k, n in enumerate(("1/3", "3/4")):
             f, _ = node_freq(d, 0, "bb_vs_bet", cell_mask(d["reach_0_bb_vs_bet"].shape, size=k))
-            row.update({f"bb_vs_{n}_fold": f[0], f"bb_vs_{n}_call": f[1], f"bb_vs_{n}_raise": f[2] + f[3]})
+            row.update({f"bb_vs_{n}_fold": f[0], f"bb_vs_{n}_call": f[1], f"bb_vs_{n}_raise": f[2:].sum()})
         f, _ = node_freq(d, 0, "bb_first")
         row["bb_donks"] = 1 - f[0]
         f, _ = node_freq(d, 1, "btn_vs_check", cell_mask(d["reach_1_btn_vs_check"].shape, lines=[3, 4, 5]))
@@ -272,12 +272,12 @@ def report_stacks():
     # By hand: BTN c-bet and the BB's response, per stack.
     hand_rows = []
     for stack in st.stack_bb:
-        d = np.load(EXP16 if stack == 100 else CACHE / f"stack_{int(stack)}.npz")
+        d = np.load(CACHE / f"stack_{int(stack)}.npz")
         for b, name in enumerate(fg.BUCKETS):
             f, w = node_freq(d, 0, "btn_vs_check", cell_mask(d["reach_0_btn_vs_check"].shape, buckets=[b]))
             g, _ = node_freq(d, 0, "bb_vs_bet", cell_mask(d["reach_0_bb_vs_bet"].shape, buckets=[b], size=0))
             hand_rows.append({"stack_bb": stack, "hand": name, "btn_cbet": 1 - f[0], "btn_cbet_big": f[2],
-                              "bb_fold_vs_1/3": g[0], "bb_raise_vs_1/3": g[2] + g[3]})
+                              "bb_fold_vs_1/3": g[0], "bb_raise_vs_1/3": g[2:].sum()})
     hd = pd.DataFrame(hand_rows)
     hd.round(3).to_csv(OUT / "stacks_by_hand.csv", index=False)
     for col, title in (("btn_cbet", "BTN c-bet frequency by hand"), ("bb_raise_vs_1/3", "BB check-raise vs a 1/3 c-bet"),
@@ -303,11 +303,11 @@ def report_stacks():
     # Most probable lines per stack.
     top = []
     for stack in st.stack_bb:
-        d = np.load(EXP16 if stack == 100 else CACHE / f"stack_{int(stack)}.npz")
+        d = np.load(CACHE / f"stack_{int(stack)}.npz")
         keys, vals = d["line_keys"], d["line_vals"].sum(1)
         order = np.argsort(-vals)[:8]
         for i in order:
-            top.append({"stack_bb": stack, "prob": vals[i] / vals.sum(), "line": line_text(keys[i])})
+            top.append({"stack_bb": stack, "prob": vals[i] / vals.sum(), "line": line_text(keys[i], pot=True)})
     pd.DataFrame(top).round(4).to_csv(OUT / "stacks_top_lines.csv", index=False)
     print(st.round(3).T.to_string())
     print("best open by stack:", best_open)
@@ -322,8 +322,7 @@ def main():
             train_model(f"donk_{tag(s)}", DONK_OPTS, s, 100)
     elif cmd == "stacks":
         for stack in STACKS:
-            if stack != 100:
-                train_model(f"stack_{stack}", OPTS, STACK_OPEN, stack)
+            train_model(f"stack_{stack}", OPTS_POT, STACK_OPEN, stack)
     else:
         pd.set_option("display.width", 250)
         report_donk()

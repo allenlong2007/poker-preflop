@@ -43,6 +43,9 @@ SIZES = ({"lead": (1 / 3, 3 / 4), "bet": (1 / 3, 3 / 4)},
          {"lead": (1 / 2, 1.0), "bet": (1 / 2, 1.0, 3 / 2)})
 RAISES = (2.5, 4.0)
 OPTS = {"donk": True, "sizes": SIZES, "raises": RAISES}
+# Experiment 22: TexasSolver's raise (50% of the pot after calling) fixes the BB's check-raise level.
+# Experiments 18-21 were retrained with it.
+OPTS_POT = {"donk": True, "sizes": SIZES, "raise_pot": (0.5,)}
 QUICK = os.environ.get("OPEN_STUDY_QUICK") == "1"          # tiny end-to-end test run
 BATCHES, HANDS_PER_BATCH, EVAL_HANDS = (2, 15_000, 3_000) if QUICK else (250, 60_000, 150_000)
 SOLVER_OPEN = 3.0
@@ -149,8 +152,8 @@ def mask(shape, tex=None, lines=None, buckets=None, size=None):
     return m
 
 
-def line_text(seq):
-    """'xb0c/xx/xb2f' -> readable text using the sizes in SIZES."""
+def line_text(seq, pot=False):
+    """'xb0c/xx/xb2f' -> readable text using the sizes in SIZES (pot=True: raises are 50%-pot raises)."""
     out = []
     for st, code in enumerate(seq.split("/")):
         if not code:
@@ -171,7 +174,7 @@ def line_text(seq):
             rest = code[2:]
             who_raises = "BTN raises"
         if rest.startswith("r"):
-            txt += f", {who_raises} {RAISES[int(rest[1])]:g}x"
+            txt += f", {who_raises}" + (" (pot raise)" if pot else f" {RAISES[int(rest[1])]:g}x")
             rest = rest[2:]
             caller = "BTN" if who_raises == "BB raises" else "BB"
         else:

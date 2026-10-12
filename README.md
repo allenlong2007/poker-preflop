@@ -1120,39 +1120,41 @@ strategy:
 
 ## Experiment 18: Donk sizes × open sizes, and the BTN as the short stack
 
-`scripts/donk_size_stack_study.py` (`donk` / `stacks` / `report`).
+`scripts/donk_size_stack_study.py` (`donk` / `stacks` / `report`). Retrained after experiment 22 with the
+solver's pot-sized raise (`OPTS_POT`); the first version's numbers are in git history (commit 6f00baf).
 
 ### Part A: four donk sizes at four open sizes
 
 At BTN opens of 2.0 / 2.25 / 2.5 / 3.0bb (pots of 4 / 4.5 / 5 / 6bb), the BB may donk **1/4, 1/2, 3/4 or
-pot**; everything else matches experiment 16. Each open was trained for 250 batches (24–35 min).
+pot**; everything else matches experiment 16, with pot-sized raises. Each open was trained for 250 batches
+(~15 min).
 
 **"What if" evaluation (new in `fullgame.py`):** for every board and BB hand, every flop option is played
 out against the BTN's actual responses. That gives the value of donking each size vs checking in that spot.
 
 | BTN open (pot) | BB donks (learned) | 1/4 | 1/2 | 3/4 | pot | Avg cost of donking vs checking, 1/4 → pot (bb / 100 called pots) |
 |---|---|---|---|---|---|---|
-| 2.0 (4bb) | 13% | 4.7% | 3.4% | 2.8% | 2.0% | −19 / −27 / −36 / −45 |
-| 2.25 (4.5bb) | 14% | 5.2% | 3.2% | 3.1% | 2.1% | −20 / −31 / −41 / −49 |
-| 2.5 (5bb) | 14% | 5.1% | 3.4% | 2.7% | 2.4% | −22 / −31 / −40 / −50 |
-| 3.0 (6bb) | 15% | 6.5% | 3.7% | 2.7% | 2.3% | −26 / −37 / −48 / −55 |
+| 2.0 (4bb) | 14% | 5.4% | 3.9% | 2.5% | 2.0% | −17 / −26 / −36 / −48 |
+| 2.25 (4.5bb) | 15% | 6.9% | 4.0% | 2.3% | 2.1% | −17 / −25 / −39 / −48 |
+| 2.5 (5bb) | 16% | 7.2% | 4.1% | 3.0% | 2.0% | −17 / −26 / −36 / −47 |
+| 3.0 (6bb) | 16% | 7.7% | 4.1% | 2.8% | 1.8% | −21 / −29 / −41 / −55 |
 
 * **Checking is the better default at every open size and on every board type.** Averaged over all of
-  the BB's hands, donking costs more the bigger it is (−0.2bb per called pot at 1/4 pot, −0.5 at pot)
-  and more in bigger pots (3.0bb opens).
+  the BB's hands, donking costs more the bigger it is (−0.17bb per called pot at 1/4 pot, about −0.5 at
+  pot) and a bit more in the biggest pots (3.0bb opens).
 * **The smallest donk (1/4 pot) is the least bad and the most used.** Bigger pots push the BB to donk
-  slightly more (13% → 15%), mostly at 1/4.
-* **Donking is break-even (within 1bb / 100 of checking) in about a quarter of spots** (22–28%), mainly:
-  * **paired boards with top pair:** break-even 71% of the time, donking mostly 1/4–1/2 pot
-  * **connected boards with two pair+:** 66%, sizes split toward 3/4–pot
-  * **K-high boards with two pair+:** 51%
-  * **low boards (T-high or lower) with draws or air:** 35–38%
-  * **A-high boards almost never:** ≤ 15%
-* **The BTN folds more vs bigger donks** (11–13% vs 1/4, 46–48% vs pot) **and raises the small donk a lot**
-  (53–62% vs 1/4 pot): a tiny donk invites a raise.
-* **Caveat:** in some spots the learned average strategy donks more than the what-if values justify
-  (e.g. two pair+ on A-high: donks 23%, but break-even in only 9% of those spots). Those cells look
-  under-converged; the what-if values, measured against the BTN's actual responses, are the safer guide.
+  slightly more (14% → 16%), mostly at 1/4.
+* **Donking is break-even (within 1bb / 100 of checking) in about a fifth of spots** (18–24%, weighted by
+  how often each spot comes up), mainly:
+  * **paired boards with top pair:** break-even 49–83% of the time (by open size), donking mostly 1/4–1/2
+    pot. At a 2.0bb open, 1/4 pot even slightly beats checking here.
+  * **connected boards with two pair+:** 31–74%, sizes spread from 1/4 to pot
+  * **low boards (T-high or lower) with draws:** 27–59%
+  * **A-high boards:** only with two pair+ (17–56%)
+* **The BTN folds more vs bigger donks** (10–11% vs 1/4, 43–46% vs pot). Vs the 1/4 donk it **calls or
+  raises about equally** (41–50% / 40–49%). A tiny donk invites a raise.
+* **Caveat:** the break-even shares come from noisy per-cell values and swing between open sizes, so
+  read them as "sometimes" vs "rarely" rather than exact rates.
 
 ![Where the BB donks](output/donk_sizes_stacks/donk_used_2_25.png)
 
@@ -1160,7 +1162,7 @@ out against the BTN's actual responses. That gives the value of donking each siz
 
 **Only the effective (smaller) stack matters heads-up.** A 50bb BTN vs a 150bb BB plays exactly a 50bb game,
 because chips beyond the shorter stack can't be won or lost. The study compares 25 / 50 / 100bb effective
-at a 2.25bb open (100bb = experiment 16's model).
+at a 2.25bb open.
 
 | | 25bb | 50bb | 100bb |
 |---|---|---|---|
@@ -1171,35 +1173,37 @@ at a 2.25bb open (100bb = experiment 16's model).
 | BB 3-bet size | **13.5bb (near all-in)** | 7.3bb | 7.3bb |
 | BTN folds / jams vs a 3-bet | **65% / 11%** | 49% / 12% | 42% / 8% |
 | BB calls a BTN jam | **100%** | 38% | 20% |
-| BTN c-bets (1/3 / 3/4) | **62%** (41 / 21) | 68% (35 / 33) | 75% (40 / 36) |
-| BTN barrels the turn after a called c-bet | 58% | 53% | 51% |
-| BTN bets the river after a called barrel | 60% | 52% | 47% |
-| BB vs 1/3 c-bet: fold / call / raise | 48 / 19 / 33% | 47 / 23 / 30% | 46 / 19 / 35% |
-| stacks all-in before the river | **3.0%** | 0.6% | ~0% |
-| BB net per called pot | −0.74 | −0.74 | −0.85 |
+| BTN c-bets (1/3 / 3/4) | **68%** (49 / 19) | 74% (42 / 31) | 81% (50 / 31) |
+| BTN barrels the turn after a called c-bet | 56% | 52% | 53% |
+| BTN bets the river after a called barrel | 59% | 53% | 50% |
+| BB vs 1/3 c-bet: fold / call / raise | 47 / 28 / 25% | 46 / 32 / 22% | 47 / 30 / 24% |
+| stacks all-in before the river | **3.2%** | 0.2% | ~0% |
+| BB net per called pot | −0.76 | −0.76 | −0.88 |
 
 ![Best open by stack](output/donk_sizes_stacks/best_open_by_stack.png)
 
 * **Preflop at 25bb, everything becomes "all-in or fold" after a 3-bet.** The BB's best 3-bet is 13.5bb
   (over half the stack); the BTN folds 65% to it, jams 11%, and the BB always calls the jam. The BTN's
   best open shrinks to 2.25bb (2.0–2.25 are about equal), since raises are a bigger share of the stack.
-* **The BTN's postflop edge shrinks with the stack:** the BB loses 0.74bb per called pot at 25–50bb vs 0.85
+* **The BTN's postflop edge shrinks with the stack:** the BB loses 0.76bb per called pot at 25–50bb vs 0.88
   at 100bb. There's less room to use position over three streets.
-* **Short-stacked, the BTN c-bets less and smaller** (62%, mostly 1/3 pot), **but follows through more**
-  (turn barrel 58%, river bet after a barrel 60%): with a low stack-to-pot ratio, a hand that bets the flop
-  is often committed.
+* **Short-stacked, the BTN c-bets less and smaller** (68% vs 81% at 100bb; mostly 1/3 pot) **but follows
+  through more on the river** (59% after a called barrel vs 50%): with a low stack-to-pot ratio, a hand
+  that bets the flop is often committed.
 * **By hand at 25bb:**
-  * **strong hands slowplay more:** two pair+ c-bets only 61–72% (vs 92–95% at 100bb), since the stack is
+  * **strong hands slowplay more:** two pair+ c-bets 60–76% (vs 94–96% at 100bb), since the stack is
     easy to get in later
-  * **top pairs bet almost always** (91–94%)
-  * **weak pairs check** (13%)
-  * **the BB check-raises top pair 92–93% vs a small c-bet**, effectively getting it in
+  * **top pairs bet almost always** (93–95%)
+  * **weak pairs mostly check** (bet 32%)
+  * **the BB check-raises top pair 89% vs a small c-bet**, effectively getting it in. Middle pair now
+    mostly calls (check-raises 36%, down from 71% with the old 2.5x raise).
 
 ![BTN c-bet by stack](output/donk_sizes_stacks/stacks_btn_cbet.png)
 
 ## Experiment 19: The BB's ranges and sizes when stacks are short, by BTN open size
 
-`scripts/bb_short_stack_study.py` (`preflop` / `postflop` / `report`).
+`scripts/bb_short_stack_study.py` (`preflop` / `postflop` / `report`). Retrained after experiment 22 with the
+solver's pot-sized raise; the first version is in git history (commit 0ed0a58).
 
 Only the effective (smaller) stack matters heads-up, so a 25bb BB vs a 175bb BTN plays exactly the same
 game as a 25bb BTN vs a 175bb BB (experiment 18). This study covers **20–100bb effective** against BTN opens
@@ -1210,7 +1214,7 @@ of **2.0–3.0bb**.
   3-bet means no postflop play (`solver.py`).
 * **Realization by stack.** The preflop model's BB realization (0.915) was fit at 100bb. The whole-hand
   models from experiment 18 show how much better the BB does with shorter stacks, so r_oop is scaled by that
-  ratio: **1.00 at 20–25bb, 0.96 at 50bb, 0.92 at 100bb** (capped at 1.0, the BTN's level). With shallow
+  ratio: **1.00 at 20–30bb, 0.98 at 50bb, 0.92 at 100bb** (capped at 1.0, the BTN's level). With shallow
   stacks there are fewer streets of betting left, so position is worth less.
 
 ### Preflop: fold, call, 3-bet and the 3-bet size
@@ -1222,25 +1226,25 @@ of **2.0–3.0bb**.
 | 20bb | **all-in** vs every open | 0 / 18 / 38% | 24–25% | 55–70% |
 | 25bb | **all-in** vs every open | 0 / 16 / 37% | 22–23% | 64–76% |
 | 30bb | **all-in** vs every open | 0 / 15 / 37% | 21–22% | 70–80% |
-| 40bb | 6.5bb vs 2.0; **all-in** vs 2.25+ | 0 / 16 / 36% | 18–20% | 50% / 77–83% |
-| 50bb | 3.25x (6.5–8.1bb) vs 2.0–2.5; **all-in** vs 2.75+ | 0 / 16 / 35% | 17–19% | 50% / 82–84% |
-| 75–100bb | ~3.25x the open (6.5bb vs 2.0, 9.75bb vs 3.0) | 0–1 / 18–19 / 35% | 18–23% | 41–48% |
+| 40bb | 6.5bb vs 2.0; **all-in** vs 2.25+ | 0 / 15 / 35% | 18–19% | 51% / 77–84% |
+| 50bb | 3.25x (6.5–8.1bb) vs 2.0–2.5; **all-in** vs 2.75+ | 0 / 15 / 35% | 17–19% | 50–51% / 82–84% |
+| 75–100bb | ~3.25x the open (6.5bb vs 2.0, 9.75bb vs 3.0) | 0–1 / 17–19 / 35% | 18–23% | 42–49% |
 
 ![Best 3-bet size](output/bb_short_stack/bb_3bet_size.png)
 
 * **The fold rate depends on the open size, not the stack.** The BB folds almost nothing vs a 2.0bb open and
   ~35–38% vs a 3.0bb open at every depth. A bigger open lays the BB a worse price, but that price is the same
   at any stack.
-* **At 30bb and below, every 3-bet is all-in.** A jam earns the BB 5–15 milli-bb per hand more than the best
+* **At 30bb and below, every 3-bet is all-in.** A jam earns the BB 5–14 milli-bb per hand more than the best
   smaller 3-bet (only +2 at 20bb vs a 2.75–3.0bb open). A small 3-bet commits a third to half of the
   stack anyway, and the BTN can jam over it.
 * **At 40–50bb it depends on the open:** a small 3-bet vs small opens, all-in vs big opens (2.25+ at 40bb,
   2.75+ at 50bb). Vs a bigger open, a 3.25x 3-bet is already a large share of the stack. Near the switch
   point the options are within a few milli-bb of each other, so either is fine.
-* **At 75bb and above, an all-in 3-bet is a clear mistake** (−38 to −90 milli-bb vs a small 3-bet). Several
+* **At 75bb and above, an all-in 3-bet is a clear mistake** (−39 to −90 milli-bb vs a small 3-bet). Several
   3-bet sizes are about equally good: anything from ~3x to ~3.75x the open is within 2 milli-bb of the best.
 * **A wider BB range costs the BTN more when stacks are short:** the BTN folds 64–80% to an all-in 3-bet vs
-  41–48% to a small 3-bet at 100bb.
+  42–49% to a small 3-bet at 100bb.
 
 ![All-in vs small 3-bet](output/bb_short_stack/bb_jam_vs_small.png)
 
@@ -1254,7 +1258,7 @@ and suited connectors and one-gappers** (T9s–54s, 97s–64s). Offsuit hands li
 |---|---|---|
 | 25bb: jams | 23%: all pairs, A3s+, A9o+, KTs+, KQo, QTs+, suited connectors / one-gappers to 54s / 64s, 98o | 22%: similar, plus A2s and J7s |
 | 25bb: folds | nothing | 37%: offsuit hands below ~J6o / T7o, weak suited hands (T3s–T2s, 9x–7x low) |
-| 50bb: 3-bets | 19% to 6.5bb: all pairs, most suited aces, A7o+, KQo, KTs+, QTs+, T9s / 98s / 87s | 18% all-in: pairs, broadways, suited connectors; suited A5s–A2s now **call** |
+| 50bb: 3-bets | 19% to 6.5bb: all pairs, most suited aces, A7o+, KJo+, KTs+, QTs+, T9s / 98s / 87s | 17% all-in: pairs, broadways, suited connectors; suited A8s–A2s now **call** |
 
 * **The bigger the open, the more the BB's continuing range shifts toward hands that play well all-in.**
   Pairs and suited connectors keep jamming while the weakest offsuit hands fold.
@@ -1264,44 +1268,46 @@ Data: `preflop_summary.csv`, `threebet_sizes.csv`, `notable_hands.csv`.
 
 ### Postflop: how the short-stacked BB plays a called open
 
-Whole-hand models (experiment 16 sizes, 250 batches each) at 25 / 50bb for 2.0 / 2.25 / 3.0bb opens, using
-the BB's stack-adjusted calling ranges. 100bb = experiment 16's model (its ranges are slightly different).
+Whole-hand models (experiment 16 sizes with pot-sized raises, 250 batches each) at 25 / 50bb for 2.0 / 2.25 /
+3.0bb opens, using the BB's stack-adjusted calling ranges. 100bb = experiment 18's 100bb model.
 
 | | 25bb / 2.0 | 25bb / 2.25 | 25bb / 3.0 | 50bb / 2.0 | 50bb / 2.25 | 50bb / 3.0 | 100bb / 2.25 |
 |---|---|---|---|---|---|---|---|
 | stack-to-pot ratio after the call | 5.8 | 5.1 | **3.7** | 12.0 | 10.6 | 7.8 | 21.7 |
-| BB net per called pot | −0.80 (−20% of pot) | −0.86 (−19%) | −0.98 (−16%) | −0.72 (−18%) | −0.77 (−17%) | −0.86 (−14%) | −0.85 (−19%) |
-| BB donks the flop | 10% | 12% | **18%** | 9% | 11% | 12% | 9% |
-| BB vs 1/3 c-bet: fold / call / raise | 50 / 18 / 32% | 50 / 18 / 32% | 47 / 20 / 33% | 48 / 19 / 33% | 48 / 23 / 30% | 44 / 27 / 30% | 46 / 19 / 35% |
-| BB vs 3/4 c-bet: fold / call / raise | 60 / 24 / 16% | 60 / 23 / 17% | 64 / **11** / **25**% | 58 / 27 / 15% | 56 / 27 / 18% | 54 / 26 / 20% | 59 / 25 / 17% |
-| BB leads the turn after calling the flop | 14% | 16% | **35%** | 12% | 13% | 14% | 10% |
-| BB vs turn barrel: fold / call / raise | 48 / 31 / 21% | 47 / 28 / 25% | 48 / 23 / 30% | 48 / 37 / 15% | 47 / 36 / 17% | 49 / 34 / 18% | 50 / 38 / 12% |
-| BB vs river bet after a barrel: fold / call / raise | 46 / 25 / 28% | 44 / 21 / 35% | 43 / 20 / 37% | 53 / 28 / 19% | 53 / 28 / 19% | 52 / 23 / 25% | 54 / 35 / 11% |
-| all-in before the river | 2.5% | 3.0% | **8.4%** | 0.2% | 0.6% | 1.1% | ~0% |
+| BB net per called pot | −0.82 (−20% of pot) | −0.88 (−19%) | −1.01 (−17%) | −0.77 (−19%) | −0.88 (−19%) | −0.93 (−15%) | −0.88 (−20%) |
+| BB donks the flop | 11% | 14% | **21%** | 10% | 11% | 14% | 12% |
+| BB vs 1/3 c-bet: fold / call / raise | 50 / 27 / 23% | 49 / 28 / 23% | 47 / 25 / 27% | 48 / 28 / 24% | 48 / 31 / 21% | 43 / 35 / 22% | 47 / 30 / 24% |
+| BB vs 3/4 c-bet: fold / call / raise | 60 / 25 / 15% | 61 / 23 / 16% | 63 / **14** / **23**% | 59 / 29 / 12% | 56 / 29 / 15% | 55 / 27 / 19% | 60 / 25 / 15% |
+| BB leads the turn after calling the flop | 12% | 15% | **34%** | 12% | 12% | 13% | 9% |
+| BB vs turn barrel: fold / call / raise | 47 / 35 / 18% | 47 / 34 / 19% | 48 / 25 / 27% | 47 / 38 / 14% | 47 / 38 / 16% | 48 / 36 / 15% | 48 / 40 / 12% |
+| BB vs river bet after a barrel: fold / call / raise | 45 / 29 / 26% | 43 / 27 / 30% | 41 / 27 / 32% | 52 / 33 / 15% | 52 / 32 / 17% | 52 / 26 / 22% | 52 / 38 / 10% |
+| all-in before the river | 2.4% | 3.1% | **7.6%** | 0.1% | 0.2% | 1.0% | ~0% |
 
 ![BB vs a 1/3 c-bet](output/bb_short_stack/post_vs_cbet.png)
 
-* **Shorter stacks and bigger opens push the BB from calling to raising.** The fold rates barely move
-  (~45–50% vs a small c-bet everywhere). The turn and river raise rates are where the difference shows:
-  21–30% vs a turn barrel at 25bb vs 12% at 100bb, and 28–37% vs a river bet vs 11%. With a low
-  stack-to-pot ratio, a raise is often all-in, so calling and raising later merge into "get it in now".
+* **Shorter stacks and bigger opens push the BB from calling to raising on later streets.** The flop fold
+  rates barely move (~43–50% vs a small c-bet everywhere). The turn and river raise rates are where the
+  difference shows: 18–27% vs a turn barrel at 25bb vs 12% at 100bb, and 26–32% vs a river bet vs 10%.
+  With a low stack-to-pot ratio, a raise is often all-in, so calling and raising later merge into "get it
+  in now".
 * **At 25bb vs a 3.0bb open (SPR 3.7) it's close to all-in-or-fold.** Vs a 3/4-pot c-bet the BB calls only
-  11% and raises 25%. It donks the flop 18% and leads the turn 35% after calling, and 8% of hands are all-in
+  14% and raises 23%. It donks the flop 21% and leads the turn 34% after calling, and 8% of hands are all-in
   before the river.
-* **The BB loses less, as a share of the pot, the bigger the open** (−20% → −16% at 25bb, −18% → −14% at
-  50bb). It defends a tighter range vs a big open, so the called pots are better for it. In bb, the bigger pot
-  still costs more.
+* **The BB loses less, as a share of the pot, the bigger the open** (−20% → −17% at 25bb, −19% → −15% at
+  50bb). It defends a tighter range vs a big open, so the called pots are better for it. In bb, the bigger
+  pot still costs more.
 
 ![BB check-raises by hand](output/bb_short_stack/post_hand_vs_third_raise.png)
 
 **By hand, vs a 1/3-pot c-bet:**
-* **top pair / overpair:** check-raises **86–93% at 25bb** vs 66–73% at 50bb. Short-stacked, raise and get it in.
-* **two pair+:** raises 70–79% at 25bb (the rest slowplay by calling) vs 76–92% at 50bb.
-* **middle / weak pairs:** raise less as the open grows. At 50bb it's 60% vs a 2.0 open and 28% vs a 3.0
-  open, where calling becomes the main play (71%).
-* **weak draws:** at 25bb vs a 3.0 open they raise 56% (vs 31–33% vs smaller opens), using fold equity
+* **top pair / overpair:** check-raises **80–89% at 25bb** vs 49–58% at 50bb and 40% at 100bb.
+  Short-stacked, raise and get it in.
+* **two pair+:** raises 52–61% at 25bb (the rest slowplay by calling) vs 68–83% at 50bb.
+* **middle / weak pairs mostly call:** at 50bb they raise 27% vs a 2.0 open and 14% vs a 3.0 open, calling
+  72–85%. (With the old 2.5x raise they raised 28–60%.)
+* **weak draws:** at 25bb vs a 3.0 open they raise 43% (vs 29–34% vs smaller opens), using fold equity
   while it still exists.
-* **air:** folds 81–91% everywhere.
+* **air:** folds 80–91% everywhere.
 
 Data: `postflop_summary.csv`, `postflop_by_hand.csv`; also `post_hand_vs_third_fold.png` and
 `post_hand_turn_vs_barrel_fold.png`.
@@ -1423,10 +1429,11 @@ data in `summary.csv` and `by_hand.csv`.
 
 ## Experiment 21: The whole-hand model on limped pots (10–25bb)
 
-`scripts/limped_pot_study.py` (`train` / `report`).
+`scripts/limped_pot_study.py` (`train` / `report`). Retrained after experiment 22 with the solver's pot-sized
+raise; the results moved by less than 0.01bb per pot (first version: commit 1f18e5e).
 
 Experiment 20 valued limped pots with the preflop realization formula only. Here the whole-hand model
-(experiment 16 sizes, 250 batches, 11–20 min per model) plays them out:
+(experiment 16 sizes with pot-sized raises, 250 batches, ~10 min per model) plays them out:
 
 * **Limped pots (2bb pot) at 10 / 12 / 15 / 20 / 25bb.** Ranges are experiment 20's: the BTN's limps vs the
   BB's checks.
@@ -1439,15 +1446,15 @@ Experiment 20 valued limped pots with the preflop realization formula only. Here
 
 | | 10bb | 12bb | 15bb | 20bb | 25bb |
 |---|---|---|---|---|---|
-| BTN net per limped pot, whole-hand model | +0.44 (22%) | +0.39 (19%) | +0.40 (20%) | +0.32 (16%) | +0.31 (16%) |
+| BTN net per limped pot, whole-hand model | +0.44 (22%) | +0.39 (20%) | +0.40 (20%) | +0.33 (17%) | +0.32 (16%) |
 | same, preflop formula (experiment 20) | +0.22 (11%) | +0.19 (10%) | +0.17 (9%) | +0.14 (7%) | +0.12 (6%) |
 | BTN net per raised pot, whole-hand / formula | – | – | 25% / 17% | 24% / 15% | 19% / 12% |
 
 * **The formula undersells the BTN's position in every pot,** not just limped ones. Its BB realization of 1.0
-  implies the BB realizes as well as the BTN; the whole-hand model implies **0.57–0.64 in limped pots** and
-  **0.63–0.69 in raised pots**.
+  implies the BB realizes as well as the BTN; the whole-hand model implies **0.57–0.63 in limped pots** and
+  **0.62–0.69 in raised pots**.
 * **Limped pots favor the BTN slightly more than raised pots:** the limped / raised ratio of implied r_oop
-  is 0.87, 1.02 and 0.92 at 15 / 20 / 25bb, pooled to **0.93**. Each pair of models has different ranges,
+  is 0.86, 1.01 and 0.91 at 15 / 20 / 25bb, pooled to **0.93**. Each pair of models has different ranges,
   so the per-stack ratios are noisy.
 
 ### Re-solving the preflop tree
@@ -1460,21 +1467,21 @@ Two calibrations of experiment 20's tree:
 
 | Stack | Exp 20: fold / limp / raise / all-in | Relative | Absolute |
 |---|---|---|---|
-| 8bb | 30 / 15 / 0 / 55% | 28 / 18 / 0 / 54% | 24 / 31 / 0 / 45% |
-| 10bb | 26 / 30 / 0 / 44% | 24 / 34 / 0 / 42% | 15 / 57 / 7 / 22% |
-| 12bb | 23 / 44 / 0 / 33% | 22 / 46 / 0 / 32% | 10 / 61 / 21 / 7% |
-| 15bb | 20 / 51 / 4 / 25% | 17 / **58** / 1 / 24% | 2 / **79** / 14 / 5% |
-| 20bb | 16 / 57 / 18 / 8% | 15 / **62** / 16 / 7% | 2 / **70** / 28 / 1% |
-| 25bb | 16 / 55 / 28 / 1% | 14 / **61** / 25 / 0% | 1 / **76** / 23 / 0% |
+| 8bb | 30 / 15 / 0 / 55% | 28 / 18 / 0 / 54% | 24 / 32 / 0 / 44% |
+| 10bb | 26 / 30 / 0 / 44% | 24 / 34 / 0 / 42% | 14 / 58 / 6 / 22% |
+| 12bb | 23 / 44 / 0 / 33% | 22 / 46 / 0 / 32% | 10 / 63 / 20 / 7% |
+| 15bb | 20 / 51 / 4 / 25% | 17 / **59** / 1 / 24% | 2 / **80** / 13 / 5% |
+| 20bb | 16 / 57 / 18 / 8% | 14 / **63** / 16 / 7% | 2 / **70** / 27 / 1% |
+| 25bb | 16 / 55 / 28 / 1% | 14 / **61** / 25 / 0% | 1 / **77** / 23 / 0% |
 
 ![Limping value by version](output/limped_pots/limp_value_versions.png)
 
 * **The limping result holds up and gets stronger.** Limping is worth **+47–55 mbb per hand at 12–25bb**
-  (relative), up from +37–44. With the BTN's full postflop edge (absolute) it's worth +47–77.
-* **Relative:** the BTN limps a bit more (58–63% at 15–25bb), folds a bit less, and open-jams about as
+  (relative), up from +37–44. With the BTN's full postflop edge (absolute) it's worth +49–78.
+* **Relative:** the BTN limps a bit more (59–63% at 15–25bb), folds a bit less, and open-jams about as
   often.
 * **Absolute:** with its full postflop edge, the **BTN plays 98–99% of hands at 15–25bb** (limping 70–82%),
-  and its EV turns positive (+25 to +103 mbb per hand). That matches the usual heads-up picture, where the
+  and its EV turns positive (+25 to +108 mbb per hand). That matches the usual heads-up picture, where the
   SB / BTN has the edge. Below 10bb all-ins still dominate. The BB stops making small raises vs a limp and
   instead **jams 23–58%** (more at shorter stacks) or checks.
 
@@ -1486,35 +1493,37 @@ Data: `preflop_resolved.csv`, `realization.csv`; the re-solved charts are in `re
 | | 10bb | 12bb | 15bb | 20bb | 25bb |
 |---|---|---|---|---|---|
 | stack-to-pot ratio | 4.5 | 5.5 | 7.0 | 9.5 | 12.0 |
-| BB leads the flop | 7% | 9% | 10% | 12% | 13% |
-| BTN bets when checked to (1/3 / 3/4) | 70% (45 / 25) | 71% (47 / 23) | 69% (43 / 26) | 68% (40 / 28) | 67% (41 / 26) |
-| BB vs a flop bet: fold / call / raise | 54 / 22 / 24% | 52 / 21 / 26% | 51 / 25 / 24% | 50 / 25 / 25% | 49 / 24 / 27% |
-| BTN vs a lead: fold / call / raise | 26 / 34 / 41% | 28 / 33 / 39% | 28 / 34 / 39% | 30 / 32 / 38% | 29 / 36 / 34% |
-| BTN bets the turn after a checked flop | 61% | 54% | 52% | 50% | 51% |
-| checked down on every street | 4% | 5% | 5% | 5% | 6% |
-| all-in before the river | 4.3% | 2.9% | 1.8% | 0.7% | 0.2% |
+| BB leads the flop | 8% | 10% | 11% | 14% | 14% |
+| BTN bets when checked to (1/3 / 3/4) | 76% (50 / 26) | 76% (53 / 23) | 72% (45 / 27) | 72% (43 / 29) | 76% (51 / 25) |
+| BB vs a flop bet: fold / call / raise | 54 / 25 / 21% | 52 / 29 / 19% | 50 / 29 / 20% | 49 / 29 / 22% | 48 / 30 / 23% |
+| BTN vs a lead: fold / call / raise | 24 / 39 / 37% | 25 / 40 / 35% | 25 / 43 / 32% | 26 / 43 / 32% | 25 / 44 / 31% |
+| BTN bets the turn after a checked flop | 61% | 56% | 57% | 54% | 57% |
+| checked down on every street | 4% | 4% | 4% | 4% | 4% |
+| all-in before the river | 5.1% | 2.6% | 1.5% | 0.6% | 0.1% |
 
 ![BTN bets the flop, limped pots](output/limped_pots/limped_btn_bets_flop.png)
 
-* **When the BB checks, the BTN bets about 70%, like a c-bet.** Nobody has shown strength preflop, so the
+* **When the BB checks, the BTN bets about 75%, like a c-bet.** Nobody has shown strength preflop, so the
   BTN's position does the work.
-  * **air bets 72–79%** (mostly small)
-  * **top pairs bet 87–94%**
-  * **middle / weak pairs check more as stacks get deeper** (65% → 43%)
-  * **two pair+ slowplays at 10bb** (bets 60%) **but bets 90–95% at 15–25bb**
+  * **air bets 78–83%** (mostly small)
+  * **top pairs bet 90–94%**
+  * **middle / weak pairs check more as stacks get deeper** (bet 66% at 10bb, 49–59% at 15–25bb)
+  * **two pair+ slowplays at 10bb** (bets 70%) **but bets 92–96% at 15–25bb**
 * **The BB defends by hand strength:**
-  * **air folds 86–93%**
-  * **weak draws fold 26–40%**, much less than in raised pots (48–64%), because the limped pot gives a
+  * **air folds 85–92%**
+  * **weak draws fold 24–38%**, much less than in raised pots (46–65%), because the limped pot gives a
     better price against a small bet
-  * **top pairs and better almost never fold**, and raise 47–86%: two pair+ raises more as stacks get deeper
-* **The BB leads 7–13%,** mostly top pair (23–27%) and two pair+ (13–35%). The BTN raises those leads 34–41%.
+  * **top pairs and better almost never fold**, and raise 40–77%: two pair+ raises more as stacks get
+    deeper (40% at 10bb, 77% at 25bb)
+* **The BB leads 8–14%,** mostly top pair (21–28%) and two pair+ (16–33%). The BTN raises those leads 31–37%.
 
 Data: `postflop_summary.csv`, `postflop_by_hand.csv`; also `limped_bb_leads_flop.png` and
 `limped_bb_folds_to_bet.png`.
 
 **Caveats:**
-* The whole-hand model's absolute realization has the same open question as experiment 16: its BB
-  check-raises about 2× as often as TexasSolver's. The relative version is the safer read.
+* The absolute version relies on the whole-hand model's postflop play. Its check-raise level now matches
+  TexasSolver (experiment 22), but the BB still over-folds air to small bets. The relative version is the
+  safer read.
 * One seed per model. The limped / raised ratio varies 0.87–1.02 across stacks.
 
 ## Experiment 22: Why the BB check-raised twice as often as TexasSolver
@@ -1570,8 +1579,10 @@ causes are about the game the model plays, so each was changed to match the solv
 * **Two pair slowplays more than the solver's** (raises 57–62% vs 93%).
 * **Which flops get check-raised most still doesn't match the solver well** (per-flop correlation 0.35–0.42).
   The level now matches; the board-by-board pattern doesn't yet.
-* **The BB's total result barely changes (−0.83 to −0.88bb per called pot),** so experiments 15–21's
-  values hold up. Their check-raise frequencies by hand (especially pairs) are too high.
+* **The BB's total result barely changes (−0.83 to −0.88bb per called pot),** so the values in earlier
+  experiments hold up, but their check-raise frequencies by hand (especially pairs) were too high.
+  **Experiments 18–21 have been retrained with the pot-sized raise** (sections above). Experiments 15–17
+  still use the old 2.5x / 4x raises.
 
 Data: `model_stats.csv`, `solver_agreement.csv`, `xr_by_bucket.csv`; also `xr_level.png`.
 
@@ -1613,11 +1624,11 @@ play, averaged over all boards:
 
 ## Next steps
 
-1. **Use pot-sized raises from now on** (`raise_pot=(0.5,)`, experiment 22). Optionally split "air" into
-   ace-high / other, so the BB can defend ace-high air like the solver.
+1. **Split "air" into ace-high / other**, so the BB can defend ace-high air like the solver (experiment 22).
+   New models use pot-sized raises (`OPTS_POT`).
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
 3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.
 4. **One consistent realization:** feed the whole-hand model's values for raised *and* limped pots back
-   into experiments 18–20 at every stack (experiment 21's absolute version), retrained with pot-sized raises.
+   into experiments 18–20 at every stack (experiment 21's absolute version).
 5. **Multiway** play.

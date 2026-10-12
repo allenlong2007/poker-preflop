@@ -29,7 +29,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
-from open_size_study import OPTS
+from open_size_study import OPTS_POT as OPTS
 from preflop import fullgame as fg
 from preflop.cards import HANDS, n_combos
 from preflop.plots import action_grid, heatmap, small_multiples, stacked_bars
@@ -44,7 +44,6 @@ for _d in (CACHE, PRE):
 BATCHES, HANDS_PER_BATCH, EVAL_HANDS = (2, 15_000, 3_000) if QUICK else (250, 60_000, 100_000)
 FIT = ROOT / "output" / "simulated_realization_pot_odds" / "simulated_fit.csv"
 EXP18 = ROOT / "output" / "donk_sizes_stacks" / "cache"
-EXP16 = ROOT / "output" / "open_sizes" / "cache" / "model_2_25.npz"
 
 STACKS = [20, 25, 30, 40, 50, 75, 100]
 OPENS = [2.0, 2.25, 2.5, 2.75, 3.0]
@@ -79,7 +78,7 @@ def implied_r_oop(stack):
     """BB realization that makes the preflop model's called-pot value match the whole-hand model."""
     a, _ = fit_params()
     p = np.load(EXP18 / f"preflop_2_25_{stack}.npz")
-    model = EXP16 if stack == 100 else EXP18 / f"stack_{stack}.npz"
+    model = EXP18 / f"stack_{stack}.npz"
     target = float(np.load(model)["value_btn"]) - CALIB_OPEN          # BTN net per called pot
     w = W * p["btn_range"][:, None] * p["bb_range"][None, :]
     val = lambda r: float((Payoffs(E, CALIB_OPEN, 7.0, stack, 1.0, r, a).call_open * w).sum() / w.sum())
@@ -227,7 +226,6 @@ def postflop_rows(stack, s, d):
         f = node_freq(d, 0, "bb_vs_bet", cell_mask(shp(0, "bb_vs_bet"), size=k))
         row.update({f"vs_{n}_fold": f[0], f"vs_{n}_call": f[1], f"vs_{n}_raise": f[2:].sum()})
     f = node_freq(d, 0, "bb_vs_bet")
-    row["xr_big_share"] = f[3] / max(f[2] + f[3], 1e-12)                  # 4x raises among check-raises
     row["turn_lead_after_call"] = 1 - node_freq(d, 1, "bb_first", cell_mask(shp(1, "bb_first"), lines=BTN_LINES))[0]
     for st, name in ((1, "turn"), (2, "river")):
         f = node_freq(d, st, "bb_vs_bet", cell_mask(shp(st, "bb_vs_bet"), lines=BTN_LINES))
@@ -310,8 +308,8 @@ def report():
             r, h = postflop_rows(stack, s, np.load(path))
             post.append(r)
             hands += h
-    if os.path.exists(EXP16):
-        r, h = postflop_rows(100, 2.25, np.load(EXP16))
+    if (EXP18 / "stack_100.npz").exists():
+        r, h = postflop_rows(100, 2.25, np.load(EXP18 / "stack_100.npz"))
         post.append(r)
         hands += h
     if post:
