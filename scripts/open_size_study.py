@@ -219,9 +219,15 @@ def model_vs_solver(s, d, flops):
         s_btn, s_bb = sc.solver_flop(flop)
         cards = [eval7.Card(c) for c in flop.split()]
         t = flop_texture(cards)
-        btn_b = np.array([fg.fine_bucket(hole(c), cards) for c in s_btn.combo])
+        ace = btn_sig.shape[2] > fg.NB                                 # model trained with opts["ace_air"]
+
+        def bucket(c):
+            b = fg.fine_bucket(hole(c), cards)
+            return fg.ACE_AIR if ace and b == 11 and "A" in (c[0], c[2]) else b
+
+        btn_b = np.array([bucket(c) for c in s_btn.combo])
         m_btn = btn_sig[t, 0, btn_b]                                  # check, 1/3, 3/4
-        bo = np.array([fg.fine_bucket(hole(c), cards) for c in s_bb.combo])
+        bo = np.array([bucket(c) for c in s_bb.combo])
         m_bb = bb_sig[t, 0, bo, s_bb["size"].to_numpy()]              # fold, call, raise(s)
         w_btn = s_btn["class"].map(wbtn).to_numpy()
         w_bb = s_bb["class"].map(wbb).to_numpy() * first[t, 0, bo, 0]  # model BB range that checked
@@ -238,10 +244,11 @@ def model_vs_solver(s, d, flops):
                 row[f"solver_bb_{a}_vs_{size}"] = float((sv[sel] * w_bb_solver[sel]).sum() / w_bb_solver[sel].sum())
                 row[f"model_bb_{a}_vs_{size}"] = float((mv[sel] * w_bb[sel]).sum() / w_bb[sel].sum())
         rows.append(row)
-        for b in range(fg.NB):
+        names = fg.BUCKETS_ACE if ace else fg.BUCKETS
+        for b in range(len(names)):
             mb = btn_b == b
             if w_btn[mb].sum() > 0:
-                bucket_rows.append({"open": s, "flop": flop, "player": "btn", "bucket": fg.BUCKETS[b],
+                bucket_rows.append({"open": s, "flop": flop, "player": "btn", "bucket": names[b],
                                     "weight": w_btn[mb].sum(),
                                     "solver_bet": float(((1 - s_btn.check[mb]) * w_btn[mb]).sum() / w_btn[mb].sum()),
                                     "model_bet": float(((1 - m_btn[mb, 0]) * w_btn[mb]).sum() / w_btn[mb].sum())})
@@ -249,7 +256,7 @@ def model_vs_solver(s, d, flops):
                 mo = (bo == b) & (s_bb["size"] == k).to_numpy()
                 if w_bb_solver[mo].sum() > 0:
                     bucket_rows.append({"open": s, "flop": flop, "player": f"bb_vs_{'small' if k == 0 else 'big'}",
-                                        "bucket": fg.BUCKETS[b], "weight": w_bb_solver[mo].sum(),
+                                        "bucket": names[b], "weight": w_bb_solver[mo].sum(),
                                         "solver_fold": float((s_bb["fold"][mo] * w_bb_solver[mo]).sum() / w_bb_solver[mo].sum()),
                                         "model_fold": float((m_bb[mo, 0] * w_bb[mo]).sum() / max(w_bb[mo].sum(), 1e-12)),
                                         "solver_raise": float((s_bb["raise"][mo] * w_bb_solver[mo]).sum() / w_bb_solver[mo].sum()),

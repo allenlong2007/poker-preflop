@@ -32,3 +32,27 @@ strong draw,0.3892,0.548,0.0002,0.0371,solver tree
 two pair,0.9292,0.6166,0.0,0.0065,solver tree
 weak draw,0.3038,0.2741,0.0472,0.0991,solver tree
 weak pair,0.1146,0.0987,0.0001,0.0102,solver tree
+ace-high air,0.0723,0.2458,0.1492,0.5665,pot raise + ace air
+air,0.0496,0.0439,0.7186,0.9285,pot raise + ace air
+middle pair,0.0705,0.2595,0.0001,0.0101,pot raise + ace air
+overcards,0.1992,0.0642,0.2222,0.4392,pot raise + ace air
+set / trips,0.8531,0.845,0.0,0.0001,pot raise + ace air
+straight or better,0.9996,0.8446,0.0,0.0064,pot raise + ace air
+strong draw,0.3892,0.4983,0.0002,0.0506,pot raise + ace air
+"top pair, T+ kicker",0.2762,0.2583,0.0,0.0121,pot raise + ace air
+"top pair, weak kicker",0.1769,0.2717,0.0,0.0062,pot raise + ace air
+two pair,0.9292,0.6052,0.0,0.0056,pot raise + ace air
+weak draw,0.3038,0.1719,0.0472,0.0852,pot raise + ace air
+weak pair,0.1146,0.3781,0.0001,0.0122,pot raise + ace air
+ace-high air,0.0723,0.2322,0.1492,0.4319,solver tree + ace air
+air,0.0496,0.0339,0.7186,0.9536,solver tree + ace air
+middle pair,0.0705,0.0642,0.0001,0.0308,solver tree + ace air
+overcards,0.1992,0.0591,0.2222,0.6162,solver tree + ace air
+set / trips,0.8531,0.7051,0.0,0.0001,solver tree + ace air
+straight or better,0.9996,0.9102,0.0,0.003,solver tree + ace air
+strong draw,0.3892,0.5739,0.0002,0.0333,solver tree + ace air
+"top pair, T+ kicker",0.2762,0.234,0.0,0.0384,solver tree + ace air
+"top pair, weak kicker",0.1769,0.2552,0.0,0.0232,solver tree + ace air
+two pair,0.9292,0.7211,0.0,0.0083,solver tree + ace air
+weak draw,0.3038,0.2191,0.0472,0.1051,solver tree + ace air
+weak pair,0.1146,0.1218,0.0001,0.0133,solver tree + ace air

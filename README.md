@@ -1622,10 +1622,47 @@ play, averaged over all boards:
   little: the hands involved are close to break-even. An "ace-high air" group would be the next refinement
   if this matters.
 
+## Experiment 23: Giving ace-high air its own hand group
+
+`scripts/xr_level_study.py` (same commands; two new variants). New in `fullgame.py`: **`opts["ace_air"]`**
+puts air hands holding an ace (no pair, no draw) in a 13th hand group. The default stays 12 groups, and a
+quick training run gives bit-identical values before and after.
+
+Experiment 22 found the BB folds 42% to a 1/3-pot c-bet vs the solver's 29%, mostly because it folds
+nearly all air: the solver keeps ace-high air (folds only 15%). Both 2.25bb / 100bb models (pot raise,
+and the solver-like tree) were retrained with ace-high air split out.
+
+![BB folds by hand](output/xr_level/fold_by_bucket.png)
+
+(In the three 12-group columns, "air" still includes ace-high air.)
+
+| On the 12 solved flops | TexasSolver | pot raise | + ace air | solver tree | + ace air |
+|---|---|---|---|---|---|
+| BB folds **ace-high air** vs 1/3 | **15%** | (90%, inside "air") | **57%** | (91%, inside "air") | **43%** |
+| BB folds other air vs 1/3 | 72% | – | 93% | – | 95% |
+| BB folds vs 1/3, all hands | 29% | 42% | 43% | 42% | 42% |
+| BB check-raises vs 1/3 | 18% | 20% | 19% | 17% | 16% |
+| BB net per called pot (all flops) | – | −0.88 | −0.89 | −0.83 | −0.84 |
+
+* **The split works for the hands it targets.** Once the model can see them, ace-high air is defended far
+  more: it folds 43–57% instead of ~90%. Its "what if" value backs this up: calling is **+0.40bb** better
+  than folding (all boards, solver tree), and the model now calls 64% of the time and folds only 21%.
+* **The overall fold rate doesn't move** (42–43%). Ace-high air is only ~3% of the BB's checking range,
+  and the remaining air folds slightly *more* (93–95%), because the defended aces are no longer averaged
+  in.
+* **The rest of the gap is ordinary air.** The solver defends 28% of non-ace air (it folds 72%) and 78% of
+  overcards. For the model, calling with ordinary air loses **0.45bb** vs folding, so it folds. The
+  solver's floats depend on card details the 13 groups don't capture (backdoor combinations, blockers,
+  specific runouts). Each such hand is close to break-even, so the gap costs little.
+* **Kept as an option, not the new default.** It doesn't change the BB's results or the check-raise
+  level, and it adds a group to every table.
+
+Data: `xr_by_bucket.csv` and `whatif_by_hand_solver_tree_plus_ace_air.csv`.
+
 ## Next steps
 
-1. **Split "air" into ace-high / other**, so the BB can defend ace-high air like the solver (experiment 22).
-   New models use pot-sized raises (`OPTS_POT`).
+1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
+   (`ace_air`, experiment 23); the remaining air gap vs the solver would need card-level features.
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
 3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.

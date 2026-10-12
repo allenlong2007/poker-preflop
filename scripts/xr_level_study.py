@@ -47,8 +47,11 @@ VARIANTS = {
                               {"lead": (2 / 3,), "bet": (2 / 3,)},
                               {"lead": (3 / 4,), "bet": (3 / 4,)})},
 }
+# Experiment 23: the same two trees with ace-high air as its own hand group (opts["ace_air"]).
+VARIANTS["pot raise + ace air"] = {**VARIANTS["pot raise"], "ace_air": True}
+VARIANTS["solver tree + ace air"] = {**VARIANTS["solver tree"], "ace_air": True}
 FOCUS = ["two pair", "overpair", "top pair, T+ kicker", "top pair, weak kicker", "middle pair", "weak pair",
-         "strong draw", "weak draw", "overcards", "air"]
+         "strong draw", "weak draw", "overcards", "air", "ace-high air"]
 
 
 def path_for(name):
@@ -81,8 +84,9 @@ def model_stats(name, d):
     row = {"variant": name, "bb_net": 2.25 - float(d["value_btn"])}
     f = node_freq(d, 0, "btn_vs_check")
     row.update({"btn_cbet": 1 - f[0], "btn_cbet_small": f[1]})
+    air = [10, 11, 12] if shp[2] > fg.NB else [10, 11]
     row["btn_air_cbet"] = 1 - node_freq(d, 0, "btn_vs_check", cell_mask(d["reach_0_btn_vs_check"].shape,
-                                                                        buckets=[10, 11]))[0]
+                                                                        buckets=air))[0]
     for k, n in enumerate(("1/3", "3/4")):
         f = node_freq(d, 0, "bb_vs_bet", cell_mask(shp, size=k))
         row.update({f"bb_fold_vs_{n}": f[0], f"bb_call_vs_{n}": f[1], f"bb_xr_vs_{n}": f[2:].sum()})
@@ -125,48 +129,52 @@ def report():
                                             + list(ag[ag.decision == "bb_raise_vs_big"].model)},
                  "BB check-raise frequency on the 12 solved flops", "Share of the BB's checking range",
                  OUT / "xr_level.png")
-    piv = bk.pivot(index="bucket", columns="variant", values="model_raise")
-    piv.insert(0, "TexasSolver", bk[bk.variant == bk.variant.iloc[0]].set_index("bucket").solver_raise)
-    piv = piv.reindex([b for b in FOCUS if b in piv.index])[["TexasSolver"] + labels]
-    heatmap(piv, "BB check-raises a 1/3-pot c-bet, by hand (12 solved flops)", "", "BB hand",
-            OUT / "xr_by_bucket.png", fmt="pct", figsize=(7.5, 5.2))
+    for col, title, fname in (("raise", "BB check-raises a 1/3-pot c-bet", "xr_by_bucket.png"),
+                              ("fold", "BB folds to a 1/3-pot c-bet", "fold_by_bucket.png")):
+        piv = bk.pivot(index="bucket", columns="variant", values=f"model_{col}")
+        # Solver values from the last (13-group) variant: there, "air" excludes ace-high air.
+        piv.insert(0, "TexasSolver", bk.groupby("bucket")[f"solver_{col}"].last())
+        piv = piv.reindex([b for b in FOCUS if b in piv.index])[["TexasSolver"] + labels]
+        heatmap(piv, f"{title}, by hand (12 solved flops)", "", "BB hand", OUT / fname, fmt="pct",
+                figsize=(8.5 if len(labels) > 3 else 7.5, 5.4))
+        print(piv.round(2).to_string())
 
     pd.set_option("display.width", 220)
     print(st.round(3).to_string(index=False))
     print(ag.round(3).to_string(index=False))
-    print(piv.round(2).to_string())
 
 
-def whatif():
+def whatif(name="solver tree"):
     """Value of folding, calling and raising a flop c-bet for each BB hand group, vs the BTN's actual play.
 
     Values are averaged over all boards in a hand group (per-cell values are too noisy to compare)."""
-    d = np.load(path_for("solver tree"))
+    d = np.load(path_for(name))
     sigma = {(int(k.split("_")[1]), "_".join(k.split("_")[2:])): d[k] for k in d.files if k.startswith("sigma_")}
-    opts = {**VARIANTS["solver tree"], "eval_all": {(0, "bb_vs_bet")}}
+    opts = {**VARIANTS[name], "eval_all": {(0, "bb_vs_bet")}}
     r = oss.ranges_for(2.25)
     _, acc = fg.evaluate(r["btn_range"], r["bb_range"], sigma, opts, s=2.25, stack=100, n=60_000)
     av, reach, strat = -acc.avals[(0, "bb_vs_bet")], acc.reach[(0, "bb_vs_bet")], acc.strat[(0, "bb_vs_bet")]
     rows = []
     for size, sname in enumerate(("1/3", "3/4")):
-        for b, name in enumerate(fg.BUCKETS):
+        for b, hand in enumerate(fg.BUCKETS_ACE[:reach.shape[2]]):
             rr = reach[:, :, b, size].sum()
             if rr <= 0:
                 continue
             v = av[:, :, b, size].reshape(-1, av.shape[-1]).sum(0) / rr
             f = strat[:, :, b, size].reshape(-1, strat.shape[-1]).sum(0) / rr
-            rows.append({"vs": sname, "hand": name, "share": rr / reach[..., size].sum(),
+            rows.append({"vs": sname, "hand": hand, "share": rr / reach[..., size].sum(),
                          "call_minus_fold": v[1] - v[0], "raise_minus_call": v[2] - v[1],
                          "fold": f[0], "call": f[1], "raise": f[2]})
     df = pd.DataFrame(rows)
-    df.round(4).to_csv(OUT / "whatif_by_hand.csv", index=False)
+    df.round(4).to_csv(OUT / f"whatif_by_hand{'' if name == 'solver tree' else '_' + name.replace(' ', '_').replace('+', 'plus')}.csv",
+                       index=False)
     print(df.round(3).to_string(index=False))
 
 
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "report"
     if cmd == "whatif":
-        whatif()
+        whatif(" ".join(sys.argv[2:]) or "solver tree")
     elif cmd == "train":
         for name in sys.argv[2:] or [v for v in VARIANTS if v != "exp16"]:
             train(name.replace("_", " "))

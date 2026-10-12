@@ -52,6 +52,8 @@ BUCKETS = ["straight or better", "set / trips", "two pair", "overpair", "top pai
            "top pair, weak kicker", "middle pair", "weak pair", "strong draw", "weak draw", "overcards", "air"]
 RIVER_BUCKETS = BUCKETS[:8] + ["missed strong draw", "missed weak draw", "overcards", "air"]
 NB = len(BUCKETS)
+ACE_AIR = NB                       # opts["ace_air"]: air with an ace in hand gets its own bucket (index 12)
+BUCKETS_ACE = BUCKETS + ["ace-high air"]
 STRONG = (0, 1, 2)                 # hands that can slowplay
 MEDIUM = (4, 5, 6, 7)              # one-pair hands below an overpair: check-call candidates
 WEAK = (9, 10, 11)                 # bluffing hands (weak draws, overcards, air); 8 = strong draw (semi-bluff)
@@ -96,7 +98,7 @@ def table_shapes(opts):
             dims, a = n_actions(kind, s, opts)
             if 0 in dims:
                 continue
-            shapes[(s, kind)] = (N_TEX[s], N_LINES[s], NB) + dims + (a,)
+            shapes[(s, kind)] = (N_TEX[s], N_LINES[s], n_buckets(opts)) + dims + (a,)
     return shapes
 
 
@@ -156,7 +158,11 @@ class Hand:
     __slots__ = ("i", "j", "tex", "bb", "btn", "r")
 
 
-def deal(rng, i, j):
+def n_buckets(opts):
+    return NB + 1 if opts.get("ace_air") else NB
+
+
+def deal(rng, i, j, ace_air=False):
     btn = COMBOS[i][rng.integers(len(COMBOS[i]))]
     bb = COMBOS[j][rng.integers(len(COMBOS[j]))]
     if set(btn) & set(bb):
@@ -172,6 +178,8 @@ def deal(rng, i, j):
         for n in (3, 4, 5):
             prev = fine_bucket(hole, board[:n], prev)
             bs.append(prev)
+        if ace_air and 12 in (hole[0].rank, hole[1].rank):
+            bs = [ACE_AIR if b == 11 else b for b in bs]      # air (no pair, no draw) holding an ace
         setattr(h, name, tuple(bs))
     v_b, v_o = eval7.evaluate(list(btn) + board), eval7.evaluate(list(bb) + board)
     h.r = 1.0 if v_b > v_o else 0.5 if v_b == v_o else 0.0
@@ -182,7 +190,7 @@ def deal(rng, i, j):
 
 AGGRESSIVE = {"bb_first": lambda a: a >= 1, "btn_vs_check": lambda a: a >= 1, "bb_vs_bet": lambda a: a >= 2,
               "btn_vs_xr": lambda a: False, "btn_vs_lead": lambda a: a >= 2, "bb_vs_raise": lambda a: False}
-FLOP_CLASS = [0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 3, 3]     # BTN flop bucket -> strong / pair / draw / air (line stats)
+FLOP_CLASS = [0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 3, 3, 3]  # BTN flop bucket -> strong / pair / draw / air (line stats)
 
 
 def is_check_call(code):
@@ -216,7 +224,7 @@ class Game:
         if o.get("slowplay") is not None and s == 0 and kind == "bb_vs_bet" and b in STRONG:
             sp, nr = o["slowplay"], len(sig) - 2
             return np.array([0.0, sp] + [(1 - sp) / nr] * nr), False, None
-        if o.get("no_early_bluffs") and s < 2 and player == "bb" and b in WEAK:
+        if o.get("no_early_bluffs") and s < 2 and player == "bb" and (b in WEAK or b == ACE_AIR):
             allowed = np.array([not AGGRESSIVE[kind](a) for a in range(len(sig))])
             if not allowed.all():
                 sig = np.where(allowed, sig, 0.0)
@@ -355,6 +363,7 @@ class EvalAcc:
     """Reach-weighted statistics collected while evaluating the average strategy."""
 
     def __init__(self, shapes):
+        NB = next(iter(shapes.values()))[2]                              # 12, or 13 with opts["ace_air"]
         self.strat = {k: np.zeros(v) for k, v in shapes.items()}        # reach x policy
         self.reach = {k: np.zeros(v[:-1]) for k, v in shapes.items()}   # reach
         self.aggr = {p: np.zeros((3, NB)) for p in ("btn", "bb")}       # reach x P(bet / raise / lead)
@@ -393,18 +402,18 @@ def _regret_match(R):
     return np.where(tot > 0, pos / np.where(tot > 0, tot, 1), 1 / R.shape[-1])
 
 
-def _deal_many(btn_w, bb_w, n, seed):
+def _deal_many(btn_w, bb_w, n, seed, ace_air=False):
     rng = np.random.default_rng(seed)
     bi = rng.choice(169, size=n, p=btn_w / btn_w.sum())
     bj = rng.choice(169, size=n, p=bb_w / bb_w.sum())
-    return rng, [h for h in (deal(rng, i, j) for i, j in zip(bi, bj)) if h is not None]
+    return rng, [h for h in (deal(rng, i, j, ace_air) for i, j in zip(bi, bj)) if h is not None]
 
 
 def _train_worker(job):
     btn_w, bb_w, n, seed, regrets, opts, wt, s_pot, stack = job
     sigma = {k: _regret_match(R) for k, R in regrets.items()}
     acc = TrainAcc({k: R.shape for k, R in regrets.items()})
-    rng, hands = _deal_many(btn_w, bb_w, n, seed)
+    rng, hands = _deal_many(btn_w, bb_w, n, seed, opts.get("ace_air", False))
     for h in hands:
         for trav in ("btn", "bb"):
             Game(h, sigma, opts, "train", trav, rng, acc, wt).play(0, s_pot, stack)
@@ -414,7 +423,7 @@ def _train_worker(job):
 def _eval_worker(job):
     btn_w, bb_w, n, seed, sigma, opts, s_pot, stack = job
     acc = EvalAcc({k: v.shape for k, v in sigma.items()})
-    _, hands = _deal_many(btn_w, bb_w, n, seed)
+    _, hands = _deal_many(btn_w, bb_w, n, seed, opts.get("ace_air", False))
     total = 0.0
     for h in hands:
         v = Game(h, sigma, opts, "eval", acc=acc).play(0, s_pot, stack)

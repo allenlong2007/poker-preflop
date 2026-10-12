@@ -23,3 +23,19 @@ solver tree,bb_call_vs_small,0.5339,0.416,0.7334
 solver tree,bb_fold_vs_big,0.5178,0.5909,0.8613
 solver tree,bb_raise_vs_big,0.0983,0.1083,0.7907
 solver tree,bb_call_vs_big,0.3839,0.3007,0.9602
+pot raise + ace air,btn_check,0.3301,0.2532,0.9839
+pot raise + ace air,btn_small,0.2505,0.4444,0.8532
+pot raise + ace air,bb_fold_vs_small,0.2883,0.4286,0.7313
+pot raise + ace air,bb_raise_vs_small,0.1778,0.1846,0.4361
+pot raise + ace air,bb_call_vs_small,0.5339,0.3867,0.6958
+pot raise + ace air,bb_fold_vs_big,0.5178,0.6208,0.8705
+pot raise + ace air,bb_raise_vs_big,0.0983,0.1336,0.7713
+pot raise + ace air,bb_call_vs_big,0.3839,0.2457,0.9385
+solver tree + ace air,btn_check,0.3301,0.4482,0.8217
+solver tree + ace air,btn_small,0.2505,0.2765,0.7776
+solver tree + ace air,bb_fold_vs_small,0.2883,0.4192,0.7585
+solver tree + ace air,bb_raise_vs_small,0.1778,0.1609,0.3903
+solver tree + ace air,bb_call_vs_small,0.5339,0.4199,0.797
+solver tree + ace air,bb_fold_vs_big,0.5178,0.5943,0.8514
+solver tree + ace air,bb_raise_vs_big,0.0983,0.1015,0.667
+solver tree + ace air,bb_call_vs_big,0.3839,0.3042,0.9453
