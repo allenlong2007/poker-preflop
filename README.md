@@ -1729,7 +1729,7 @@ called pot (BTN hand i, BB hand j) = formula[i, j] + pot x (a[i] - b[j])
   * **suited kings** (K3s+)
   * **most suited queens and jacks** (Q7s+, J7s+, plus Q4s–Q5s, J3s, J5s)
   * **suited connectors and one-gappers** (T5s+, 97s+, 87s)
-  * **JTo, QTo and QJo**
+  * **JTo** (QTo and QJo 3-bet too, but with over 50% equity they count as value)
 
   This is the shape of a typical solver 3-bet range. Before, the BB 3-bet only hands with good equity
   (0.5% bluffs, experiment 15).
