@@ -1704,41 +1704,46 @@ called pot (BTN hand i, BB hand j) = formula[i, j] + pot x (a[i] - b[j])
 (bb per called pot, vs the formula; `adjustment_btn.png` for the BTN)
 
 * **Suited, connected hands do better:**
-  * **54s, 65s, 98s, 87s, J9s and JTo:** +0.5 to +0.65bb for the BB.
-  * **QJs, JTs, 65s, 75s:** +0.5 to +0.6bb for the BTN.
+  * **54s, 64s, 65s, 53s and 76s:** +0.5 to +0.65bb for the BB.
+  * **T9s, 65s, 76s:** about +0.5bb for the BTN.
   * **Premium pairs most of all:** AA +1.6bb for the BTN.
-* **Offsuit aces and kings do worse:** A2o–A7o and K2o–K5o lose 0.2–0.6bb. They make top pair with a
+* **Offsuit aces and kings do worse:** A2o–A9o and K2o–K6o lose 0.25–0.6bb. They make top pair with a
   weak kicker and get outplayed.
 * **Small pairs do worse:** 22 −0.5bb for the BTN, −0.25bb for the BB. They rarely improve and face
   overcards on most flops.
 
 ### The new ranges (shape version)
 
-| | Before (formula only) | After 4 rounds |
+| | Before (formula only) | After 8 rounds |
 |---|---|---|
-| BTN opens | 68% | **60%** |
-| BB fold / call / 3-bet | 10 / 69 / 21% | 12 / 61 / **27%** |
-| BB 3-bet size | 7.3bb | 6.2bb |
-| **BB 3-bet bluffs** (< 50% equity vs the open) | **0.5%** (22 only) | **7.2%** |
-| BTN folds to a 3-bet | 42% | 37% |
+| BTN opens | 68% | **59%** |
+| BB fold / call / 3-bet | 10 / 69 / 21% | 14 / 60 / **27%** |
+| BB 3-bet size | 7.3bb | 6.2bb (6.75bb is about as good) |
+| **BB 3-bet bluffs** (< 50% equity vs the open) | **0.5%** (22 only) | **6.8%** |
+| BTN folds to a 3-bet | 42% | 34% |
+| BB net per called pot (whole-hand model) | −0.86 | −1.03 |
 
 ![BB range after](output/realization_loop/shape/bb_range_after.png)
 
 * **The BB now 3-bet bluffs, with the hands that play well postflop:**
-  * **every suited king**
-  * **most suited queens and jacks** (Q7s+, J7s+, plus Q5s and J5s)
-  * **suited connectors and one-gappers** (T6s+, 95s+, 87s, 54s)
+  * **suited kings** (K3s+)
+  * **most suited queens and jacks** (Q7s+, J7s+, plus Q4s–Q5s, J3s, J5s)
+  * **suited connectors and one-gappers** (T5s+, 97s+, 87s)
   * **JTo, QTo and QJo**
 
   This is the shape of a typical solver 3-bet range. Before, the BB 3-bet only hands with good equity
   (0.5% bluffs, experiment 15).
 * **The BB stops 3-betting hands that play badly postflop:** A6o–A8o and 22–44 now call.
-* **The BTN opens fewer hands (68% → 60%):** it drops weak offsuit hands (K2o–K4o, Q2o–Q5o, J2o–J6o), A2o,
-  22 and 33. It adds suited connectors and gappers (32s–85s) and connected offsuit hands (65o–96o).
+* **The BTN opens fewer hands (68% → 59%):** it drops weak offsuit hands (K2o–K4o, Q2o–Q5o, J2o–J6o), A2o
+  and 22. It adds suited connectors and gappers (32s–85s) and connected offsuit hands (65o–87o).
+* **The BB folds only offsuit trash** (T2o–T3o, 9x–3x offsuit).
 
-**Convergence:** the BB's main action changes for 12% of hands in round 1, then 8%, 5% and 4%. The BTN's
-opening range was still shrinking 2–3 points per round at the end, so these ranges are close but not a
-fixed point.
+**Convergence:**
+* **The totals stopped moving after round 5.** Over rounds 5–8 the BTN opens 59–61%, the BB folds 12–14%,
+  calls 60–62% and 3-bets 26–28%. Bluffs stay at 6.8–7.3% and the BB nets −1.01 to −1.04bb per called pot.
+* **Individual hands still switch** (3–5% of the BB's hands per round, about the same share of the BTN's
+  range). That's the noise floor of the 1.5M-hand evaluation on near-indifferent hands, not a trend.
+* **The 3-bet size alternates** between 6.2 and 6.75bb, which are nearly tied.
 
 ### The absolute version doesn't settle
 
@@ -1752,8 +1757,8 @@ suited connectors, 98s–54s. Stronger damping or many more rounds would be need
 * 3-bet pots reuse the single-raised-pot adjustments scaled to their pot; the whole-hand model doesn't
   play 3-bet pots.
 * Only the 2.25bb / 100bb spot was run.
-* One seed per model. The shape version's BTN EV drifts down (−20 → −104 mbb per hand), partly from the
-  bigger, more effective BB 3-bet range.
+* One seed per model. The shape version's BTN EV in the preflop model falls from −20 to about −110 mbb per
+  hand (stable over rounds 5–8), partly from the bigger, more effective BB 3-bet range.
 
 Data: `shape/rounds.csv`, `shape/by_hand.csv`, `shape/range_changes.csv` (same for `absolute/`).
 
@@ -1763,6 +1768,6 @@ Data: `shape/rounds.csv`, `shape/by_hand.csv`, `shape/range_changes.csv` (same f
    (`ace_air`, experiment 23); the remaining air gap vs the solver would need card-level features.
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
-3. **Extend experiment 24:** more rounds to a true fixed point, other open sizes and stacks, limped pots,
-   and a stable absolute version (stronger damping).
+3. **Extend experiment 24:** other open sizes and stacks, limped pots, and a stable absolute version
+   (stronger damping).
 4. **Multiway** play.
