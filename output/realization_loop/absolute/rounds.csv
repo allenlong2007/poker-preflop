@@ -1,0 +1,6 @@
+stage,btn_opens,bb_fold,bb_call,bb_3bet,threebet_to,btn_folds_vs_3bet,bb_3bet_bluffs,bluff_hands,btn_ev_mbb,bb_net_called_pot
+round 0,0.6779,0.0995,0.6864,0.2141,7.3125,0.4233,0.0045,22,-20.0302,-0.8629
+round 1,0.8939,0.175,0.606,0.219,9.0,0.4111,0.0146,T7s 98s 97s 87s 86s,176.0619,-0.6769
+round 2,0.5714,0.3729,0.2918,0.3353,5.625,0.5171,0.2138,K3s K2s Q4s Q3s Q2s J6s J5s J3s J2s T6s T5s T4s T3s T2s 95s 94s 92s Q8o 85s 84s Q7o J7o T7o 74s 72s K6o 76o 65s 64s 63s 62s K5o 65o 54s 53s 52s K4o 54o 43s 42s K3o 32s A2o K2o,-172.8373,-0.3931
+round 3,0.807,0.3351,0.3444,0.3205,5.625,0.4181,0.0556,Q5s Q4s Q3s J7s T8s T7s T9o 98s 97s 87s 86s 85s 76s 65s 54s 43s 32s,44.4492,-0.7546
+final,0.8793,0.3318,0.378,0.2902,6.75,0.4718,0.0319,Q4s T8s T7s T9o 98s 97s 87s 86s 54s,145.9818,

@@ -25,7 +25,7 @@ def _regret_match(R):
 
 
 class Payoffs:
-    def __init__(self, E, s, t, stack, r_ip=1.0, r_oop=1.0, alpha=1.0):
+    def __init__(self, E, s, t, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, adj_ip=None, adj_oop=None):
         self.s, self.t, self.stack = s, t, stack
         # Equity realization in pots that still have postflop play:
         #   BTN's share of the pot = E^a * r_ip / (E^a * r_ip + (1-E)^a * r_oop)
@@ -40,6 +40,14 @@ class Payoffs:
         share = x / (x + y)
         self.call_open = 2 * s * share - s      # BB calls the open
         self.call_3bet = 2 * t * share - t      # BTN calls the 3-bet
+        if adj_ip is not None or adj_oop is not None:
+            # Per-hand postflop adjustments (fractions of the pot, e.g. from the whole-hand model): the BTN's
+            # hand i gains adj_ip[i] and the BB's hand j gains adj_oop[j] on top of the formula.
+            a = np.zeros(len(E)) if adj_ip is None else np.asarray(adj_ip, dtype=float)
+            b = np.zeros(len(E)) if adj_oop is None else np.asarray(adj_oop, dtype=float)
+            d = a[:, None] - b[None, :]
+            self.call_open = self.call_open + 2 * s * d
+            self.call_3bet = self.call_3bet + 2 * t * d
         self.call_jam = 2 * stack * E - stack   # BB calls the all-in (no postflop, raw equity)
         if t >= stack:                          # the 3-bet is all-in: calling it means no postflop
             self.call_3bet = self.call_jam
@@ -54,7 +62,7 @@ def _values(P, s2, s3, s4):
 
 
 def solve(E, W, open_size=2.25, threebet_size=None, stack=100, iters=3000, r_ip=1.0, r_oop=1.0,
-          alpha=1.0):
+          alpha=1.0, adj_ip=None, adj_oop=None):
     """Return the equilibrium strategy for one open size.
 
     open_size     -- BTN raises to this many bb
@@ -62,9 +70,10 @@ def solve(E, W, open_size=2.25, threebet_size=None, stack=100, iters=3000, r_ip=
     r_ip, r_oop   -- equity realization for BTN / BB in non-all-in pots (1.0 = raw equity);
                      scalars or one value per hand class
     alpha         -- strength effect on realization (1.0 = none); see Payoffs
+    adj_ip, adj_oop -- optional per-hand postflop adjustments, fractions of the pot; see Payoffs
     """
     t = threebet_size or 4 * open_size
-    P = Payoffs(E, open_size, t, stack, r_ip, r_oop, alpha)
+    P = Payoffs(E, open_size, t, stack, r_ip, r_oop, alpha, adj_ip, adj_oop)
     W = W / W.sum()                 # joint probability of each (BTN, BB) class pair
     n = len(W)
 

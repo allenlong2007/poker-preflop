@@ -373,6 +373,8 @@ class EvalAcc:
         self.value_by_flop = np.zeros(N_TEX[0])
         self.n_by_flop = np.zeros(N_TEX[0])
         self.value_by_flop_bucket = np.zeros(NB)
+        self.value_by_hand = {p: np.zeros(169) for p in ("btn", "bb")}   # BTN value, by each side's preflop hand
+        self.n_by_hand = {p: np.zeros(169) for p in ("btn", "bb")}
         self.lines = {}                      # full betting line -> reach by BTN flop class (strong/pair/draw/air)
         self.avals = {k: np.zeros(v) for k, v in shapes.items()}       # reach x value of each action ("what if")
 
@@ -432,6 +434,9 @@ def _eval_worker(job):
         acc.n_by_flop[h.tex[0]] += 1
         acc.n_flop_bucket[h.bb[0]] += 1
         acc.value_by_flop_bucket[h.bb[0]] += v
+        for p, cls in (("btn", h.i), ("bb", h.j)):
+            acc.value_by_hand[p][cls] += v
+            acc.n_by_hand[p][cls] += 1
     return acc, total, len(hands)
 
 
@@ -500,6 +505,8 @@ def evaluate(btn_range, bb_range, sigma, opts, s=2.25, stack=100, n=200_000, see
         for p in ("btn", "bb"):
             acc.aggr[p] += other.aggr[p]
             acc.decisions[p] += other.decisions[p]
+            acc.value_by_hand[p] += other.value_by_hand[p]
+            acc.n_by_hand[p] += other.n_by_hand[p]
         for name in ("callchain", "n_flop_bucket", "value_by_flop", "n_by_flop", "value_by_flop_bucket"):
             setattr(acc, name, getattr(acc, name) + getattr(other, name))
         for key, arr in other.lines.items():

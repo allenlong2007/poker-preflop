@@ -1,0 +1,6 @@
+from,to,bb_hands_changed,btn_open_change
+round 0,round 1,0.1222,0.1291
+round 1,round 2,0.083,0.0814
+round 2,round 3,0.0498,0.0351
+round 3,round 4,0.0437,0.0336
+round 4,final,0.0603,0.0274

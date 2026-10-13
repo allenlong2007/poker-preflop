@@ -1659,13 +1659,110 @@ and the solver-like tree) were retrained with ace-high air split out.
 
 Data: `xr_by_bucket.csv` and `whatif_by_hand_solver_tree_plus_ace_air.csv`.
 
+## Experiment 24: Preflop ranges from postflop values (2.25bb open, 100bb)
+
+`scripts/realization_loop.py` (`run <version> [rounds]` / `report <version>`). New in `solver.py`:
+**per-hand postflop adjustments** (`adj_ip` / `adj_oop`). New in `fullgame.py`: the evaluation records each
+side's result by preflop hand.
+
+The preflop solver values every called pot with one realization formula for all 169 hands, so it never
+learns that some hands play better after the flop than their equity says. Here the whole-hand model
+measures that for each starting hand, and the result goes back into the preflop solver:
+
+```
+called pot (BTN hand i, BB hand j) = formula[i, j] + pot x (a[i] - b[j])
+```
+
+* **a[i]** is how much better the BTN's hand i does postflop than the formula says (as a share of the
+  pot); **b[j]** is the same for the BB's hand j.
+* **Additive, not a realization multiplier.** A multiplier caps a hand's value at the whole pot, and
+  strong hands win more than the pot postflop, so the first attempt's fit blew up.
+
+**Each round:**
+1. **Preflop solve** with a and b (the BB picks its best 3-bet size).
+2. **Train the whole-hand model** on the resulting ranges (pot-sized raises, 250 batches).
+3. **Evaluate 1.5M hands** and average each side's result by preflop hand.
+4. **Refit a and b.**
+
+**How the fit and the loop are set up:**
+* **Hands nobody plays** get adjustments from a smooth fit on hand features; noisy hands are shrunk
+  toward it.
+* **The fit reproduces the per-hand averages** within 0.002–0.008bb, weighted by how often each hand is
+  played.
+* **Damping:** each round moves halfway from the old adjustments to the new fit. The undamped loop
+  oscillated, with the BTN opening 68% → 100% → 96% → 86%.
+
+**Two versions:**
+* **shape:** each side's adjustments are centred on zero. The formula's overall BTN-vs-BB level stays;
+  only which hands play well postflop changes.
+* **absolute:** the BTN's overall postflop edge comes along too.
+
+### Which hands play better or worse postflop than their equity
+
+![BB postflop value by hand](output/realization_loop/shape/adjustment_bb.png)
+
+(bb per called pot, vs the formula; `adjustment_btn.png` for the BTN)
+
+* **Suited, connected hands do better:**
+  * **54s, 65s, 98s, 87s, J9s and JTo:** +0.5 to +0.65bb for the BB.
+  * **QJs, JTs, 65s, 75s:** +0.5 to +0.6bb for the BTN.
+  * **Premium pairs most of all:** AA +1.6bb for the BTN.
+* **Offsuit aces and kings do worse:** A2o–A7o and K2o–K5o lose 0.2–0.6bb. They make top pair with a
+  weak kicker and get outplayed.
+* **Small pairs do worse:** 22 −0.5bb for the BTN, −0.25bb for the BB. They rarely improve and face
+  overcards on most flops.
+
+### The new ranges (shape version)
+
+| | Before (formula only) | After 4 rounds |
+|---|---|---|
+| BTN opens | 68% | **60%** |
+| BB fold / call / 3-bet | 10 / 69 / 21% | 12 / 61 / **27%** |
+| BB 3-bet size | 7.3bb | 6.2bb |
+| **BB 3-bet bluffs** (< 50% equity vs the open) | **0.5%** (22 only) | **7.2%** |
+| BTN folds to a 3-bet | 42% | 37% |
+
+![BB range after](output/realization_loop/shape/bb_range_after.png)
+
+* **The BB now 3-bet bluffs, with the hands that play well postflop:**
+  * **every suited king**
+  * **most suited queens and jacks** (Q7s+, J7s+, plus Q5s and J5s)
+  * **suited connectors and one-gappers** (T6s+, 95s+, 87s, 54s)
+  * **JTo, QTo and QJo**
+
+  This is the shape of a typical solver 3-bet range. Before, the BB 3-bet only hands with good equity
+  (0.5% bluffs, experiment 15).
+* **The BB stops 3-betting hands that play badly postflop:** A6o–A8o and 22–44 now call.
+* **The BTN opens fewer hands (68% → 60%):** it drops weak offsuit hands (K2o–K4o, Q2o–Q5o, J2o–J6o), A2o,
+  22 and 33. It adds suited connectors and gappers (32s–85s) and connected offsuit hands (65o–96o).
+
+**Convergence:** the BB's main action changes for 12% of hands in round 1, then 8%, 5% and 4%. The BTN's
+opening range was still shrinking 2–3 points per round at the end, so these ranges are close but not a
+fixed point.
+
+### The absolute version doesn't settle
+
+With the whole-hand model's full postflop edge, the BTN opens **68% → 89% → 57% → 81%**, and the BB
+3-bets 22% → 34% → 32% even with damping. Its BTN EV jumps between −0.17 and +0.18bb per hand. That edge
+is large (experiment 21: the model's BB realizes ~0.62 vs the formula's 0.915) and partly comes from the
+BB over-folding (experiment 22), so each round over-corrects. The bluffs it finds are the same kind:
+suited connectors, 98s–54s. Stronger damping or many more rounds would be needed to get a stable answer.
+
+**Caveats:**
+* 3-bet pots reuse the single-raised-pot adjustments scaled to their pot; the whole-hand model doesn't
+  play 3-bet pots.
+* Only the 2.25bb / 100bb spot was run.
+* One seed per model. The shape version's BTN EV drifts down (−20 → −104 mbb per hand), partly from the
+  bigger, more effective BB 3-bet range.
+
+Data: `shape/rounds.csv`, `shape/by_hand.csv`, `shape/range_changes.csv` (same for `absolute/`).
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
    (`ace_air`, experiment 23); the remaining air gap vs the solver would need card-level features.
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
-3. **Preflop bluffs from postflop play:** feed the whole-hand values back into the preflop solver.
-4. **One consistent realization:** feed the whole-hand model's values for raised *and* limped pots back
-   into experiments 18–20 at every stack (experiment 21's absolute version).
-5. **Multiway** play.
+3. **Extend experiment 24:** more rounds to a true fixed point, other open sizes and stacks, limped pots,
+   and a stable absolute version (stronger damping).
+4. **Multiway** play.
