@@ -46,6 +46,9 @@ OPTS = {"donk": True, "sizes": SIZES, "raises": RAISES}
 # Experiment 22: TexasSolver's raise (50% of the pot after calling) fixes the BB's check-raise level.
 # Experiments 18-21 were retrained with it.
 OPTS_POT = {"donk": True, "sizes": SIZES, "raise_pot": (0.5,)}
+# Experiment 25: c-bet 1/3, 2/3 or pot (the best size set tested; 2/3 is used when a middle size exists).
+# This is the configuration for the head-to-head match bot.
+OPTS_MATCH = {**OPTS_POT, "sizes": ({"lead": SIZES[0]["lead"], "bet": (1 / 3, 2 / 3, 1.0)}, SIZES[1], SIZES[2])}
 QUICK = os.environ.get("OPEN_STUDY_QUICK") == "1"          # tiny end-to-end test run
 BATCHES, HANDS_PER_BATCH, EVAL_HANDS = (2, 15_000, 3_000) if QUICK else (250, 60_000, 150_000)
 SOLVER_OPEN = 3.0

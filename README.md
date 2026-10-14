@@ -1780,6 +1780,80 @@ suited connectors, 98s–54s. Stronger damping or many more rounds would be need
 Data per spot in `shape/` (2.25bb / 100bb), `shape_3_100/`, `shape_2.25_50/` and `absolute/`: `rounds.csv`,
 `by_hand.csv`, `range_changes.csv`, plus each spot's charts.
 
+## Experiment 25: Is a 2/3-pot c-bet "mathematically wrong" for the BTN?
+
+`scripts/cbet_size_study.py` (`train` / `report`), plus TexasSolver with flop sizes 33 / 66 / 100%.
+
+**The claim:** a common online rule says solvers never c-bet 2/3 pot as the BTN, so that size is "just
+wrong". Two checks, both at the 2.25bb open and 100bb:
+
+1. **TexasSolver** (medium tree) on six flops, with the BTN allowed to c-bet 33%, 66% or 100% pot.
+2. **The whole-hand model** (pot-sized raises) trained seven times, changing only the BTN's flop c-bet
+   sizes. The BB re-learns its best response each time, so the BTN's value per called pot shows what each
+   size set is worth.
+
+**A solver bug found on the way:** TexasSolver rounds bets to whole chips. With a 4.5bb pot entered as
+4.5, a "33%" c-bet became 1bb (22% pot) and "75%" became 3bb (67% pot). That affected every earlier
+solver comparison (experiments 14, 16, 22): their "small" and "big" c-bets were really about 22% and 67%.
+`solver_compare.py` now takes `SOLVER_CHIP_SCALE` (10 chips per bb makes the sizes accurate). The
+default stays 1 so the old results reproduce.
+
+### TexasSolver uses 2/3 pot, just not most of the time
+
+| Flop | Check | 33% | 66% | 100% |
+|---|---|---|---|---|
+| A♠7♦2♣ | 0% | 51% | **21%** | 28% |
+| K♥8♦3♣ | 2% | 84% | 9% | 6% |
+| K♦K♣4♠ | 5% | 76% | **19%** | 0% |
+| T♦9♥6♣ | 49% | 20% | 13% | 18% |
+| 7♣5♦3♥ | 72% | 4% | 14% | 10% |
+| J♥7♥2♥ | 39% | 3% | **26%** | 32% |
+| **Average** | 28% | 40% | **17%** | 16% |
+
+(share of the BTN's range, after the BB checks)
+
+* **The solver uses 2/3 on every flop** (9–26% of hands), even with both a small and a pot-sized option
+  available. The claim is false as stated.
+* **The small bet does most of the work on dry, high boards** (K83: 84%, KK4: 76%). On wet or low boards
+  the solver checks much more (753: 72%) and bets bigger when it bets (J♥7♥2♥: 2/3 or pot 58%).
+
+### What each size set is worth to the BTN (whole-hand model)
+
+![Value by size set](output/cbet_sizes/value_by_version.png)
+
+| BTN flop c-bet sizes | BTN net per called pot | vs current (bb / 100 called pots) | BTN c-bets |
+|---|---|---|---|
+| 1/3 only | +0.817 | −1.1 | 82% |
+| **2/3 only** | +0.802 | **−2.5** | 70% |
+| 3/4 only | +0.790 | −3.7 | 63% |
+| pot only | +0.777 | −5.0 | 55% |
+| 1/3 + 3/4 (current) | +0.828 | 0 | 81% |
+| **1/3 + 2/3 + pot** | **+0.832** | **+0.4** | 81% (40 / 25 / 15) |
+| 1/3 + 3/4 + 1.25x overbet | +0.827 | −0.1 | 80% |
+
+![Value by board](output/cbet_sizes/value_by_board.png)
+
+* **Where the claim is right: one size for everything.** If the BTN uses a single c-bet size, 2/3 pot
+  costs 2.5bb per 100 called pots vs the current two sizes, more than twice what 1/3-only costs (1.1).
+  Bigger single sizes cost more (pot only −5.0). A small bet keeps the BTN's whole range betting cheaply.
+  A 2/3 bet forces it to check more (70% vs 82% c-bets) and lets the BB fold its weakest hands for free.
+* **Where the claim is wrong: 2/3 as one of several sizes.** Given 1/3, 2/3 and pot, the model uses 2/3
+  on 25% of hands, mostly two pair+ (41%) and draws (27%). That set is the best one tested (+0.4bb / 100
+  vs current, within noise of it). A 1.25x overbet adds nothing.
+* **The best single size depends on the board:**
+  * **Small (1/3)** is best on paired boards (+1.5 vs current) and fine on K-, Q- and J-high boards.
+  * **2/3** is best on monotone boards: 1/3-only loses 10bb / 100 there, 2/3-only loses nothing.
+  * **Big sizes do better on connected boards** (pot only +0.2).
+  * This matches the solver: small on dry high-card boards, bigger on wet ones.
+* **Differences under about 1bb per 100 called pots are within the model's noise** (one training seed
+  per version). The single-size gaps (2.5–5) and the board patterns are well above it.
+
+**Applied:** `open_size_study.OPTS_MATCH` (BTN c-bets 1/3, 2/3 or pot; everything else as `OPTS_POT`) is
+the configuration for the heads-up match bot. The current `OPTS_POT` (1/3 + 3/4) stays as the reference
+for experiments 18–24.
+
+Data: `versions.csv`, `by_board.csv`, `size_usage.csv`, `solver_usage.csv`.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
@@ -1788,4 +1862,7 @@ Data per spot in `shape/` (2.25bb / 100bb), `shape_3_100/`, `shape_2.25_50/` and
    histories, instead of picking from three fixed profiles.
 3. **Extend experiment 24:** limped pots and short stacks below 50bb, a stable absolute version (stronger
    damping), and 3-bet pots played out by the whole-hand model.
-4. **Multiway** play.
+4. **Match bot:** a 100bb heads-up bot built on `OPTS_MATCH` (experiment 25) and experiment 24's ranges, with
+   a hand-history interface for PokerNow. Turn and river sizes deserve the same test as the flop c-bet.
+5. **Rerun the TexasSolver comparisons** (experiments 14, 16, 22) with accurate sizes (`SOLVER_CHIP_SCALE=10`).
+6. **Multiway** play.

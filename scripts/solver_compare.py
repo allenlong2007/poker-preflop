@@ -47,10 +47,17 @@ import os
 
 # Settings can also come from the environment, so other scripts can import this module:
 #   SOLVER_TREE (medium / simple / full), SOLVER_OPEN (BTN open size, default 2.25),
-#   SOLVER_RANGES (npz with btn_range / bb_range for that open; default: the 2.25bb ranges).
+#   SOLVER_RANGES (npz with btn_range / bb_range for that open; default: the 2.25bb ranges),
+#   SOLVER_FLOP_SIZES (flop bet sizes in % of pot, e.g. "33,66,100"; default 33,75),
+#   SOLVER_CHIP_SCALE (chips per bb; TexasSolver rounds bets to whole chips, so at the default 1 a "33%"
+#   c-bet into 4.5bb is 1bb = 22% and "75%" is 3bb = 67%; 10 makes the sizes accurate).
 TREE = os.environ.get("SOLVER_TREE") or (sys.argv[2] if __name__ == "__main__" and len(sys.argv) > 2 else "medium")
 OPEN = float(os.environ.get("SOLVER_OPEN", 2.25))
-_tag = TREE if OPEN == 2.25 else f"{TREE}_open{OPEN:g}"
+FLOP_SIZES = tuple(int(x) for x in os.environ.get("SOLVER_FLOP_SIZES", "33,75").split(","))
+CHIP_SCALE = int(os.environ.get("SOLVER_CHIP_SCALE", 1))
+_tag = (TREE if OPEN == 2.25 else f"{TREE}_open{OPEN:g}") + \
+    ("" if FLOP_SIZES == (33, 75) else "_f" + "-".join(map(str, FLOP_SIZES))) + \
+    ("" if CHIP_SCALE == 1 else f"_x{CHIP_SCALE}")
 OUT = ROOT / "output" / "solver_compare" / _tag
 RAW = ROOT / "output" / "solver_compare" / "raw" / _tag     # configs + JSON results (gitignored: large)
 OUT.mkdir(parents=True, exist_ok=True)
@@ -60,13 +67,13 @@ MODEL = ROOT / "output" / "bet_sizing" / "flop.npz"
 
 POT, STACK = 2 * OPEN, 100 - OPEN
 RAISE_PCT = 50
-THREADS = 3                             # per solve; several flops run in parallel (PARALLEL)
+THREADS = int(os.environ.get("SOLVER_THREADS", 3))   # per solve; several flops run in parallel (PARALLEL)
 PARALLEL = int(__import__("os").environ.get("SOLVER_PARALLEL", 5))
 ACCURACY = 0.3                          # target exploitability, % of the pot
 MAX_ITER = 150
 FLOPS = ["As 7d 2c", "Ah Kd 5h", "Kh 8d 3c", "Qd Jh 4d", "Td 9h 6c", "8s 6s 4d",
          "7c 5d 3h", "Jh 7h 2h", "Kd Kc 4s", "7h 7d 2s", "Ts 5c 2d", "9c 6c 5d"]
-BET_SIZES = {"flop": (33, 75), "turn": (66,), "river": (75,)}
+BET_SIZES = {"flop": FLOP_SIZES, "turn": (66,), "river": (75,)}
 
 
 def range_string(freqs):
@@ -75,7 +82,7 @@ def range_string(freqs):
 
 def config(flop, out_json, ranges):
     board = ",".join(flop.split())
-    lines = [f"set_pot {POT}", f"set_effective_stack {STACK}", f"set_board {board}",
+    lines = [f"set_pot {POT * CHIP_SCALE:g}", f"set_effective_stack {STACK * CHIP_SCALE:g}", f"set_board {board}",
              f"set_range_oop {range_string(ranges['bb'])}", f"set_range_ip {range_string(ranges['btn'])}"]
     for street, sizes in BET_SIZES.items():
         sz = ",".join(str(x) for x in sizes)
