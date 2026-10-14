@@ -1,4 +1,6 @@
-"""Experiment 24: preflop ranges from postflop values (one consistent realization), 2.25bb open, 100bb.
+"""Experiment 24: preflop ranges from postflop values (one consistent realization).
+
+Default spot: 2.25bb open, 100bb; others via LOOP_OPEN / LOOP_STACK.
 
 The preflop solver values every called pot with one realization formula (alpha = 1.25, r_oop = 0.915) for
 all 169 hands. Here the whole-hand model measures what each starting hand actually wins after the flop,
@@ -15,11 +17,11 @@ at the whole pot, while strong hands win more than the pot postflop.) Each round
     -> evaluate 1.5M hands, average the BTN's result by each side's preflop hand
     -> fit a, b so the formula plus adjustments matches those averages
 
-Hands a player never plays (no data) get adjustments from a smooth fit on hand features, and noisy hands
-are shrunk toward it. 3-bet pots get the same adjustments scaled to their pot (an approximation: the
+Hands a player never plays (no data) get adjustments from a smooth fit on hand features, limited to the
+range the data covers, and noisy hands are shrunk toward it. 3-bet pots get the same adjustments scaled to their pot (an approximation: the
 whole-hand model only plays single-raised pots).
 
-Round 0 has no adjustments (the usual preflop model) and reuses experiment 18's 100bb model. Later rounds
+Round 0 has no adjustments (the usual preflop model) and reuses experiment 18's model when there is one. Later rounds
 move halfway from the previous adjustments to the new fit (damping), so the loop settles instead of
 oscillating. Two versions:
 
@@ -30,6 +32,7 @@ oscillating. Two versions:
 Usage:
     python scripts/realization_loop.py run shape [rounds]      (~25 min per round, cached)
     python scripts/realization_loop.py report shape
+    LOOP_OPEN=3.0 LOOP_STACK=100 python scripts/realization_loop.py run shape 5     (other spots)
 """
 import os
 import sys
@@ -54,9 +57,12 @@ OUT = ROOT / "output" / ("realization_loop_quick" if QUICK else "realization_loo
 CACHE = OUT / "cache"                          # gitignored
 CACHE.mkdir(parents=True, exist_ok=True)
 BATCHES, HANDS_PER_BATCH, EVAL_HANDS = (2, 15_000, 20_000) if QUICK else (250, 60_000, 1_500_000)
-EXP18_100 = ROOT / "output" / "donk_sizes_stacks" / "cache" / "stack_100.npz"
+# Experiment 18's models (pot-sized raises, no adjustments) can stand in for round 0 at a 2.25bb open.
+EXP18 = {stack: ROOT / "output" / "donk_sizes_stacks" / "cache" / f"stack_{stack}.npz" for stack in (25, 50, 100)}
 FIT = ROOT / "output" / "simulated_realization_pot_odds" / "simulated_fit.csv"
-S, STACK = 2.25, 100
+S = float(os.environ.get("LOOP_OPEN", 2.25))       # the spot: BTN open size and effective stack
+STACK = int(os.environ.get("LOOP_STACK", 100))
+SPOT = "" if (S, STACK) == (2.25, 100) else f"_{S:g}_{STACK}"   # the original spot keeps its unsuffixed folders
 SHRINK = 500                                   # hands of data that weigh as much as the smooth fit
 DAMP = 0.5                                     # each round moves this far from the old adjustments to the new fit
 _EQ = np.load(ROOT / "data" / "equity_matrix.npz")
@@ -74,9 +80,10 @@ def pct(p, w=None):
 # ----------------------------------------------------------------------------- preflop
 
 def preflop(a, b):
-    """Equilibrium at the 2.25 open with per-hand postflop adjustments; the BB picks its best 3-bet size."""
+    """Equilibrium at open S with per-hand postflop adjustments; the BB picks its best 3-bet size."""
     kw = dict(stack=STACK, alpha=ALPHA, r_oop=R_OOP, adj_ip=a, adj_oop=b)
     ts = np.arange(2.5, 6.001, 0.25) * S
+    ts = np.append(ts[ts < STACK], float(STACK))         # plus an all-in 3-bet (matters at short stacks)
     evs = [-solve(E, W, S, t, iters=2000, **kw).btn_ev() for t in ts]
     t, _, edge = best_threebet(ts, np.array(evs))
     res = solve(E, W, S, t, iters=6000, **kw)
@@ -127,7 +134,11 @@ def fit_adjustments(m, btn_range, bb_range, mode="absolute"):
         has = n[q] > 0
         sw = np.sqrt(n[q][has])
         coef, *_ = np.linalg.lstsq(X[has] * sw[:, None], raw[has] * sw, rcond=None)
-        smooth = X @ coef
+        # Hands with no data (e.g. the BB's premiums, which it only 3-bets) are extrapolated from the feature
+        # fit; keep them inside the range well-measured hands cover (5th-95th percentile of hands with at least
+        # SHRINK hands of data), or a linear fit can run away.
+        lo, hi = np.percentile(raw[n[q] >= SHRINK], [5, 95])
+        smooth = np.clip(X @ coef, lo, hi)
         k = n[q] / (n[q] + SHRINK)
         out[q] = k * np.where(has, raw, 0.0) + (1 - k) * smooth
         out[q + "_raw"] = np.where(has, raw, np.nan)
@@ -144,11 +155,11 @@ def fit_adjustments(m, btn_range, bb_range, mode="absolute"):
 # ----------------------------------------------------------------------------- the loop
 
 def model_round(k, p, cache):
-    path = (CACHE if k == 0 else cache) / f"model_{k}.npz"     # round 0 is the same in every version
+    path = (CACHE / f"model_0{SPOT}.npz") if k == 0 else cache / f"model_{k}.npz"   # round 0: same in every version
     if path.exists():
         return np.load(path)
-    if k == 0 and not QUICK and EXP18_100.exists():
-        d = np.load(EXP18_100)              # experiment 18's 100bb model: no adjustments, near-identical ranges
+    if k == 0 and not QUICK and S == 2.25 and STACK in EXP18 and EXP18[STACK].exists():
+        d = np.load(EXP18[STACK])           # experiment 18's model: no adjustments, near-identical ranges
         sigma = {(int(x.split("_")[1]), "_".join(x.split("_")[2:])): d[x] for x in d.files if x.startswith("sigma_")}
     else:
         print(f"   training the whole-hand model, round {k}", flush=True)
@@ -166,7 +177,7 @@ def wavg_abs(r, n):
 
 
 def run(mode, rounds):
-    cache = CACHE / mode
+    cache = CACHE / (mode + SPOT)
     cache.mkdir(exist_ok=True)
     a, b = np.zeros(169), np.zeros(169)
     for k in range(rounds + 1):
@@ -186,14 +197,14 @@ def run(mode, rounds):
         d = np.load(path)
         a, b = a + DAMP * (d["fit_btn"] - a), b + DAMP * (d["fit_bb"] - b)
     final = cache / "final.npz"                        # the ranges implied by the last round's adjustments
-    if not final.exists():
-        np.savez(final, adj_btn=a, adj_bb=b, **preflop(a, b))
+    if not final.exists() or int(np.load(final).get("after_round", -1)) != rounds:
+        np.savez(final, adj_btn=a, adj_bb=b, after_round=rounds, **preflop(a, b))
 
 
 # ----------------------------------------------------------------------------- report
 
 def report(mode):
-    cache, out = CACHE / mode, OUT / mode
+    cache, out = CACHE / (mode + SPOT), OUT / (mode + SPOT)
     out.mkdir(exist_ok=True)
     rounds = sorted(int(f.stem.split("_")[1]) for f in cache.glob("round_*.npz"))
     stages = [(f"round {k}", np.load(cache / f"round_{k}.npz")) for k in rounds]
@@ -230,7 +241,7 @@ def report(mode):
     for name, d in (("before", first), ("after", last)):
         bpct, _ = threebet_bluffs(d)
         action_grid({"fold": d["bb_fold"], "call": d["bb_call"], "3-bet": d["bb_3bet"]},
-                    f"BB vs a 2.25bb open, 100bb, {name} (3-bet to {float(d['threebet_to']):.1f})",
+                    f"BB vs a {S:g}bb open, {STACK}bb, {name} (3-bet to {float(d['threebet_to']):.1f})",
                     out / f"bb_range_{name}.png",
                     subtitle=f"Fold {pct(d['bb_fold']):.0%}   Call {pct(d['bb_call']):.0%}   "
                              f"3-bet {pct(d['bb_3bet']):.0%} (bluffs {bpct:.1%} of hands)")

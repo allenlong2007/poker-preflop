@@ -1659,9 +1659,10 @@ and the solver-like tree) were retrained with ace-high air split out.
 
 Data: `xr_by_bucket.csv` and `whatif_by_hand_solver_tree_plus_ace_air.csv`.
 
-## Experiment 24: Preflop ranges from postflop values (2.25bb open, 100bb)
+## Experiment 24: Preflop ranges from postflop values
 
-`scripts/realization_loop.py` (`run <version> [rounds]` / `report <version>`). New in `solver.py`:
+`scripts/realization_loop.py` (`run <version> [rounds]` / `report <version>`; other spots via `LOOP_OPEN` /
+`LOOP_STACK`). New in `solver.py`:
 **per-hand postflop adjustments** (`adj_ip` / `adj_oop`). New in `fullgame.py`: the evaluation records each
 side's result by preflop hand.
 
@@ -1687,6 +1688,10 @@ called pot (BTN hand i, BB hand j) = formula[i, j] + pot x (a[i] - b[j])
 **How the fit and the loop are set up:**
 * **Hands nobody plays** get adjustments from a smooth fit on hand features; noisy hands are shrunk
   toward it.
+* **The smooth fit is limited to the range of well-measured hands** (5th–95th percentile of hands with at
+  least 500 samples). Without that, it could run away: the first version gave the BB's AA +52bb per pot at
+  the 3.0bb open, and its 55–TT −1.4 to −4bb at 2.25bb. Those hands only 3-bet, so they never get
+  called-pot data. All results below use the fixed fit; the first version is in commit 05e578a.
 * **The fit reproduces the per-hand averages** within 0.002–0.008bb, weighted by how often each hand is
   played.
 * **Damping:** each round moves halfway from the old adjustments to the new fit. The undamped loop
@@ -1703,47 +1708,57 @@ called pot (BTN hand i, BB hand j) = formula[i, j] + pot x (a[i] - b[j])
 
 (bb per called pot, vs the formula; `adjustment_btn.png` for the BTN)
 
+(2.25bb / 100bb shown; the same pattern holds at all three spots)
+
 * **Suited, connected hands do better:**
-  * **54s, 64s, 65s, 53s and 76s:** +0.5 to +0.65bb for the BB.
-  * **T9s, 65s, 76s:** about +0.5bb for the BTN.
-  * **Premium pairs most of all:** AA +1.6bb for the BTN.
-* **Offsuit aces and kings do worse:** A2o–A9o and K2o–K6o lose 0.25–0.6bb. They make top pair with a
-  weak kicker and get outplayed.
-* **Small pairs do worse:** 22 −0.5bb for the BTN, −0.25bb for the BB. They rarely improve and face
-  overcards on most flops.
+  * **65s, 75s, 76s, 87s, 98s, T9s:** +0.45 to +0.6bb for the BB. JTo too.
+  * **76s, 87s, 98s, JTs:** about +0.5 to +0.6bb for the BTN.
+  * **Premium pairs most of all:** AA +1.6 to +2.2bb for the BTN.
+* **Offsuit aces and kings do worse,** at every spot: A2o–A9o and K2o–K7o lose 0.45–0.9bb for the BTN and
+  0.25–0.55bb for the BB. They make top pair with a weak kicker and get outplayed.
+* **Small pairs do worse for the BTN** (22 −0.4 to −0.55bb): they rarely improve and face overcards on
+  most flops. For the BB the effect is small and mixed.
 
-### The new ranges (shape version)
+### The new ranges at three spots (shape version)
 
-| | Before (formula only) | After 8 rounds |
-|---|---|---|
-| BTN opens | 68% | **59%** |
-| BB fold / call / 3-bet | 10 / 69 / 21% | 14 / 60 / **27%** |
-| BB 3-bet size | 7.3bb | 6.2bb (6.75bb is about as good) |
-| **BB 3-bet bluffs** (< 50% equity vs the open) | **0.5%** (22 only) | **6.8%** |
-| BTN folds to a 3-bet | 42% | 34% |
-| BB net per called pot (whole-hand model) | −0.86 | −1.03 |
+Each spot was run for 8 rounds (0–7); the loop settles by round 5. "Settled" is the range over rounds 5–7.
 
-![BB range after](output/realization_loop/shape/bb_range_after.png)
+| | 2.25bb open, 100bb | 3.0bb open, 100bb | 2.25bb open, 50bb |
+|---|---|---|---|
+| BTN opens: before → settled | 68% → **60–65%** | 64% → **60%** | 71% → **65–67%** |
+| BB fold / call / 3-bet, before | 10 / 69 / 21% | 35 / 47 / 18% | 9 / 73 / 18% |
+| BB fold / call / 3-bet, settled | 14 / 60 / **26–27%** | 34–35 / 42 / **23–24%** | 12–13 / 66–67 / **21–23%** |
+| BB 3-bet size, settled | 6.75bb (was 7.3) | 7.5–8.25bb (was 9.75) | 5.6–6.2bb (was 7.3) |
+| **BB 3-bet bluffs** (< 50% equity vs the open) | **0.5% → 6–7%** | **0.6% → 4–5%** | **0.9% → 4–5%** |
+| BB net per called pot (whole-hand model) | −0.86 → −0.96 to −1.03 | −0.91 → −1.08 to −1.13 | −0.79 → −0.86 to −0.89 |
 
-* **The BB now 3-bet bluffs, with the hands that play well postflop:**
-  * **suited kings** (K3s+)
-  * **most suited queens and jacks** (Q7s+, J7s+, plus Q4s–Q5s, J3s, J5s)
-  * **suited connectors and one-gappers** (T5s+, 97s+, 87s)
-  * **JTo** (QTo and QJo 3-bet too, but with over 50% equity they count as value)
+![BB range after, 2.25bb / 100bb](output/realization_loop/shape/bb_range_after.png)
+
+* **The BB 3-bet bluffs at every spot, always with the hands that play well postflop:**
+  * **suited kings** (K2s–K5s)
+  * **suited queens** (Q2s–Q8s)
+  * **suited jacks and suited connectors / gappers** (J7s–J9s, T7s–T9s, 95s–98s, 87s)
+  * **JTo** at 100bb
 
   This is the shape of a typical solver 3-bet range. Before, the BB 3-bet only hands with good equity
-  (0.5% bluffs, experiment 15).
-* **The BB stops 3-betting hands that play badly postflop:** A6o–A8o and 22–44 now call.
-* **The BTN opens fewer hands (68% → 59%):** it drops weak offsuit hands (K2o–K4o, Q2o–Q5o, J2o–J6o), A2o
-  and 22. It adds suited connectors and gappers (32s–85s) and connected offsuit hands (65o–87o).
-* **The BB folds only offsuit trash** (T2o–T3o, 9x–3x offsuit).
+  (0.5–0.9% bluffs, experiment 15).
+* **Bluffing is highest at 2.25bb / 100bb** (6–7% of hands). A bigger open (3.0bb) or shorter stacks
+  (50bb) cut it to 4–5%. A 3-bet costs more relative to the pot or to the stack, and at 50bb there's less
+  postflop play left for the suited hands to cash in.
+* **The BB stops 3-betting hands that play badly postflop** (weak offsuit aces such as A6o–A8o, and small
+  pairs) and calls them instead.
+* **The BB's best 3-bet gets smaller** at every spot (by 0.5–1.5bb). Its range now has more hands that
+  want to see a flop cheaply.
+* **The BTN tightens at every spot** (by 3–8 points). It drops weak offsuit hands (Kx–Jx offsuit, A2o) and
+  22, and adds suited connectors and gappers.
 
 **Convergence:**
-* **The totals stopped moving after round 5.** Over rounds 5–8 the BTN opens 59–61%, the BB folds 12–14%,
-  calls 60–62% and 3-bets 26–28%. Bluffs stay at 6.8–7.3% and the BB nets −1.01 to −1.04bb per called pot.
-* **Individual hands still switch** (3–5% of the BB's hands per round, about the same share of the BTN's
-  range). That's the noise floor of the 1.5M-hand evaluation on near-indifferent hands, not a trend.
-* **The 3-bet size alternates** between 6.2 and 6.75bb, which are nearly tied.
+* **The BB's totals settle by round 5 at every spot.** Its fold / call / 3-bet moves by about a point per
+  round after that.
+* **The BTN's opening rate still wobbles by a few points** (60–65% at 2.25 / 100bb).
+* **3–7% of individual hands switch action each round.** That's the noise floor of the 1.5M-hand
+  evaluation on near-indifferent hands.
+* **The 3-bet size alternates between neighbouring sizes** that are nearly tied.
 
 ### The absolute version doesn't settle
 
@@ -1756,11 +1771,14 @@ suited connectors, 98s–54s. Stronger damping or many more rounds would be need
 **Caveats:**
 * 3-bet pots reuse the single-raised-pot adjustments scaled to their pot; the whole-hand model doesn't
   play 3-bet pots.
-* Only the 2.25bb / 100bb spot was run.
-* One seed per model. The shape version's BTN EV in the preflop model falls from −20 to about −110 mbb per
-  hand (stable over rounds 5–8), partly from the bigger, more effective BB 3-bet range.
+* Hands the BB only 3-bets (its premiums) never get called-pot data, so their adjustments come from the
+  bounded smooth fit.
+* One seed per model. In the preflop model the BTN's EV falls from −20 to −100 mbb per hand (2.25bb /
+  100bb), −12 to −82 (3.0bb) and −4 to −68 (50bb), partly from the bigger, more effective BB 3-bet range.
+* The absolute version was run before the extrapolation fix.
 
-Data: `shape/rounds.csv`, `shape/by_hand.csv`, `shape/range_changes.csv` (same for `absolute/`).
+Data per spot in `shape/` (2.25bb / 100bb), `shape_3_100/`, `shape_2.25_50/` and `absolute/`: `rounds.csv`,
+`by_hand.csv`, `range_changes.csv`, plus each spot's charts.
 
 ## Next steps
 
@@ -1768,6 +1786,6 @@ Data: `shape/rounds.csv`, `shape/by_hand.csv`, `shape/range_changes.csv` (same f
    (`ace_air`, experiment 23); the remaining air gap vs the solver would need card-level features.
 2. **Learn the opponent model from data:** estimate a real opponent's donk frequencies by hand from hand
    histories, instead of picking from three fixed profiles.
-3. **Extend experiment 24:** other open sizes and stacks, limped pots, and a stable absolute version
-   (stronger damping).
+3. **Extend experiment 24:** limped pots and short stacks below 50bb, a stable absolute version (stronger
+   damping), and 3-bet pots played out by the whole-hand model.
 4. **Multiway** play.
