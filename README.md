@@ -1927,8 +1927,9 @@ that reach it. A 4-bet is all-in at 100bb, so there is no 4-bet pot.
 
 * **In 3-bet and iso-raised pots the BB is the aggressor and leads out** (c-bets out of position) 67% and
   44% of flops. When it checks, the BTN usually checks back (61% / 51%).
-* **The 1.5x river overbet is used in every pot** (14–22% when checked to), mostly by the strongest hands
-  and missed draws.
+* **The 1.5x river overbet is used in every pot** (14–22% when checked to). In the single-raised pot it's
+  polarized: 42% of overbets are straights or better, 26% missed draws and 8% air. Straights or better
+  overbet 60% of the time.
 
 **Caveats:**
 * Postflop strategies are per hand group (12 groups) × board texture × line, not per exact card; the bot
