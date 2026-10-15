@@ -31,8 +31,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `scripts/solver_compare.py` | Runs TexasSolver on 12 flops and compares it with the model (experiment 14) |
 | `preflop/fullgame.py` | Flop + turn + river learned together with Monte Carlo CFR, 12 hand buckets, configurable sizes (experiments 15–16) |
 | `preflop/plots.py` | Range grids, heatmaps, bar and line charts |
+| `bot/` | The match bot: `engine.py` (one decision for any 100bb spot), `selfplay.py` (heads-up dealer, duplicate matches), `ask.py` (command line) (experiment 29) |
 | `scripts/` | One script per experiment (named in each section below) |
-| `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules |
+| `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules, the bot engine and dealer |
 
 ## The model
 
@@ -2081,6 +2082,65 @@ class, checked to land in its own class. The setup is the same: the match's 3bb 
 * **The whole-hand model's flop c-bet is too frequent**, especially on low boards. Its turn and river
   strategies were trained against that flop play.
 
+## Experiment 29: The match bot's decision engine
+
+`bot/engine.py`, `bot/selfplay.py`, `bot/ask.py`. **One function answers any 100bb heads-up spot:**
+`Engine().decide(seat, hole, board, history)`. It returns an action, its size, the full action mix and
+where the answer came from. Nothing in `bot/` touches a poker site. A PokerNow interface only has to turn
+the table into a list of actions and turn the decision back into a click.
+
+### Where each decision comes from
+
+| Spot | Source |
+|---|---|
+| **Preflop, every node** | experiment 26's solved tree (`policy/preflop.json`, per hand class, with the 22 override). The opponent's open and 3-bet sizes go to the nearest trained size, and our 3-bet is scaled to match. A raise to 60% of the stack or more counts as all-in. |
+| **Flop of a 3bb single-raised pot** (BB first, BTN after a check, BB vs a c-bet) | experiment 28's solved flop for the board's texture class. The hand is mapped onto that flop: suit groups map to suit groups, and other ranks keep their distance below the next board rank. If the mapped combo isn't in the solved range, or lands in a different hand group, the bot uses the solver's average over that hand group. |
+| **Every other postflop spot** (turn, river, 3-bet, limped, iso and 2.25bb-open pots, check-raises) | the whole-hand model (`policy/<pot>.npz`) by texture, line and hand group. Opponent bet sizes go to the nearest trained size (on a log scale). |
+| **Re-raises of raises** (not in any model) | a simple rule: jam a straight or better, call sets and two pair, fold the rest. |
+
+* **Raising an all-in player is impossible,** so the raise share goes to call.
+* **A raise bigger than the stack is an all-in.**
+* **The command-line tool:** `python -m bot.ask btn AcQd Kh8d3c "r3 c / x"` prints the action mix for one
+  spot.
+
+### Sanity checks (duplicate matches: every deal played twice with seats swapped)
+
+Every match is 40,000 hands unless noted.
+
+| Bot vs | bb / 100 hands |
+|---|---|
+| itself | −1.2 ± 4.4 (zero, as it should be) |
+| calling station (never folds, never bets) | **+207 ± 7** |
+| maniac (bets or raises pot every time, never folds) | **+82 ± 16** |
+| the same bot with model flops instead of solver flops (600,000 hands) | −1.0 ± 1.2 |
+
+* **Solver flops vs model flops: no measurable difference** (−1.0 ± 1.2 bb/100, about a tenth of a big blind
+  per 10 hands). This doesn't mean the solver's flops are no better:
+  * When two near-equilibrium strategies play each other, neither wins much. The solver flop's advantage
+    is that it is harder to exploit, and a head-to-head match doesn't measure that.
+  * The turn and river strategies were trained against the model's own flop ranges, which takes back
+    some of the gain.
+
+  Measuring the gain properly needs a best-response opponent. For the match, the solver flops stay on:
+  they match TexasSolver on the spots it was solved for.
+* **Exact solved hand vs group average:** in self-play, two thirds of solver-flop decisions find the exact
+  mapped combo; a third use the hand group's average. Hands the bot would never have there (for example
+  KQs and T9s, which always 3-bet) always use the average.
+* **Tests:** `tests/test_bot.py` checks:
+  * the betting state;
+  * the combo mapping keeps the hand group (above 80% of random deals);
+  * every decision is a valid distribution with legal sizes;
+  * facing an all-in leaves only fold and call;
+  * hands settle correctly.
+
+### Not done yet
+
+* **The PokerNow interface.** Keep to its rules on bots, and never act on a live table without the
+  player's confirmation.
+* **Turn and river sizes are rounded to the model's sizes.** An opponent's 40% turn bet is played as the
+  50% node.
+* **The model's turn and river strategies expect the model's own flop play,** not the solver's.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
@@ -2091,8 +2151,8 @@ class, checked to land in its own class. The setup is the same: the match's 3bb 
    damping), and 3-bet pots played out by the whole-hand model.
 4. **Card-level flops:** experiment 28 solved one flop per texture class. Next: several flops per class, solve
    3-bet and limped pots the same way, and solve during play for exact boards.
-5. **Match bot:** play from experiment 26's policies (`output/match/policy/`, `preflop_by_hand.csv`) with an
-   interface for PokerNow; handle open sizes between the trained ones. Turn and river sizes deserve the
-   same test as the flop c-bet.
+5. **Match bot:** the engine is in `bot/` (experiment 29). Next: the PokerNow interface (table state ->
+   `Act` lists, with confirmation before acting), a best-response test of the solver flops, and turn and
+   river sizes tested the way experiment 25 tested the flop c-bet.
 6. **Rerun the TexasSolver comparisons** (experiments 14, 16, 22) with accurate sizes (`SOLVER_CHIP_SCALE=10`).
 7. **Multiway** play.
