@@ -1,0 +1,197 @@
+{
+ "note": "texture class -> representative solved flop (experiment 28)",
+ "classes": {
+  "0": {
+   "class": "A-high, unpaired, rainbow, disconnected",
+   "flop": "Ad Th 5s",
+   "file": "AdTh5s.json",
+   "share_of_flops": 0.058642533936651586
+  },
+  "1": {
+   "class": "A-high, unpaired, rainbow, connected",
+   "flop": "Ad 5h 4s",
+   "file": "Ad5h4s.json",
+   "share_of_flops": 0.013031674208144797
+  },
+  "2": {
+   "class": "A-high, unpaired, two-tone, disconnected",
+   "flop": "Ah Ts 5s",
+   "file": "AhTs5s.json",
+   "share_of_flops": 0.08796380090497738
+  },
+  "3": {
+   "class": "A-high, unpaired, two-tone, connected",
+   "flop": "Ah 5s 4s",
+   "file": "Ah5s4s.json",
+   "share_of_flops": 0.019547511312217193
+  },
+  "4": {
+   "class": "A-high, unpaired, monotone, disconnected",
+   "flop": "As Ts 5s",
+   "file": "AsTs5s.json",
+   "share_of_flops": 0.009773755656108597
+  },
+  "5": {
+   "class": "A-high, unpaired, monotone, connected",
+   "flop": "As 5s 4s",
+   "file": "As5s4s.json",
+   "share_of_flops": 0.0021719457013574662
+  },
+  "6": {
+   "class": "A-high, paired, rainbow, disconnected",
+   "flop": "Ah Ad 8s",
+   "file": "AhAd8s.json",
+   "share_of_flops": 0.013212669683257919
+  },
+  "8": {
+   "class": "A-high, paired, two-tone, disconnected",
+   "flop": "As Ah 7s",
+   "file": "AsAh7s.json",
+   "share_of_flops": 0.013031674208144797
+  },
+  "12": {
+   "class": "K-high, unpaired, rainbow, disconnected",
+   "flop": "Kh 8d 3c",
+   "file": "Kh8d3c.json",
+   "share_of_flops": 0.05321266968325792
+  },
+  "13": {
+   "class": "K-high, unpaired, rainbow, connected",
+   "flop": "Kd Jh 9s",
+   "file": "KdJh9s.json",
+   "share_of_flops": 0.006515837104072398
+  },
+  "14": {
+   "class": "K-high, unpaired, two-tone, disconnected",
+   "flop": "Kh 9s 4s",
+   "file": "Kh9s4s.json",
+   "share_of_flops": 0.07981900452488688
+  },
+  "15": {
+   "class": "K-high, unpaired, two-tone, connected",
+   "flop": "Kh Js 9s",
+   "file": "KhJs9s.json",
+   "share_of_flops": 0.009773755656108597
+  },
+  "16": {
+   "class": "K-high, unpaired, monotone, disconnected",
+   "flop": "Ks 9s 4s",
+   "file": "Ks9s4s.json",
+   "share_of_flops": 0.008868778280542987
+  },
+  "17": {
+   "class": "K-high, unpaired, monotone, connected",
+   "flop": "Ks Js 9s",
+   "file": "KsJs9s.json",
+   "share_of_flops": 0.0010859728506787331
+  },
+  "18": {
+   "class": "K-high, paired, rainbow, disconnected",
+   "flop": "Kh Kd 7s",
+   "file": "KhKd7s.json",
+   "share_of_flops": 0.012126696832579185
+  },
+  "20": {
+   "class": "K-high, paired, two-tone, disconnected",
+   "flop": "Ks Kh 7s",
+   "file": "KsKh7s.json",
+   "share_of_flops": 0.011945701357466063
+  },
+  "24": {
+   "class": "Q/J-high, unpaired, rainbow, disconnected",
+   "flop": "Qd 8h 4s",
+   "file": "Qd8h4s.json",
+   "share_of_flops": 0.07493212669683258
+  },
+  "25": {
+   "class": "Q/J-high, unpaired, rainbow, connected",
+   "flop": "Jd Th 8s",
+   "file": "JdTh8s.json",
+   "share_of_flops": 0.013031674208144797
+  },
+  "26": {
+   "class": "Q/J-high, unpaired, two-tone, disconnected",
+   "flop": "Qh 8s 4s",
+   "file": "Qh8s4s.json",
+   "share_of_flops": 0.11239819004524887
+  },
+  "27": {
+   "class": "Q/J-high, unpaired, two-tone, connected",
+   "flop": "Jh Ts 8s",
+   "file": "JhTs8s.json",
+   "share_of_flops": 0.019547511312217193
+  },
+  "28": {
+   "class": "Q/J-high, unpaired, monotone, disconnected",
+   "flop": "Qs 8s 4s",
+   "file": "Qs8s4s.json",
+   "share_of_flops": 0.01248868778280543
+  },
+  "29": {
+   "class": "Q/J-high, unpaired, monotone, connected",
+   "flop": "Js Ts 8s",
+   "file": "JsTs8s.json",
+   "share_of_flops": 0.0021719457013574662
+  },
+  "30": {
+   "class": "Q/J-high, paired, rainbow, disconnected",
+   "flop": "Jh Jd 6s",
+   "file": "JhJd6s.json",
+   "share_of_flops": 0.02099547511312217
+  },
+  "32": {
+   "class": "Q/J-high, paired, two-tone, disconnected",
+   "flop": "Js Jh 6s",
+   "file": "JsJh6s.json",
+   "share_of_flops": 0.020633484162895926
+  },
+  "36": {
+   "class": "T-high or lower, unpaired, rainbow, disconnected",
+   "flop": "9d 6h 3s",
+   "file": "9d6h3s.json",
+   "share_of_flops": 0.05429864253393665
+  },
+  "37": {
+   "class": "T-high or lower, unpaired, rainbow, connected",
+   "flop": "8d 6h 4s",
+   "file": "8d6h4s.json",
+   "share_of_flops": 0.036923076923076927
+  },
+  "38": {
+   "class": "T-high or lower, unpaired, two-tone, disconnected",
+   "flop": "9h 6s 3s",
+   "file": "9h6s3s.json",
+   "share_of_flops": 0.08144796380090498
+  },
+  "39": {
+   "class": "T-high or lower, unpaired, two-tone, connected",
+   "flop": "8h 6s 4s",
+   "file": "8h6s4s.json",
+   "share_of_flops": 0.055384615384615386
+  },
+  "40": {
+   "class": "T-high or lower, unpaired, monotone, disconnected",
+   "flop": "9s 6s 3s",
+   "file": "9s6s3s.json",
+   "share_of_flops": 0.00904977375565611
+  },
+  "41": {
+   "class": "T-high or lower, unpaired, monotone, connected",
+   "flop": "8s 6s 4s",
+   "file": "8s6s4s.json",
+   "share_of_flops": 0.006153846153846154
+  },
+  "42": {
+   "class": "T-high or lower, paired, rainbow, disconnected",
+   "flop": "8d 4s 4h",
+   "file": "8d4s4h.json",
+   "share_of_flops": 0.04072398190045249
+  },
+  "44": {
+   "class": "T-high or lower, paired, two-tone, disconnected",
+   "flop": "8s 4s 4h",
+   "file": "8s4s4h.json",
+   "share_of_flops": 0.039095022624434386
+  }
+ }
+}

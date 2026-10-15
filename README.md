@@ -2027,6 +2027,60 @@ with turn strategies (66MB) stays in the gitignored raw folder.
 * With these settings a flop takes hours on this machine, so covering many flops needs fewer saved
   streets, cloud compute, or solving the turn and river during play.
 
+## Experiment 28: One solved flop per texture class
+
+`scripts/flop_study.py solve-all` / `report-all`. This repeats experiment 27 on **32 flops, one for each of
+the model's texture classes** (high card × paired × suits × connected). Each flop is a typical example of its
+class, checked to land in its own class. The setup is the same: the match's 3bb single-raised pot, BTN sizes
+33 / 66 / 100%, BB lead 33%, exact sizes (10 chips per bb).
+
+* **Solve time and accuracy:** each flop took 1–3 minutes on AC power, 0.23–0.32% exploitability. A♠A♥7♠ is
+  the exception at 0.66%.
+* **Lookup file:** `output/match/flops/index.json` maps each class to its flop's per-combo policy
+  (`<flop>.json`) for the bot.
+* **Summary:** `classes.csv` has one row per class.
+
+![BTN c-bet by flop class](output/match/flops/classes_cbet.png)
+
+### The BTN checks much more than the 12-group model, and the size depends on the board
+
+| BTN after the BB checks (weighted by how often each class comes up) | Check | 33% | 66% | 100% |
+|---|---|---|---|---|
+| **TexasSolver** (32 flops) | **39%** | 30% | 15% | 17% |
+| whole-hand model | 22% | 39% | 24% | 16% |
+
+* **Paired boards with a high card** (AA8, AA7, KK7, JJ6): the solver bets almost every hand, nearly all
+  small (91–97% for 33% on AAx). The BB has very few aces or kings.
+* **Dry A-high and K-high boards** (AT5, K83): a mostly small range bet, as in experiment 27.
+* **Low boards** (963, 864): **the solver checks 55–65%.** These flops hit the BB's calling range. When the
+  BTN bets, it bets big (66% or pot) and almost never 33%. The model c-bets these about 60–75% of the time.
+  This is its biggest error.
+* **Monotone boards:** the 33% size disappears (1–5%). The BTN checks about half and bets the rest 66% or
+  pot.
+* **Connected and two-tone Q/J/K boards** (KJ9, QT8-type): about 40% checks and more big bets, since the
+  equities run close.
+* **Low paired boards** (844): check about 45%, otherwise bet small.
+
+![Solver vs model c-bet frequency by class](output/match/flops/classes_vs_model.png)
+
+### The BB
+
+* **The BB never leads on any of the 32 flops** (the model leads 9% vs the BTN's 3bb open). In practice the
+  bot's BB should check every flop of a single-raised pot.
+* **It folds 19–57% to a 33% c-bet**, depending on the board:
+  * least on monotone and low boards, which its range hits;
+  * most on AAx (54–57%).
+* **Against a pot-sized bet it folds 53–72%.**
+
+### What this means for the match bot
+
+* **Flops:** play from the nearest solved flop instead of the 12-group model. The texture class sets the
+  check frequency and size well, and the solved file gives the per-combo detail.
+* **Within a class**, which cards are on the board still matters (experiment 27: suits and kickers). Solving
+  on the fly, or more flops per class, would close that gap.
+* **The whole-hand model's flop c-bet is too frequent**, especially on low boards. Its turn and river
+  strategies were trained against that flop play.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
@@ -2035,8 +2089,8 @@ with turn strategies (66MB) stays in the gitignored raw folder.
    histories, instead of picking from three fixed profiles.
 3. **Extend experiment 24:** limped pots and short stacks below 50bb, a stable absolute version (stronger
    damping), and 3-bet pots played out by the whole-hand model.
-4. **Card-level flops:** extend experiment 27 to a set of representative flops (one per texture class) and
-   let the bot use the nearest solved flop, or solve during play.
+4. **Card-level flops:** experiment 28 solved one flop per texture class. Next: several flops per class, solve
+   3-bet and limped pots the same way, and solve during play for exact boards.
 5. **Match bot:** play from experiment 26's policies (`output/match/policy/`, `preflop_by_hand.csv`) with an
    interface for PokerNow; handle open sizes between the trained ones. Turn and river sizes deserve the
    same test as the flop c-bet.

@@ -1,0 +1,33 @@
+class,flop,share,solver check,solver bet 2bb,solver bet 4bb,solver bet 6bb,model check,model bet 2bb,model bet 4bb,model bet 6bb,BB leads,BB folds vs 2bb,BB folds vs 4bb,BB folds vs 6bb
+"A-high, unpaired, rainbow, disconnected",Ad Th 5s,0.059,0.216,0.514,0.131,0.139,0.207,0.483,0.207,0.104,0.0,0.49,0.597,0.666
+"A-high, unpaired, rainbow, connected",Ad 5h 4s,0.013,0.542,0.329,0.059,0.07,0.081,0.332,0.339,0.248,0.0,0.407,0.532,0.63
+"A-high, unpaired, two-tone, disconnected",Ah Ts 5s,0.088,0.299,0.415,0.136,0.15,0.282,0.458,0.122,0.138,0.0,0.481,0.589,0.664
+"A-high, unpaired, two-tone, connected",Ah 5s 4s,0.02,0.452,0.385,0.111,0.052,0.151,0.387,0.23,0.232,0.0,0.405,0.541,0.635
+"A-high, unpaired, monotone, disconnected",As Ts 5s,0.01,0.54,0.05,0.194,0.217,0.314,0.28,0.209,0.198,0.0,0.338,0.501,0.589
+"A-high, unpaired, monotone, connected",As 5s 4s,0.002,0.561,0.027,0.156,0.256,0.251,0.319,0.204,0.226,0.0,0.272,0.476,0.568
+"A-high, paired, rainbow, disconnected",Ah Ad 8s,0.013,0.001,0.905,0.094,0.001,0.098,0.658,0.183,0.061,0.0,0.574,0.657,0.717
+"A-high, paired, two-tone, disconnected",As Ah 7s,0.013,0.004,0.967,0.026,0.002,0.119,0.651,0.159,0.07,0.0,0.541,0.632,0.701
+"K-high, unpaired, rainbow, disconnected",Kh 8d 3c,0.053,0.231,0.591,0.137,0.04,0.143,0.474,0.27,0.113,0.0,0.389,0.507,0.595
+"K-high, unpaired, rainbow, connected",Kd Jh 9s,0.007,0.453,0.142,0.155,0.249,0.118,0.317,0.274,0.292,0.0,0.362,0.501,0.588
+"K-high, unpaired, two-tone, disconnected",Kh 9s 4s,0.08,0.361,0.401,0.094,0.144,0.121,0.587,0.171,0.122,0.0,0.361,0.497,0.581
+"K-high, unpaired, two-tone, connected",Kh Js 9s,0.01,0.442,0.116,0.178,0.265,0.198,0.188,0.263,0.351,0.0,0.372,0.512,0.598
+"K-high, unpaired, monotone, disconnected",Ks 9s 4s,0.009,0.498,0.008,0.123,0.37,0.227,0.311,0.282,0.179,0.0,0.262,0.445,0.546
+"K-high, unpaired, monotone, connected",Ks Js 9s,0.001,0.473,0.017,0.184,0.325,0.225,0.275,0.302,0.198,0.0,0.269,0.458,0.557
+"K-high, paired, rainbow, disconnected",Kh Kd 7s,0.012,0.259,0.518,0.222,0.0,0.258,0.43,0.214,0.099,0.0,0.414,0.531,0.614
+"K-high, paired, two-tone, disconnected",Ks Kh 7s,0.012,0.25,0.604,0.145,0.001,0.173,0.533,0.214,0.08,0.0,0.403,0.528,0.611
+"Q/J-high, unpaired, rainbow, disconnected",Qd 8h 4s,0.075,0.363,0.307,0.107,0.222,0.152,0.291,0.313,0.244,0.0,0.339,0.483,0.564
+"Q/J-high, unpaired, rainbow, connected",Jd Th 8s,0.013,0.36,0.238,0.245,0.157,0.27,0.217,0.271,0.242,0.0,0.407,0.541,0.616
+"Q/J-high, unpaired, two-tone, disconnected",Qh 8s 4s,0.112,0.399,0.151,0.161,0.29,0.172,0.385,0.315,0.129,0.0,0.344,0.486,0.576
+"Q/J-high, unpaired, two-tone, connected",Jh Ts 8s,0.02,0.332,0.256,0.293,0.119,0.278,0.278,0.27,0.174,0.0,0.411,0.544,0.624
+"Q/J-high, unpaired, monotone, disconnected",Qs 8s 4s,0.012,0.457,0.007,0.14,0.396,0.257,0.212,0.263,0.268,0.0,0.234,0.442,0.544
+"Q/J-high, unpaired, monotone, connected",Js Ts 8s,0.002,0.392,0.124,0.251,0.234,0.226,0.278,0.282,0.214,0.0,0.27,0.466,0.556
+"Q/J-high, paired, rainbow, disconnected",Jh Jd 6s,0.021,0.083,0.423,0.411,0.083,0.162,0.423,0.312,0.103,0.0,0.435,0.557,0.629
+"Q/J-high, paired, two-tone, disconnected",Js Jh 6s,0.021,0.056,0.556,0.367,0.021,0.128,0.536,0.246,0.091,0.0,0.424,0.55,0.625
+"T-high or lower, unpaired, rainbow, disconnected",9d 6h 3s,0.054,0.615,0.076,0.057,0.252,0.238,0.276,0.236,0.25,0.0,0.281,0.44,0.531
+"T-high or lower, unpaired, rainbow, connected",8d 6h 4s,0.037,0.65,0.061,0.148,0.142,0.362,0.173,0.25,0.215,0.0,0.285,0.448,0.546
+"T-high or lower, unpaired, two-tone, disconnected",9h 6s 3s,0.081,0.546,0.06,0.132,0.262,0.254,0.344,0.221,0.181,0.0,0.291,0.444,0.543
+"T-high or lower, unpaired, two-tone, connected",8h 6s 4s,0.055,0.56,0.073,0.205,0.161,0.414,0.218,0.191,0.176,0.0,0.289,0.454,0.551
+"T-high or lower, unpaired, monotone, disconnected",9s 6s 3s,0.009,0.507,0.009,0.134,0.351,0.238,0.204,0.342,0.215,0.0,0.198,0.425,0.538
+"T-high or lower, unpaired, monotone, connected",8s 6s 4s,0.006,0.494,0.01,0.181,0.314,0.279,0.261,0.245,0.215,0.0,0.19,0.428,0.532
+"T-high or lower, paired, rainbow, disconnected",8d 4s 4h,0.041,0.483,0.369,0.117,0.031,0.245,0.363,0.304,0.088,0.0,0.39,0.531,0.613
+"T-high or lower, paired, two-tone, disconnected",8s 4s 4h,0.039,0.416,0.472,0.101,0.011,0.212,0.548,0.173,0.068,0.0,0.398,0.529,0.614

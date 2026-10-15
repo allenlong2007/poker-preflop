@@ -14,8 +14,10 @@ class and hand groups) to see what card-level detail changes. The per-combo poli
 output/match/flops/<flop>.json for the bot.
 
 Usage:
-    python scripts/flop_study.py solve "Kh 8d 3c"     (~5-15 min, one solve at a time)
+    python scripts/flop_study.py solve "Kh 8d 3c"     (~5 min on AC power, one solve at a time)
     python scripts/flop_study.py report "Kh 8d 3c"
+    python scripts/flop_study.py solve-all [first] [last]   (the representative flops, REPS; cached)
+    python scripts/flop_study.py report-all
 """
 import json
 import os
@@ -43,6 +45,15 @@ ENV = {"SOLVER_TREE": "medium", "SOLVER_OPEN": "3.0", "SOLVER_RANGES": str(RANGE
        "SOLVER_FLOP_DONK": "33", "SOLVER_DUMP_ROUNDS": "2", "SOLVER_CHIP_SCALE": "10", "SOLVER_PARALLEL": "1",
        "SOLVER_THREADS": "10"}
 SCALE, POT = 10, 6.0
+# One representative flop per texture class (experiment 28): the flop closest to the class's median ranks,
+# from all 22,100 flops; K-high dry rainbow keeps experiment 27's Kh 8d 3c. 32 of the 48 nominal classes
+# exist (a paired flop can't be monotone or connected here).
+REPS = {0: "Ad Th 5s", 1: "Ad 5h 4s", 2: "Ah Ts 5s", 3: "Ah 5s 4s", 4: "As Ts 5s", 5: "As 5s 4s", 6: "Ah Ad 8s",
+        8: "As Ah 7s", 12: "Kh 8d 3c", 13: "Kd Jh 9s", 14: "Kh 9s 4s", 15: "Kh Js 9s", 16: "Ks 9s 4s",
+        17: "Ks Js 9s", 18: "Kh Kd 7s", 20: "Ks Kh 7s", 24: "Qd 8h 4s", 25: "Jd Th 8s", 26: "Qh 8s 4s",
+        27: "Jh Ts 8s", 28: "Qs 8s 4s", 29: "Js Ts 8s", 30: "Jh Jd 6s", 32: "Js Jh 6s", 36: "9d 6h 3s",
+        37: "8d 6h 4s", 38: "9h 6s 3s", 39: "8h 6s 4s", 40: "9s 6s 3s", 41: "8s 6s 4s", 42: "8d 4s 4h",
+        44: "8s 4s 4h"}
 
 
 def write_ranges():
@@ -122,7 +133,7 @@ def bucket_of(flop):
     return lambda c: fg.fine_bucket((eval7.Card(c[:2]), eval7.Card(c[2:])), cards)
 
 
-def report(flop):
+def report(flop, quiet=False):
     s = sc()
     rng = np.load(RANGES)
     wb, wo = dict(zip(HANDS, rng["btn_range"])), dict(zip(HANDS, rng["bb_range"]))
@@ -205,13 +216,68 @@ def report(flop):
               for k, v in nodes.items()}
     json.dump({"flop": flop, "pot_bb": POT, "behind_bb": 97, "nodes": policy}, open(OUT / f"{tag}.json", "w"))
 
+    json.dump(summary, open(OUT / f"{tag}_summary.json", "w"), indent=1)
+    if quiet:
+        return summary, cb, ts
     pd.set_option("display.width", 250)
     for r in summary:
         print(r["decision"], "| solver", {k: round(v, 3) for k, v in r["solver"].items()},
               "| model", {k: round(v, 3) for k, v in r.get("model", {}).items()})
     print(cb.round(2).to_string(index=False))
     print(ts.round(3).to_string(index=False))
-    json.dump(summary, open(OUT / f"{tag}_summary.json", "w"), indent=1)
+    return summary, cb, ts
+
+
+def class_frequencies():
+    """Share of all 22,100 flops in each texture class."""
+    import itertools
+    from collections import Counter
+    deck = [r + su for r in "23456789TJQKA" for su in "shdc"]
+    c = Counter(flop_texture([eval7.Card(x) for x in f]) for f in itertools.combinations(deck, 3))
+    return {t: n / 22100 for t, n in c.items()}
+
+
+def report_all():
+    from preflop.flopgame import TEXTURES
+    freq = class_frequencies()
+    rows, index = [], {}
+    for t, flop in REPS.items():
+        s = sc()
+        if not (s.RAW / f"{s.slug(flop)}.json").exists():
+            continue
+        summary, cb, _ = report(flop, quiet=True)
+        name = ", ".join(TEXTURES[t])
+        index[t] = {"class": name, "flop": flop, "file": f"{s.slug(flop)}.json", "share_of_flops": freq[t]}
+        r = {"class": name, "flop": flop, "share": freq[t]}
+        btn = next(x for x in summary if x["decision"] == "BTN after the BB checks")
+        for k, v in btn["solver"].items():
+            r[f"solver {k}"] = v
+        for k, v in btn["model"].items():
+            r[f"model {k}"] = v
+        bb = next(x for x in summary if x["decision"] == "BB first")
+        r["BB leads"] = 1 - bb["solver"].get("check", 1.0)
+        for x in summary:
+            if x["decision"].startswith("BB vs bet"):
+                r[f"BB folds vs {x['decision'][10:]}"] = x["solver"].get("fold", np.nan)
+        rows.append(r)
+    df = pd.DataFrame(rows)
+    df.round(3).to_csv(OUT / "classes.csv", index=False)
+    json.dump({"note": "texture class -> representative solved flop (experiment 28)",
+               "classes": {str(k): v for k, v in index.items()}}, open(OUT / "index.json", "w"), indent=1)
+    short = df.assign(label=df["flop"] + "  (" + (df["share"] * 100).round(1).astype(str) + "%)").set_index("label")
+    sizes = [c for c in short.columns if c.startswith("solver ")]
+    heatmap(short[sizes].rename(columns=lambda c: c.replace("solver ", "")),
+            "BTN after the BB checks, by flop class (TexasSolver)", "", "Representative flop (share of all flops)",
+            OUT / "classes_cbet.png", fmt="pct", figsize=(7.5, 12))
+    mod = [c for c in short.columns if c.startswith("model ")]
+    diff = pd.DataFrame({"solver bets": 1 - short["solver check"], "model bets": 1 - short["model check"]})
+    heatmap(diff, "BTN c-bet frequency: solver vs 12-group model", "", "Representative flop", OUT / "classes_vs_model.png",
+            fmt="pct", figsize=(5.5, 12))
+    pd.set_option("display.width", 250)
+    print(df.round(2).to_string(index=False))
+    w = df["share"] / df["share"].sum()
+    print("weighted by how often each class comes up:",
+          {c: round(float((df[c] * w).sum()), 3) for c in sizes + mod + ["BB leads"]})
 
 
 def _avg(sig, df, model):
@@ -221,11 +287,20 @@ def _avg(sig, df, model):
 
 
 def main():
-    cmd, flop = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "Kh 8d 3c")
-    if cmd == "solve":
-        solve(flop)
+    cmd = sys.argv[1]
+    if cmd == "solve-all":
+        flops = list(REPS.values())
+        lo = int(sys.argv[2]) if len(sys.argv) > 2 else 0
+        hi = int(sys.argv[3]) if len(sys.argv) > 3 else len(flops)
+        write_ranges()
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "solver_compare.py"), "solve"],
+                       env={**os.environ, **ENV, "SOLVER_FLOPS": ",".join(flops[lo:hi])}, check=True)
+    elif cmd == "report-all":
+        report_all()
+    elif cmd == "solve":
+        solve(sys.argv[2] if len(sys.argv) > 2 else "Kh 8d 3c")
     else:
-        report(flop)
+        report(sys.argv[2] if len(sys.argv) > 2 else "Kh 8d 3c")
 
 
 if __name__ == "__main__":

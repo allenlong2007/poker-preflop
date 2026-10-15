@@ -1,0 +1,7 @@
+hand,weight,solver check,solver bet 2bb,solver bet 4bb,solver bet 6bb,solver combo spread (check),model check,model bet 2bb,model bet 4bb,model bet 6bb
+straight or better,0.023,0.0,0.889,0.109,0.001,0.0,0.073,0.354,0.418,0.154
+set / trips,0.181,0.0,0.908,0.092,0.001,0.0,0.028,0.702,0.202,0.067
+middle pair,0.204,0.001,0.908,0.091,0.0,0.002,0.139,0.763,0.073,0.026
+weak pair,0.041,0.001,0.978,0.02,0.001,0.001,0.038,0.764,0.1,0.098
+weak draw,0.22,0.001,0.861,0.137,0.001,0.001,0.139,0.664,0.148,0.049
+air,0.331,0.0,0.923,0.076,0.0,0.0,0.092,0.574,0.257,0.077
