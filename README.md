@@ -1942,6 +1942,91 @@ that reach it. A 4-bet is all-in at 100bb, so there is no 4-bet pot.
 * Known model gaps carry over: the BB over-folds air to small bets (experiments 22–23), and TexasSolver
   agreement was measured with the old rounded sizes (experiment 25).
 
+## Experiment 27: Card-level strategy on one flop (K♥8♦3♣)
+
+`scripts/flop_study.py` (`solve` / `report`). New in `solver_compare.py`: `SOLVER_FLOP_DONK` (lets the
+BB lead the flop) and `SOLVER_DUMP_ROUNDS` (saves the turn strategy as well).
+
+The whole-hand model plays each flop by texture class × 12 hand groups. This solves **one exact flop,
+every combo separately**, with TexasSolver and the match setup from experiment 26:
+
+* **Ranges:** the BTN's 3bb opening range vs the BB's calling range (pot 6bb, 97bb behind).
+* **Flop:** the BB may check or lead 33%. The BTN may check or bet 33 / 66 / 100%. Raises are 50% of the
+  pot after calling.
+* **Turn and river:** one size for either player (66% / 75%), no raises.
+* **Sizes are exact:** 10 chips per bb, so bets aren't rounded.
+* **Solve time:** 0.3% exploitability after about 110 iterations, about 3.5 hours (machine sleep included).
+
+**The board:** K♥8♦3♣ is dry, king-high and rainbow, one of the most common kinds of flop.
+
+**Also in this commit:** **22 as the BTN is overridden from fold to limp** (`OVERRIDES` in
+`match_strategy.py`, experiment 26's caveat). It's applied to the book and to the bot's preflop policy
+(`output/match/policy/preflop.json`).
+
+### The BTN's c-bet: solver vs the 12-group model
+
+![BTN c-bet, K83](output/match/flops/Kh8d3c_btn_cbet.png)
+
+| BTN after the BB checks | Check | 33% (2bb) | 66% (4bb) | 100% (6bb) |
+|---|---|---|---|---|
+| **TexasSolver (per combo)** | 23% | **59%** | 14% | 4% |
+| whole-hand model (K-high texture class) | 14% | 47% | 27% | 11% |
+
+![Solver vs model by hand group](output/match/flops/Kh8d3c_cbet_vs_model.png)
+
+* **On a dry king-high board the solver's main move is a small range bet.** It c-bets 77% of hands, mostly
+  for 33% pot. Even two pair and overpairs mostly bet small (55–63%). The model bets bigger and more often
+  (86%; pot size with 53–54% of two pair and overpairs). It plays every K-high flop the same way, and wet
+  K-high boards want bigger bets.
+* **The biggest differences come from cards the 12 groups can't see:**
+  * **Top pair, weak kicker:** K9 always bets, but K6o and K7o check about half the time (solver 69% for
+    the group, model 96%).
+  * **Weak pairs:** the solver bets 73%, the model only 29%. The solver bets bottom pair with a high
+    kicker (Q3s, T3s, A3) 100% for thin value and protection, but checks pocket pairs between the 3 and
+    the 8 for showdown value (77 never bets, 66 bets 39%).
+  * **Air:** the solver bets 75%, the model 99%. A2 and A4 always bet: they have backdoor straight draws
+    with the 3. A9s and A7s check, with ace-high showdown value and no draw.
+* **Inside one hand group, the solver's check frequency varies by 0.2–0.4 between combos** (standard
+  deviation). The model has to treat all of those combos the same.
+
+### The BB
+
+* **The BB never leads this flop** (the model leads 9%).
+* **Its defence depends on the c-bet size:**
+
+| BB vs c-bet | Fold | Call | Raise |
+|---|---|---|---|
+| 33% | 39% | 46% | 15% |
+| 66% | 51% | 41% | 8% |
+| 100% | 60% | 37% | 3% |
+
+* **It folds less to the small bet than the whole-hand model's BB does in general** (51% vs a 1/3 c-bet,
+  experiment 26), in line with experiment 22's finding that the model over-folds.
+
+![BB defence vs 33%](output/match/flops/Kh8d3c_bb_defend.png)
+
+### Turn
+
+| Line | BB leads | BTN bets when checked to | BTN bets most on | BTN bets least on |
+|---|---|---|---|---|
+| flop check-check | 30% | 63% | 4, 5 (72%) | A, Q (50%) |
+| BTN bet 33%, BB called | 16% | 48% | A, J, T (61–65%) | 3, 8 (35–38%) |
+
+* **After a called c-bet, the BTN barrels overcards** (A, J, T) and checks when the board pairs (3, 8).
+  When the turn pairs the 8, the BB leads 44–47%. It gets to represent trips from its calling range.
+* **After check-check, the BTN stabs 63%**, most on low cards that change nothing (4, 5).
+
+**Output for the bot:** `output/match/flops/Kh8d3c.json`, the flop strategy for every combo at every
+flop decision. Plus `Kh8d3c_btn_cbet.csv`, `Kh8d3c_turn.csv` and `Kh8d3c_summary.json`. The full solve
+with turn strategies (66MB) stays in the gitignored raw folder.
+
+**Caveats:**
+* One flop.
+* One turn and one river size, no turn or river raises.
+* The river isn't saved.
+* With these settings a flop takes hours on this machine, so covering many flops needs fewer saved
+  streets, cloud compute, or solving the turn and river during play.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
@@ -1950,8 +2035,10 @@ that reach it. A 4-bet is all-in at 100bb, so there is no 4-bet pot.
    histories, instead of picking from three fixed profiles.
 3. **Extend experiment 24:** limped pots and short stacks below 50bb, a stable absolute version (stronger
    damping), and 3-bet pots played out by the whole-hand model.
-4. **Match bot:** play from experiment 26's policies (`output/match/policy/`, `preflop_by_hand.csv`) with an
+4. **Card-level flops:** extend experiment 27 to a set of representative flops (one per texture class) and
+   let the bot use the nearest solved flop, or solve during play.
+5. **Match bot:** play from experiment 26's policies (`output/match/policy/`, `preflop_by_hand.csv`) with an
    interface for PokerNow; handle open sizes between the trained ones. Turn and river sizes deserve the
    same test as the flop c-bet.
-5. **Rerun the TexasSolver comparisons** (experiments 14, 16, 22) with accurate sizes (`SOLVER_CHIP_SCALE=10`).
-6. **Multiway** play.
+6. **Rerun the TexasSolver comparisons** (experiments 14, 16, 22) with accurate sizes (`SOLVER_CHIP_SCALE=10`).
+7. **Multiway** play.

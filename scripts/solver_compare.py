@@ -49,15 +49,20 @@ import os
 #   SOLVER_TREE (medium / simple / full), SOLVER_OPEN (BTN open size, default 2.25),
 #   SOLVER_RANGES (npz with btn_range / bb_range for that open; default: the 2.25bb ranges),
 #   SOLVER_FLOP_SIZES (flop bet sizes in % of pot, e.g. "33,66,100"; default 33,75),
+#   SOLVER_FLOP_DONK (BB flop lead sizes in % of pot, e.g. "33"; default: no flop lead),
+#   SOLVER_DUMP_ROUNDS (streets of strategy to save: 1 = flop, 2 = flop + turn; default 1),
 #   SOLVER_CHIP_SCALE (chips per bb; TexasSolver rounds bets to whole chips, so at the default 1 a "33%"
 #   c-bet into 4.5bb is 1bb = 22% and "75%" is 3bb = 67%; 10 makes the sizes accurate).
 TREE = os.environ.get("SOLVER_TREE") or (sys.argv[2] if __name__ == "__main__" and len(sys.argv) > 2 else "medium")
 OPEN = float(os.environ.get("SOLVER_OPEN", 2.25))
 FLOP_SIZES = tuple(int(x) for x in os.environ.get("SOLVER_FLOP_SIZES", "33,75").split(","))
 CHIP_SCALE = int(os.environ.get("SOLVER_CHIP_SCALE", 1))
+FLOP_DONK = tuple(int(x) for x in os.environ.get("SOLVER_FLOP_DONK", "").split(",") if x)
+DUMP_ROUNDS = int(os.environ.get("SOLVER_DUMP_ROUNDS", 1))
 _tag = (TREE if OPEN == 2.25 else f"{TREE}_open{OPEN:g}") + \
     ("" if FLOP_SIZES == (33, 75) else "_f" + "-".join(map(str, FLOP_SIZES))) + \
-    ("" if CHIP_SCALE == 1 else f"_x{CHIP_SCALE}")
+    ("" if CHIP_SCALE == 1 else f"_x{CHIP_SCALE}") + \
+    ("" if not FLOP_DONK else "_donk" + "-".join(map(str, FLOP_DONK))) + ("" if DUMP_ROUNDS == 1 else f"_dump{DUMP_ROUNDS}")
 OUT = ROOT / "output" / "solver_compare" / _tag
 RAW = ROOT / "output" / "solver_compare" / "raw" / _tag     # configs + JSON results (gitignored: large)
 OUT.mkdir(parents=True, exist_ok=True)
@@ -89,11 +94,13 @@ def config(flop, out_json, ranges):
         lines.append(f"set_bet_sizes ip,{street},bet,{sz}")
         if street == "flop" or TREE == "full":
             lines += [f"set_bet_sizes oop,{street},raise,{RAISE_PCT}", f"set_bet_sizes ip,{street},raise,{RAISE_PCT}"]
-        if street != "flop" and TREE in ("full", "medium"):   # the BB may lead the turn and river (never the flop)
+        if street != "flop" and TREE in ("full", "medium"):   # the BB may lead the turn and river
             lines += [f"set_bet_sizes oop,{street},bet,{sz}", f"set_bet_sizes oop,{street},donk,{sz}"]
+        if street == "flop" and FLOP_DONK:                     # and, if asked, the flop
+            lines.append(f"set_bet_sizes oop,flop,donk,{','.join(map(str, FLOP_DONK))}")
     lines += ["set_allin_threshold 1.0", "set_raise_limit 1", "build_tree", f"set_thread_num {THREADS}",
               f"set_accuracy {ACCURACY}", f"set_max_iteration {MAX_ITER}", "set_print_interval 10",
-              "set_use_isomorphism 1", "start_solve", "set_dump_rounds 1", f"dump_result {out_json}"]
+              "set_use_isomorphism 1", "start_solve", f"set_dump_rounds {DUMP_ROUNDS}", f"dump_result {out_json}"]
     return "\n".join(lines) + "\n"
 
 

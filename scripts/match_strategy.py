@@ -68,6 +68,10 @@ ALPHA, R_OOP = (float(v) for v in pd.read_csv(FIT, header=None, index_col=0)[1][
 ADJ = np.load(ROOT / "output" / "realization_loop" / "cache" / "shape" / "final.npz")   # experiment 24
 A_IP, A_OOP = ADJ["adj_btn"], ADJ["adj_bb"]
 STREETS = ("flop", "turn", "river")
+# Manual preflop overrides, applied to the book and to the bot's preflop policy (not to the solves).
+# 22 as the BTN: the model folds it (fold -0.50 vs limp -0.58bb) because experiment 24 rates small pairs
+# poorly postflop, which looks like an artifact of the 12 hand groups (set value is lumped in). Limp it.
+OVERRIDES = {("btn_root", "22"): {"fold": 0.0, "limp": 1.0, "raise": 0.0, "all-in": 0.0}}
 LINES = {"no bet last street": [0, 1, 2], "BTN bet last street": [3, 4, 5], "BB bet last street": [6, 7, 8]}
 HIGH = [("A-high", 0, "A-high"), ("K-high", 0, "K-high"), ("Q/J-high", 0, "Q/J-high"),
         ("T-high or lower", 0, "T-high or lower"), ("paired", 1, "paired"), ("monotone", 2, "monotone"),
@@ -253,6 +257,11 @@ def book():
     L += ["## Preflop", "", f"**BTN opens {s_main:g}bb.** The BB 3-bets to **{main['t']:g}bb** and raises limps to "
           f"**{main['r']:g}bb**. A 4-bet is all-in.", ""]
     nd = main["nodes"]
+    for (node, hand), new in OVERRIDES.items():
+        for a, v in new.items():
+            nd[node][a][HANDS.index(hand)] = v
+    L += ["Manual override: " + "; ".join(f"{h} at `{n}` -> " + ", ".join(f"{a} {v:.0%}" for a, v in new.items() if v)
+                                          for (n, h), new in OVERRIDES.items()) + " (see `OVERRIDES`).", ""]
     reach = {k: (np.array(v[0]), np.array(v[1])) for k, v in main["reach"].items()}
     for name, who, title in (("btn_root", 0, "BTN first action"), ("bb_vs_raise", 1, "BB vs the open"),
                              ("btn_vs_3bet_small", 0, "BTN vs the 3-bet"), ("bb_vs_4bet", 1, "BB vs a 4-bet (all-in)"),
@@ -297,6 +306,13 @@ def book():
                 r[f"{name}:{a}"] = round(v[i], 3)
         pre_rows.append(r)
     pd.DataFrame(pre_rows).to_csv(OUT / "preflop_by_hand.csv", index=False)
+    # The bot's preflop policy: the main spot with overrides, plus the answers to other sizes.
+    json.dump({"open": s_main, "threebet_to": main["t"], "iso_to": main["r"], "nodes": nd,
+               "vs_open": {f"{k:g}": {"threebet_to": v["t"], "bb_vs_raise": v["nodes"]["bb_vs_raise"]}
+                           for k, v in d["by_open"].items()},
+               "vs_3bet": {f"{k:g}": v["nodes"]["btn_vs_3bet_small"] for k, v in d["by_3bet"].items()},
+               "hands": HANDS, "overrides": [f"{h}@{n}" for n, h in OVERRIDES]},
+              open(POLICY / "preflop.json", "w"))
 
     # Postflop.
     groups = {name: [t for t, tex in enumerate(FLOP_TEXTURES) if tex[k] == v] for name, k, v in HIGH}
