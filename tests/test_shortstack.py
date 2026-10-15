@@ -20,3 +20,13 @@ def test_short_tree_converges():
     E, W = _D["E"], _D["W"]
     r = solve_short(E, W, 2.0, 3.5, 10, iters=1500, alpha=1.25, r_oop=1.0)
     assert r.exploitability() < 1e-3
+
+
+def test_deep_tree_matches_solver_with_adjustments():
+    E, W = _D["E"], _D["W"]
+    rng = np.random.default_rng(0)
+    a, b = rng.normal(0, 0.05, 169), rng.normal(0, 0.05, 169)
+    x = solve(E, W, 2.25, 7.0, stack=100, iters=1500, alpha=1.25, r_oop=0.915, adj_ip=a, adj_oop=b)
+    y = solve_short(E, W, 2.25, 3.0, 100, iters=1500, alpha=1.25, r_oop=0.915, limp=False, jam=False,
+                    t3=7.0, bb_jam=False, adj_ip=a, adj_oop=b)
+    assert abs(x.btn_ev() - y.btn_ev()) < 1e-4

@@ -6,10 +6,16 @@ Game tree ("to" amounts in bb, effective stack S, blinds 0.5 / 1):
       limp   -> BB: check (limped pot of 2, seen down with realization) | raise to r | all-in
                   raise  -> BTN: fold | call (pot 2r) | all-in -> BB: fold | call
                   all-in -> BTN: fold | call
-      raise  -> BB: fold | call (pot 2s) | all-in -> BTN: fold | call
+      raise  -> BB: fold | call (pot 2s) | 3-bet to t3 | all-in
+                  3-bet  -> BTN: fold | call (pot 2 t3) | all-in -> BB: fold | call
+                  all-in -> BTN: fold | call
       all-in -> BB: fold | call
 
-At 30bb and below the BB's best 3-bet is all-in (experiment 19), so that is its only 3-bet here.
+At 30bb and below the BB's best 3-bet is all-in (experiment 19), so by default that is its only 3-bet;
+pass t3 for a normal 3-bet size (deep stacks), and bb_jam=False to drop the all-in 3-bet. With limp=False,
+jam=False, bb_jam=False and t3 set, the tree is exactly solver.py's.
+adj_ip / adj_oop: per-hand postflop adjustments as shares of the pot (experiment 24), added to every pot
+that sees a flop.
 Pots that see a flop use the same realization formula as solver.py; all-in pots use raw equity.
 Solved with vectorised CFR+ over the 169 hand classes; values are the BTN's profit in bb per hand.
 """
@@ -25,7 +31,8 @@ class Node:
         self.name, self.player, self.children = name, player, children   # children: {action: Node | matrix}
 
 
-def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True, r_oop_limp=None):
+def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True, r_oop_limp=None,
+               t3=None, bb_jam=True, adj_ip=None, adj_oop=None):
     """r_oop_limp: the BB's realization in limped pots (default: same as raised pots)."""
     def share_for(ro):
         x = E ** alpha * np.asarray(r_ip, float).reshape(-1, 1)
@@ -34,8 +41,11 @@ def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=Tr
     share = share_for(r_oop)
     n = len(E)
     const = lambda v: np.full((n, n), float(v))
-    seen = lambda pot_to: 2 * pot_to * share - pot_to       # BTN profit when both put in pot_to and see a flop
-    limped = 2 * share_for(r_oop if r_oop_limp is None else r_oop_limp) - 1
+    a = np.zeros(n) if adj_ip is None else np.asarray(adj_ip, float)
+    b = np.zeros(n) if adj_oop is None else np.asarray(adj_oop, float)
+    d = a[:, None] - b[None, :]                               # postflop adjustment, share of the pot
+    seen = lambda pot_to: 2 * pot_to * (share + d) - pot_to  # BTN profit when both put in pot_to and see a flop
+    limped = 2 * (share_for(r_oop if r_oop_limp is None else r_oop_limp) + d) - 1
     allin = 2 * stack * E - stack
 
     vs_jam = lambda name, win: Node(name, "bb", {"fold": const(win), "call": allin})
@@ -47,9 +57,13 @@ def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=Tr
                                                          "all-in": vs_jam("bb_vs_limp_reraise", r)})
         vs_limp["all-in"] = Node("btn_vs_limp_jam", "btn", {"fold": const(-1), "call": allin})
         root["limp"] = Node("bb_vs_limp", "bb", vs_limp)
-    root["raise"] = Node("bb_vs_raise", "bb", {
-        "fold": const(1), "call": seen(s),
-        "all-in": Node("btn_vs_3bet", "btn", {"fold": const(-s), "call": allin})})
+    vs_raise = {"fold": const(1), "call": seen(s)}
+    if t3 is not None and t3 < stack:
+        vs_raise["3-bet"] = Node("btn_vs_3bet_small", "btn", {
+            "fold": const(-s), "call": seen(t3), "all-in": vs_jam("bb_vs_4bet", t3)})
+    if bb_jam:
+        vs_raise["all-in"] = Node("btn_vs_3bet", "btn", {"fold": const(-s), "call": allin})
+    root["raise"] = Node("bb_vs_raise", "bb", vs_raise)
     if jam:
         root["all-in"] = vs_jam("bb_vs_open_jam", 1)
     return Node("btn_root", "btn", root)
@@ -119,9 +133,9 @@ class ShortResult:
 
 
 def solve_short(E, W, s=2.0, r=3.0, stack=15, iters=3000, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True,
-                r_oop_limp=None):
+                r_oop_limp=None, t3=None, bb_jam=True, adj_ip=None, adj_oop=None):
     """Equilibrium of the short-stack tree for one open size s and one BB raise-vs-limp size r."""
-    root = build_tree(E, s, r, stack, r_ip, r_oop, alpha, limp, jam, r_oop_limp)
+    root = build_tree(E, s, r, stack, r_ip, r_oop, alpha, limp, jam, r_oop_limp, t3, bb_jam, adj_ip, adj_oop)
     W = W / W.sum()
     n = len(W)
     nodes = list(_nodes(root))

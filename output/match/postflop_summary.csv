@@ -1,0 +1,6 @@
+pot,pot_bb,btn_net
+"Single-raised pot (BTN raises, BB calls)",6.0,1.04
+"3-bet pot (BB 3-bets, BTN calls)",18.0,-1.006
+"Limped pot (BTN limps, BB checks)",2.0,0.465
+"Iso-raised pot (BTN limps, BB raises, BTN calls)",8.0,-0.198
+"Single-raised pot after a different open size (2.25bb, or 3.0bb if the main open is 2.25)",4.5,1.073

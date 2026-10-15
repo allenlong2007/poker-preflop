@@ -1854,6 +1854,93 @@ for experiments 18–24.
 
 Data: `versions.csv`, `by_board.csv`, `size_usage.csv`, `solver_usage.csv`.
 
+## Experiment 26: The complete 100bb heads-up strategy (for the match)
+
+`scripts/match_strategy.py` (`preflop` / `postflop` / `book`). **The full strategy book:
+[output/match/STRATEGY.md](output/match/STRATEGY.md)**: every preflop decision for both seats, and
+flop, turn and river tables (by hand strength, and by who bet last street) for every pot type. The trained
+policies the bot will read are in `output/match/policy/`.
+
+Everything is solved for **100bb effective against an opponent playing the same game**:
+
+**1. Preflop: one tree with every option.** It uses `preflop/shortstack.py`, extended with a normal 3-bet
+size and experiment 24's per-hand postflop values (a new test checks it matches `solver.py`):
+
+```
+BTN:  fold | limp | raise to s | all-in
+  limp  -> BB: check | raise to r | all-in        -> BTN: fold | call | all-in -> BB: fold | call
+  raise -> BB: fold | call | 3-bet to t | all-in  -> BTN: fold | call | 4-bet all-in -> BB: fold | call
+```
+
+Grid over s = 2–4bb, t = 2.5x–5x the open and r = 3–5bb (144 solves). The BB picks t and r against each
+open and the BTN picks s. The other sizes are kept as answers in case the opponent uses them.
+
+**2. Postflop: the whole-hand model for every pot that reaches a flop.** It uses `OPTS_MATCH`: c-bets 1/3,
+2/3 or pot (experiment 25), and pot-sized raises (experiment 22). Each pot type uses the preflop ranges
+that reach it. A 4-bet is all-in at 100bb, so there is no 4-bet pot.
+
+| Pot | How it happens | Pot / behind | BTN net per pot |
+|---|---|---|---|
+| single-raised | BTN raises to 3bb, BB calls | 6 / 97bb | +1.04bb |
+| 3-bet | BB 3-bets to 9bb, BTN calls | 18 / 91bb | −1.01bb |
+| limped | BTN limps, BB checks | 2 / 99bb | +0.47bb |
+| iso-raised | BTN limps, BB raises to 4bb, BTN calls | 8 / 96bb | −0.20bb |
+| single-raised, 2.25bb open | for an opponent who opens smaller | 4.5 / 97.75bb | +1.07bb |
+
+### Preflop
+
+![BTN first action](output/match/pre_btn_root.png)
+
+| Decision | Strategy |
+|---|---|
+| **BTN first action** | **raise to 3bb 41%**, limp 34%, fold 25% |
+| BB vs the 3bb open | fold 30%, call 50%, **3-bet to 9bb 19%** |
+| BTN vs the 3-bet | fold 47%, call 41%, 4-bet all-in 12% |
+| BB vs the 4-bet | fold 77%, call 23% |
+| BB vs a limp | check 47%, **raise to 4bb 53%** |
+| BTN vs the raise over its limp | fold 40%, call 56%, all-in 4% |
+
+* **The BTN's best open is 3.0bb once limping is allowed** (3.5bb is almost as good; 2.25bb, the best in the
+  raise-or-fold tree, now gives up 9 mbb per hand). The weakest playable hands limp, so the raises can be
+  bigger.
+* **Raise vs limp is close for many hands.** TT: limp +2.373bb vs raise +2.370. A9o: −0.047 vs −0.077. The
+  exact mix matters little; folding the bottom 25% matters more.
+* **The BB's answer to other open sizes** (from the same solve):
+
+| BTN opens to | 2bb | 2.25 | 2.5 | 3 | 3.5 | 4 |
+|---|---|---|---|---|---|---|
+| BB fold / call / 3-bet | 8 / 65 / 27% | 13 / 63 / 24% | 21 / 57 / 23% | 30 / 50 / 19% | 40 / 43 / 17% | 47 / 38 / 15% |
+| BB's 3-bet size | 6bb | 6.75 | 7.5 | 9 | 10.5 | 12 |
+
+* **The BTN's answer to other 3-bet sizes:** it folds 39% to a 7.5bb 3-bet, rising to 56% vs 15bb. It
+  4-bets all-in 12–15% throughout.
+
+### Postflop highlights (all hands; the book has every hand group, street and line)
+
+| | Single-raised | 3-bet | Limped | Iso-raised |
+|---|---|---|---|---|
+| Aggressor's flop bet (c-bet) | BTN 78% (1/3 38, 2/3 24, pot 16) | BB leads 67% (1/3 35, 3/4 32) | BTN 86% | BB leads 44% |
+| Defender vs a flop bet: fold / call / raise | BB 51 / 28 / 21% | BTN 33 / 48 / 18% | BB 57 / 23 / 20% | BTN 36 / 38 / 26% |
+| BTN bets the turn when checked to | 49% | 45% | 57% | 44% |
+| BTN bets the river when checked to | 45% (incl. 14% at 1.5x) | 52% (22% at 1.5x) | 41% | 46% |
+| BB vs a river bet: fold / call / raise | 52 / 32 / 15% | 45 / 28 / 27% | 53 / 36 / 11% | 50 / 30 / 20% |
+
+* **In 3-bet and iso-raised pots the BB is the aggressor and leads out** (c-bets out of position) 67% and
+  44% of flops. When it checks, the BTN usually checks back (61% / 51%).
+* **The 1.5x river overbet is used in every pot** (14–22% when checked to), mostly by the strongest hands
+  and missed draws.
+
+**Caveats:**
+* Postflop strategies are per hand group (12 groups) × board texture × line, not per exact card; the bot
+  maps each hand with `fine_bucket`.
+* Preflop uses the realization formula plus experiment 24's adjustments (fit at a 2.25bb open). Some
+  choices are near-indifferent, and **22 folds as the BTN** (folding −0.50 vs limping −0.58bb). That
+  follows from experiment 24 rating small pairs poorly postflop, likely a hand-group artifact.
+* Postflop models exist for the 3bb and 2.25bb opens. Other open sizes will need the nearest model. Only
+  one pot-sized raise per street (more raises are all-in later in the hand).
+* Known model gaps carry over: the BB over-folds air to small bets (experiments 22–23), and TexasSolver
+  agreement was measured with the old rounded sizes (experiment 25).
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
@@ -1862,7 +1949,8 @@ Data: `versions.csv`, `by_board.csv`, `size_usage.csv`, `solver_usage.csv`.
    histories, instead of picking from three fixed profiles.
 3. **Extend experiment 24:** limped pots and short stacks below 50bb, a stable absolute version (stronger
    damping), and 3-bet pots played out by the whole-hand model.
-4. **Match bot:** a 100bb heads-up bot built on `OPTS_MATCH` (experiment 25) and experiment 24's ranges, with
-   a hand-history interface for PokerNow. Turn and river sizes deserve the same test as the flop c-bet.
+4. **Match bot:** play from experiment 26's policies (`output/match/policy/`, `preflop_by_hand.csv`) with an
+   interface for PokerNow; handle open sizes between the trained ones. Turn and river sizes deserve the
+   same test as the flop c-bet.
 5. **Rerun the TexasSolver comparisons** (experiments 14, 16, 22) with accurate sizes (`SOLVER_CHIP_SCALE=10`).
 6. **Multiway** play.
