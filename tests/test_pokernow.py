@@ -65,8 +65,10 @@ def test_waits_for_the_next_card():
 
 
 @pytest.mark.skipif(not (POLICY / "preflop.json").exists(), reason="match policies not built")
-def test_server_decisions_through_the_demo_hand():
+def test_server_decisions_through_the_demo_hand(tmp_path, monkeypatch):
+    from bot.pokernow import server
     from bot.pokernow.server import decide
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path)            # keep the real session log clean
     seen = []
     for k in range(1, len(MSGS) + 1):
         text = "entry,at,order\n" + "".join(f'"{m.replace(chr(34), chr(34) * 2)}",t,{i}\n' for i, m in enumerate(MSGS[:k]))
