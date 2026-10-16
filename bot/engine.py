@@ -192,9 +192,11 @@ class Engine:
 
     # -- public ------------------------------------------------------------------------------
 
-    def decide(self, hero, hole, board, history, sample=True):
+    def decide(self, hero, hole, board, history, sample=True, stack=STACK):
+        """stack: effective stack in big blinds (the policies were trained at 100bb; all-ins and bet caps
+        use the real stack)."""
         hole, board = parse_cards(hole), parse_cards(board) if board else []
-        st = State([[a if isinstance(a, Act) else Act(*a) for a in h] for h in history])
+        st = State([[a if isinstance(a, Act) else Act(*a) for a in h] for h in history], stack=stack)
         if st.street == 0:
             d = self._preflop(hero, hole, st)
         else:

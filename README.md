@@ -31,7 +31,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 | `scripts/solver_compare.py` | Runs TexasSolver on 12 flops and compares it with the model (experiment 14) |
 | `preflop/fullgame.py` | Flop + turn + river learned together with Monte Carlo CFR, 12 hand buckets, configurable sizes (experiments 15–16) |
 | `preflop/plots.py` | Range grids, heatmaps, bar and line charts |
-| `bot/` | The match bot: `engine.py` (one decision for any 100bb spot), `selfplay.py` (heads-up dealer, duplicate matches), `ask.py` (command line) (experiment 29) |
+| `bot/` | The match bot: `engine.py` (one decision for any 100bb spot), `selfplay.py` (heads-up dealer, duplicate matches), `ask.py` (command line) (experiment 29); `pokernow/` (game-log parser, local server, overlay) (experiment 31) |
 | `scripts/` | One script per experiment (named in each section below) |
 | `tests/` | Equity reference numbers, combo counts, postflop hand-strength rules, the bot engine and dealer |
 
@@ -2215,6 +2215,54 @@ it were 50%.
   directions, averaging −0.6 bb/100. Blending stays on: it costs nothing here, and it's the standard defence
   against an opponent who picks sizes to sit between the nodes.
 
+## Experiment 31: PokerNow interface (advice overlay)
+
+`bot/pokernow/` (`server.py`, `parse.py`, `client.js`). This connects the engine to a PokerNow table with
+nothing to install. It is set up for a private 100bb game: 20.00 stacks, blinds 0.10 / 0.20, so 0.20 chips
+is 1bb.
+
+```bash
+.venv/bin/python -m bot.pokernow.server        # prints a bookmarklet
+```
+
+Open the PokerNow game, sit down, and click the bookmarklet (or paste `client.js` into the developer
+console). An overlay appears on the table.
+
+* **Where the hand comes from: PokerNow's own game log** (the "Download log" CSV, or the JSON the log panel
+  loads). Each hand's log has the seats and starting stacks, the dealer, the blinds (which set the chip →
+  bb unit), every action with its street total, the board and "Your hand is …". `parse.py` turns the
+  latest hand into the engine's history. Calls are recomputed from the opponent's bet, so it doesn't matter
+  whether PokerNow writes the total or the increment.
+* **Your seat is locked on first load.** The script finds your name on the table, matches it to a seat
+  number in the log and keeps that seat (stored per game). Every hand, the hero is whoever sits in that
+  seat. Heads-up, the dealer is the BTN / small blind, so your position changes every hand, but the seat
+  doesn't. The seat can also be picked by hand in the overlay.
+* **The overlay keeps every number separate:**
+  * hand number, street, and who has the button;
+  * your and the opponent's position, stack and bet this street (chips and bb);
+  * the pot from earlier streets vs the total pot including this street's bets;
+  * the amount to call and the effective stack;
+  * your cards and the board;
+  * the recommended action with its size in chips and bb, the full mix, and where the answer came from
+    (solved flop / model / preflop tree, with any size blending).
+
+  Player names come from the log and are escaped before display.
+* **Stacks other than 100bb:** the bot is told the effective stack, so all-ins and bet caps are right. The
+  strategies themselves are the 100bb ones.
+* **Every recommendation is logged** to `output/pokernow/decisions.jsonl` for review after a session.
+* **Advice only: the overlay never clicks;** you make each move. An auto-play version (clicking the
+  buttons) was blocked by Claude Code's permission check, and is left for Allen to decide on.
+* **Testing:**
+  * `tests/test_pokernow.py` replays a sample log (`demo_log.csv`) line by line. It checks seats, button,
+    blinds, stacks, bets vs pot, to-call and the big-blind history, and gets a decision at every turn.
+  * `http://127.0.0.1:8765/games/demo` is a mock table that replays the same log for checking the overlay
+    in a browser.
+* **Not yet checked on a live PokerNow table:**
+  * the two log URLs, `/games/<id>/poker_now_log_<id>.csv` and `/games/<id>/log`;
+  * the selector that finds your name (`.you-player`). If it fails, pick your seat in the overlay.
+
+  The overlay shows an error if it can't read the log.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
@@ -2225,8 +2273,9 @@ it were 50%.
    damping), and 3-bet pots played out by the whole-hand model.
 4. **Card-level flops:** experiment 28 solved one flop per texture class. Next: several flops per class, solve
    3-bet and limped pots the same way, and solve during play for exact boards.
-5. **Match bot:** the engine is in `bot/` (experiment 29). Next: the PokerNow interface (table state ->
-   `Act` lists) and a best-response test of the solver flops. Turn and river sizes: done (experiment 30); the
+5. **Match bot:** the engine is in `bot/` (experiment 29) and the PokerNow overlay in `bot/pokernow/`
+   (experiment 31). Next: check the overlay on a live table, decide on auto-play, and a best-response test of
+   the solver flops. Turn and river sizes: done (experiment 30); the
    strategy book (`STRATEGY.md`) still shows experiment 26's sizes.
 6. **Rerun the TexasSolver comparisons** (experiments 14, 16, 22) with accurate sizes (`SOLVER_CHIP_SCALE=10`).
 7. **Multiway** play.

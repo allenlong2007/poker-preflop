@@ -1,0 +1,32 @@
+entry,at,order
+"-- starting hand #1 (id: h1xyz)  (No Limit Texas Hold'em) (dealer: ""Allen @ aL1"") --",2026-10-15T20:00:00.000Z,1000
+"Player stacks: #3 ""Allen @ aL1"" (20.00) | #7 ""Friend @ fR7"" (20.00)",2026-10-15T20:00:01.000Z,1001
+"""Allen @ aL1"" posts a small blind of 0.10",2026-10-15T20:00:02.000Z,1002
+"""Friend @ fR7"" posts a big blind of 0.20",2026-10-15T20:00:03.000Z,1003
+"Your hand is 7♣, 2♦",2026-10-15T20:00:04.000Z,1004
+"""Allen @ aL1"" folds",2026-10-15T20:00:05.000Z,1005
+"Uncalled bet of 0.10 returned to ""Friend @ fR7""",2026-10-15T20:00:06.000Z,1006
+"""Friend @ fR7"" collected 0.20 from pot",2026-10-15T20:00:07.000Z,1007
+-- ending hand #1 --,2026-10-15T20:00:08.000Z,1008
+"-- starting hand #2 (id: h2abc)  (No Limit Texas Hold'em) (dealer: ""Friend @ fR7"") --",2026-10-15T20:00:09.000Z,1009
+"Player stacks: #3 ""Allen @ aL1"" (19.90) | #7 ""Friend @ fR7"" (20.10)",2026-10-15T20:00:10.000Z,1010
+"""Friend @ fR7"" posts a small blind of 0.10",2026-10-15T20:00:11.000Z,1011
+"""Allen @ aL1"" posts a big blind of 0.20",2026-10-15T20:00:12.000Z,1012
+"Your hand is K♠, Q♠",2026-10-15T20:00:13.000Z,1013
+"""Friend @ fR7"" raises to 0.60",2026-10-15T20:00:14.000Z,1014
+"""Allen @ aL1"" calls 0.60",2026-10-15T20:00:15.000Z,1015
+"Flop:  [K♥, 8♦, 3♣]",2026-10-15T20:00:16.000Z,1016
+"""Allen @ aL1"" checks",2026-10-15T20:00:17.000Z,1017
+"""Friend @ fR7"" bets 0.40",2026-10-15T20:00:18.000Z,1018
+"""Allen @ aL1"" calls 0.40",2026-10-15T20:00:19.000Z,1019
+"Turn: K♥, 8♦, 3♣ [2♠]",2026-10-15T20:00:20.000Z,1020
+"""Allen @ aL1"" checks",2026-10-15T20:00:21.000Z,1021
+"""Friend @ fR7"" bets 1.80",2026-10-15T20:00:22.000Z,1022
+"""Allen @ aL1"" calls 1.80",2026-10-15T20:00:23.000Z,1023
+"River: K♥, 8♦, 3♣, 2♠ [J♦]",2026-10-15T20:00:24.000Z,1024
+"""Allen @ aL1"" checks",2026-10-15T20:00:25.000Z,1025
+"""Friend @ fR7"" bets 4.10",2026-10-15T20:00:26.000Z,1026
+"""Allen @ aL1"" calls 4.10",2026-10-15T20:00:27.000Z,1027
+"""Friend @ fR7"" shows a A♦, K♦.",2026-10-15T20:00:28.000Z,1028
+"""Friend @ fR7"" collected 13.80 from pot",2026-10-15T20:00:29.000Z,1029
+-- ending hand #2 --,2026-10-15T20:00:30.000Z,1030
