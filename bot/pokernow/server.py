@@ -136,7 +136,14 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    try:
+        srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    except OSError as e:
+        if e.errno != 48 and "in use" not in str(e):
+            raise
+        sys.exit(f"Port {port} is already in use: another copy of this server is probably running (its overlay "
+                 f"keeps working). Stop it first (lsof -ti :{port} | xargs kill), or pick another port: "
+                 f"python -m bot.pokernow.server {port + 1}")
     bookmarklet = ("javascript:(()=>{const s=document.createElement('script');"
                    f"s.src='http://127.0.0.1:{port}/client.js?'+Date.now();document.body.appendChild(s)}})()")
     print(f"poker bot server on http://127.0.0.1:{port}  (policies: {ENGINE.policy_dir.name})")
