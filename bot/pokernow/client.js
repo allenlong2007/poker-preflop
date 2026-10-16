@@ -112,9 +112,10 @@
   };
 
   async function fetchLog() {
+    // The JSON log is what PokerNow's log panel loads; the CSV download sits behind a captcha.
     const urls = state.logUrl ? [state.logUrl] : [
-      `/games/${gameId}/poker_now_log_${gameId}.csv`,
       `/games/${gameId}/log?after_at=&before_at=&mm=false`,
+      `/games/${gameId}/poker_now_log_${gameId}.csv`,
     ];
     for (const u of urls) {
       try {

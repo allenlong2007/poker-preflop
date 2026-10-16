@@ -77,3 +77,22 @@ def test_server_decisions_through_the_demo_hand():
     streets = [s for s, _ in seen]
     assert streets[0] == "preflop" and {"flop", "turn", "river"} <= set(streets)
     assert any(n.startswith("bb_vs_raise") for _, n in seen)
+
+
+def test_live_json_log_format():
+    """The format PokerNow's /games/<id>/log returned on a live test table (experiment 31)."""
+    rows = [("-- starting hand #3 (id: lnmqlq2oeb8v)  No Limit Texas Hold'em (dealer: \"BotA @ dTOIcSeZN7\") --", 10),
+            ('Player stacks: #1 "BotA @ dTOIcSeZN7" (20.00) | #2 "BotB @ KGEM_vB9Xd" (20.00)', 11),
+            ("Your hand is J♣, 9♠", 12),
+            ('"BotA @ dTOIcSeZN7" posts a small blind of 0.10', 13),
+            ('"BotB @ KGEM_vB9Xd" posts a big blind of 0.20', 14),
+            ('"BotA @ dTOIcSeZN7" calls 0.20', 15),
+            ('"BotB @ KGEM_vB9Xd" raises to 0.80', 16)]
+    # newest first, created_at as digit strings of different lengths
+    text = json.dumps({"logs": [{"msg": m, "at": "x", "created_at": str(179212114741600 + c * 10 ** k)}
+                                for k, (m, c) in reversed(list(enumerate(rows)))]})
+    msgs = read_log(text)
+    assert msgs[0].startswith("-- starting hand #3") and msgs[-1].endswith("raises to 0.80")
+    t = describe(parse_hand(msgs, hero_seat=1))
+    assert t["hero"]["position"] == "BTN / small blind" and t["to_act"] == "hero"
+    assert t["to_call"] == 0.60 and t["pot_total"] == 1.00

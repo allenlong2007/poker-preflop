@@ -2257,11 +2257,22 @@ console). An overlay appears on the table.
     blinds, stacks, bets vs pot, to-call and the big-blind history, and gets a decision at every turn.
   * `http://127.0.0.1:8765/games/demo` is a mock table that replays the same log for checking the overlay
     in a browser.
-* **Not yet checked on a live PokerNow table:**
-  * the two log URLs, `/games/<id>/poker_now_log_<id>.csv` and `/games/<id>/log`;
-  * the selector that finds your name (`.you-player`). If it fails, pick your seat in the overlay.
-
-  The overlay shows an error if it can't read the log.
+* **Checked on a live PokerNow table** (a private 0.10 / 0.20 game, two players with 20.00 each):
+  * **Log endpoint:** the JSON log at `/games/<id>/log` works, so the overlay reads it first. The CSV
+    download sits behind a captcha.
+  * **Log format:** matches the parser line for line.
+  * **Your player on the page:** found with `.you-player .table-player-name`. PokerNow numbers
+    `table-player-N` by where you sit on your own screen (each viewer sees themselves as 1), so the seat
+    comes from the log's `#N`, not the page.
+  * **A full hand, both seats, every action from the bot:** limp, isolation raise, call; flop lead 1/3, call;
+    turn pot-sized lead, call; river check, bet 1/2, fold. Amounts went in through the raise box's "Your
+    bet" field, which is the total, matching the engine's "to" amounts. The final pot (7.98) matched the
+    parser's pot.
+  * **Turn off PokerNow's decision timer** (Game Configurations → Decision Time Limit, blank). The default
+    20 seconds folds a player who hasn't acted.
+* **Local network permission:** Chrome asks before a public page may contact a server on the same computer
+  ("access other apps and services on this device"). Allow it once for pokernow.com, or the overlay can't
+  reach the bot. The Claude desktop app's browser pane blocks it outright.
 
 ## Next steps
 

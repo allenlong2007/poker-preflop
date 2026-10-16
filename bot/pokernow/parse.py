@@ -55,7 +55,12 @@ def read_log(text, kind="auto"):
     if kind == "json" or (kind == "auto" and text[:1] in "[{"):
         data = json.loads(text)
         rows = data.get("logs", data) if isinstance(data, dict) else data
-        rows = sorted(rows, key=lambda r: (str(r.get("created_at", r.get("at", ""))), r.get("order", 0)))
+        if rows and all(isinstance(r, str) for r in rows):    # already a list of messages, oldest first
+            return list(rows)
+        def order(r):                                       # created_at is a digit string (sub-ms clock)
+            c = str(r.get("created_at", ""))
+            return (int(c) if c.isdigit() else 0, str(r.get("at", "")))
+        rows = sorted(rows, key=order)
         return [r["msg"] for r in rows]
     rows = list(csv.DictReader(io.StringIO(text)))
     if rows and "order" in rows[0]:
