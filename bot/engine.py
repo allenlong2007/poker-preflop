@@ -34,6 +34,8 @@ from preflop.turngame import turn_texture
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "output" / "match" / "policy"
+POLICY_FINE = ROOT / "output" / "match" / "policy_fine"     # experiment 30: finer turn / river sizes
+POTS = ("srp", "3bet", "limp", "iso", "srp_alt")
 FLOPS = ROOT / "output" / "match" / "flops"
 STACK = 100.0
 EPS = 1e-6
@@ -148,16 +150,44 @@ def _nearest(x, options, log=True):
     return min(range(len(options)), key=lambda k: abs(f(x) - f(options[k])))
 
 
+def size_weights(x, sizes, translate=True):
+    """Map a bet of x (fraction of the pot) onto the trained sizes: [(size index, weight)].
+
+    translate=True uses the pseudo-harmonic mapping (Ganzfried & Sandholm 2013): a bet between trained
+    sizes A < x < B is treated as A with probability (B - x)(1 + A) / ((B - A)(1 + x)), else B, and the
+    two nodes' strategies are blended with those weights. Bets outside the trained range use the end size.
+    translate=False snaps to the nearest size (on a log scale).
+    """
+    if not translate:
+        return [(_nearest(x, sizes), 1.0)]
+    order = sorted(range(len(sizes)), key=lambda k: sizes[k])
+    if x <= sizes[order[0]] + 1e-9:
+        return [(order[0], 1.0)]
+    if x >= sizes[order[-1]] - 1e-9:
+        return [(order[-1], 1.0)]
+    hi = next(n for n, k in enumerate(order) if sizes[k] >= x - 1e-9)
+    a, b = order[hi - 1], order[hi]
+    A, B = sizes[a], sizes[b]
+    if abs(B - x) < 1e-9:
+        return [(b, 1.0)]
+    w = (B - x) * (1 + A) / ((B - A) * (1 + x))
+    return [(a, w), (b, 1 - w)]
+
+
 # ----------------------------------------------------------------------------- the engine
 
 class Engine:
-    def __init__(self, policy_dir=POLICY, flops_dir=FLOPS, use_solver_flops=True, seed=None):
-        self.pre = json.load(open(Path(policy_dir) / "preflop.json"))
+    def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None):
+        """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
+        experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size."""
+        if policy_dir is None:
+            policy_dir = POLICY_FINE if all((POLICY_FINE / f"{p}.npz").exists() for p in POTS) else POLICY
+        self.pre = json.load(open(POLICY / "preflop.json"))
         self.policy_dir, self.flops_dir = Path(policy_dir), Path(flops_dir)
         self.use_solver_flops = use_solver_flops and (Path(flops_dir) / "index.json").exists()
         self.index = json.load(open(Path(flops_dir) / "index.json"))["classes"] if self.use_solver_flops else {}
-        self.opts = _match_opts()
-        self._pots, self._flops = {}, {}
+        self.translate = translate
+        self._pots, self._flops, self._opts = {}, {}, {}
         self.rng = np.random.default_rng(seed)
 
     # -- public ------------------------------------------------------------------------------
@@ -254,6 +284,13 @@ class Engine:
             self._pots[name] = dict(np.load(self.policy_dir / f"{name}.npz"))
         return self._pots[name]
 
+    def opts(self, pot):
+        """The sizes a pot's policy was trained with (stored in the file since experiment 30)."""
+        if pot not in self._opts:
+            d = self._pot(pot)
+            self._opts[pot] = _opts_from_json(str(d["opts_json"])) if "opts_json" in d else _match_opts()
+        return self._opts[pot]
+
     def _postflop(self, hero, hole, board, st):
         s = st.street - 1                                   # 0 flop, 1 turn, 2 river
         acts = st.history[st.street]
@@ -262,8 +299,10 @@ class Engine:
         hero_left = st.left(hero)
         other = "bb" if hero == "btn" else "btn"
         opp_all_in = st.left(other) <= EPS
-        leads, bets = fg.street_sizes(s, self.opts)
-        raises = fg.raise_sizes(self.opts, s)
+        pot = self.pot_type(st)
+        o = self.opts(pot)
+        leads, bets = fg.street_sizes(s, o)
+        raises = fg.raise_sizes(o, s)
 
         # Hand group (the river keeps "missed draw" from the turn) and board texture.
         prev = None
@@ -277,9 +316,10 @@ class Engine:
         aggressive = [a for a in acts if a.kind in ("bet", "raise")]
         seq = "".join("x" if a.kind == "check" else "b" if a.kind in ("bet", "raise") else "c" for a in acts)
         bet_to = lambda frac: min(round(frac * P, 2), behind)
-        raise_to = lambda b: min(round(fg.raise_to(self.opts, raises[0], b, P), 2), st.inp[hero] + hero_left) \
+        raise_to = lambda b: min(round(fg.raise_to(o, raises[0], b, P), 2), st.inp[hero] + hero_left) \
             if raises else None
-        # Nodes of the whole-hand model.
+        # Nodes of the whole-hand model; cells(k) is the table cell when facing trained size k.
+        weights = [(None, 1.0)]
         if seq == "":
             kind, cell = "bb_first", (tex, line, bkt)
             labels = ["check"] + [f"lead {f:.2g}" for f in leads]
@@ -291,35 +331,42 @@ class Engine:
         elif seq in ("xb", "b"):
             b = aggressive[0].to
             sizes = bets if seq == "xb" else leads
-            k = _nearest(b / P, sizes)
+            weights = size_weights(b / P, sizes, self.translate)
             kind = "bb_vs_bet" if seq == "xb" else "btn_vs_lead"
-            cell = (tex, line, bkt, k)
+            cell = lambda k: (tex, line, bkt, k)
             labels = ["fold", "call"] + [f"raise {r:.2g}" for r in raises]
             opts = {"fold": ("fold", 0), "call": ("call", min(b, st.inp[hero] + hero_left))}
             opts |= {f"raise {r:.2g}": ("raise", raise_to(b)) for r in raises}
         elif seq in ("xbb", "bb"):
             b0, R = aggressive[0].to, aggressive[1].to
             sizes = bets if seq == "xbb" else leads
-            k = _nearest(b0 / P, sizes)
+            weights = size_weights(b0 / P, sizes, self.translate)
             kind = "btn_vs_xr" if seq == "xbb" else "bb_vs_raise"
-            cell = (tex, line, bkt, k, 0)
+            cell = lambda k: (tex, line, bkt, k, 0)
             labels = ["fold", "call"]
             opts = {"fold": ("fold", 0), "call": ("call", min(R, st.inp[hero] + hero_left))}
         else:
             return self._rule(hero, bkt, st, acts)
 
+        cells = [(cell(k) if callable(cell) else cell, w) for k, w in weights]
         source, node = "model", f"{fg.STREETS[s]} {kind}"
         probs = None
-        pot = self.pot_type(st)
+        notes = []
+        if weights[0][0] is not None:
+            sizes = bets if seq.startswith("x") else leads
+            faced = aggressive[0].to / P
+            notes.append(f"facing {faced:.2f} pot -> " + " / ".join(f"{sizes[k]:.2f} ({w:.0%})" for k, w in weights))
         if s == 0 and pot == "srp" and self.use_solver_flops and abs(st.history[0][0].to - SOLVED_OPEN) < 0.26 \
                 and kind in ("bb_first", "btn_vs_check", "bb_vs_bet"):
-            probs, note = self._solver_flop(hole, board, kind, labels, cell)
-            if probs is not None:
+            parts = [(self._solver_flop(hole, board, kind, labels, c, bets), w) for c, w in cells]
+            if all(p is not None for (p, _), _ in parts):
+                probs = _blend([(p, w) for (p, _), w in parts])
                 source = "solver"
+                notes.append(parts[0][0][1])
         if probs is None:
-            sig = self._pot(pot)[f"sigma_{s}_{kind}"][cell]
-            probs = dict(zip(labels, map(float, sig)))
-            note = f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}"
+            table = self._pot(pot)[f"sigma_{s}_{kind}"]
+            probs = _blend([(dict(zip(labels, map(float, table[c]))), w) for c, w in cells])
+            notes.append(f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}")
 
         # Can't raise an all-in player; a raise that needs the whole stack is an all-in.
         if opp_all_in or hero_left <= b_facing + EPS:
@@ -327,7 +374,7 @@ class Engine:
                 probs["call"] = probs.get("call", 0) + probs.pop(lab)
                 opts.pop(lab, None)
         self._options = opts
-        return Decision("", 0, _normalise(probs), node, source, notes=[note])
+        return Decision("", 0, _normalise(probs), node, source, notes=notes)
 
     def _rule(self, hero, bkt, st, acts):
         """Facing a re-raise: jam the nuts, call strong made hands, fold the rest."""
@@ -364,7 +411,7 @@ class Engine:
                 self._flops[t] = (meta["flop"], nodes)
         return self._flops[t]
 
-    def _solver_flop(self, hole, flop, kind, labels, cell):
+    def _solver_flop(self, hole, flop, kind, labels, cell, bets):
         t = flop_texture(flop)
         got = self._flop(t)
         if got is None:
@@ -375,7 +422,6 @@ class Engine:
             return None, "node not in the solved flop"
         facing = None
         if kind == "bb_vs_bet":
-            bets = fg.street_sizes(0, self.opts)[1]
             facing = f"bet {bets[cell[3]] * 2 * SOLVED_OPEN:g}bb"        # the solve's own labels (pot 6bb)
         table = {k: v for k, v in nodes[kind].items() if k[1] == facing}
         bkt = cell[2]
@@ -409,6 +455,24 @@ def _solver_labels(kind, row, labels):
         for a, lab in zip(sized, labels[1:]):
             out[lab] += row[a]
     return out
+
+
+def _blend(parts):
+    """Weighted average of several {label: prob} dicts with the same labels."""
+    out = dict.fromkeys(parts[0][0], 0.0)
+    for p, w in parts:
+        for k, v in p.items():
+            out[k] += w * v
+    return out
+
+
+def _opts_from_json(text):
+    o = json.loads(text)
+    o["sizes"] = tuple({k: tuple(v) for k, v in st.items()} for st in o["sizes"])
+    for k in ("raise_pot", "raises", "raise_streets"):
+        if k in o:
+            o[k] = tuple(o[k])
+    return o
 
 
 def _normalise(p):

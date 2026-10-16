@@ -26,6 +26,7 @@ same game:
 Usage:
     python scripts/match_strategy.py preflop           (~5 min)
     python scripts/match_strategy.py postflop [pots]   (~15-25 min per pot type, cached)
+    python scripts/match_strategy.py postflop-fine [pots]   (experiment 30, ~30 min per pot type)
     python scripts/match_strategy.py book
 """
 import json
@@ -41,7 +42,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
-from open_size_study import OPTS_MATCH
+from open_size_study import OPTS_FINE, OPTS_MATCH
 from preflop import fullgame as fg
 from preflop.cards import HANDS, n_combos
 from preflop.flopgame import TEXTURES as FLOP_TEXTURES
@@ -52,7 +53,8 @@ QUICK = os.environ.get("STUDY_QUICK") == "1"
 OUT = ROOT / "output" / ("match_quick" if QUICK else "match")
 CACHE = OUT / "cache"                          # gitignored
 POLICY = OUT / "policy"                        # trained postflop policies for the bot
-for d in (CACHE, POLICY):
+POLICY_FINE = OUT / "policy_fine"              # experiment 30: finer turn / river sizes (OPTS_FINE)
+for d in (CACHE, POLICY, POLICY_FINE):
     d.mkdir(parents=True, exist_ok=True)
 BATCHES, HANDS_PER_BATCH, EVAL_HANDS = (2, 15_000, 3_000) if QUICK else (250, 60_000, 200_000)
 STACK = 100
@@ -166,17 +168,25 @@ def pot_ranges(d, s_main):
 
 # ----------------------------------------------------------------------------- 2. postflop
 
-def train(pot, s, btn, bb):
-    path = POLICY / f"{pot}.npz"
+def train(pot, s, btn, bb, fine=False):
+    """fine: experiment 30's finer turn / river sizes (OPTS_FINE, 1.6x the batches for the bigger tables)."""
+    opts, folder = (OPTS_FINE, POLICY_FINE) if fine else (OPTS_MATCH, POLICY)
+    path = folder / f"{pot}.npz"
     if path.exists():
         print(f"{pot}: cached")
         return
-    print(f"== {pot}: pot {2 * s:g}bb, {STACK - s:g}bb behind", flush=True)
+    print(f"== {pot}{' (fine sizes)' if fine else ''}: pot {2 * s:g}bb, {STACK - s:g}bb behind", flush=True)
     t0 = time.time()
-    sigma, _ = fg.learn(btn, bb, OPTS_MATCH, s=s, stack=STACK, batches=BATCHES, hands_per_batch=HANDS_PER_BATCH,
+    batches = int(BATCHES * 1.6) if fine else BATCHES
+    sigma, _ = fg.learn(btn, bb, opts, s=s, stack=STACK, batches=batches, hands_per_batch=HANDS_PER_BATCH,
                         seed=1, verbose=False)
-    value, acc = fg.evaluate(btn, bb, sigma, OPTS_MATCH, s=s, stack=STACK, n=EVAL_HANDS)
-    out = {"value_btn": value, "pot_to": s, "btn_range": btn, "bb_range": bb}
+    # Deep-stacked limped pots learn ~2.5x slower per batch with the finer sizes (~75 min); a quarter of the
+    # evaluation hands keeps each run under two hours (the bot only needs sigma; this feeds the report).
+    print(f"   learned in {(time.time() - t0) / 60:.1f} min; evaluating", flush=True)
+    n_eval = EVAL_HANDS // 4 if fine and pot in ("limp", "iso") else EVAL_HANDS
+    value, acc = fg.evaluate(btn, bb, sigma, opts, s=s, stack=STACK, n=n_eval)
+    out = {"value_btn": value, "pot_to": s, "btn_range": btn, "bb_range": bb,
+           "opts_json": json.dumps({k: v for k, v in opts.items()})}
     for key in sigma:
         out[f"sigma_{key[0]}_{key[1]}"] = sigma[key]
         out[f"strat_{key[0]}_{key[1]}"] = acc.strat[key]
@@ -355,13 +365,13 @@ def main():
         info = preflop()
         d = final_solves(info)
         print("main open", info["s_main"], {s: (v["t"], v["r"], round(1000 * v["btn_ev"], 1)) for s, v in d["by_open"].items()})
-    elif cmd == "postflop":
+    elif cmd in ("postflop", "postflop-fine"):
         info = preflop()
         d = final_solves(info)
         ranges = pot_ranges(d, info["s_main"])
         for pot in (sys.argv[2:] or list(ranges)):
             s, btn, bb = ranges[pot]
-            train(pot, s, btn, bb)
+            train(pot, s, btn, bb, fine=cmd == "postflop-fine")
     else:
         book()
 

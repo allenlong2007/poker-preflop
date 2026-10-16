@@ -2138,8 +2138,82 @@ Every match is 40,000 hands unless noted.
 * **The PokerNow interface.** Keep to its rules on bots, and never act on a live table without the
   player's confirmation.
 * **Turn and river sizes are rounded to the model's sizes.** An opponent's 40% turn bet is played as the
-  50% node.
+  50% node. *(Fixed in experiment 30.)*
 * **The model's turn and river strategies expect the model's own flop play,** not the solver's.
+
+## Experiment 30: Finer turn and river bet sizes
+
+`scripts/turn_river_sizes.py`, `match_strategy.py postflop-fine`, `bot.engine.size_weights`.
+
+Experiment 26's postflop policies have two sizes on the turn (1/2, pot) and three on the river (1/2, pot,
+1.5x). The bot had to round every other bet to one of them: an opponent's 40% river bet was played as if
+it were 50%.
+
+* **Retrained with finer sizes** (`OPTS_FINE`, flop unchanged), for all five pot types, into
+  `output/match/policy_fine/`. 1.6x the batches for the bigger tables. Each file stores its own sizes, and
+  the bot uses these policies by default.
+
+  | | Turn | River |
+  |---|---|---|
+  | **Bets** | 1/3, 1/2, 3/4, pot, 1.5x | 1/3, 1/2, 3/4, pot, 1.5x, 2x |
+  | **Leads** | 1/3, 1/2, 3/4, pot | 1/3, 1/2, 3/4, pot, 1.5x |
+
+* **Training time:** 29–41 minutes per raised pot. The deep-stacked limped and iso pots took 78 and 107
+  minutes, so they were evaluated on a quarter of the hands.
+* **Blending between sizes:** facing a bet between two trained sizes A < x < B, the bot mixes the two nodes'
+  strategies. It uses the **pseudo-harmonic mapping** (Ganzfried & Sandholm, 2013): weight on A
+  = (B − x)(1 + A) / ((B − A)(1 + x)). Bets outside the trained range use the nearest end size. The
+  decision's notes show the mapping, for example `facing 0.50 pot -> 0.33 (44%) / 0.67 (56%)`.
+
+### How the sizes get used (single-raised pot)
+
+![River sizes by hand group](output/turn_river_sizes/usage_river_btn_vs_check.png)
+
+* **The river is polarized by hand strength:**
+  * **Two pair or better** bets pot or bigger 66% of the time (2x alone is 25%).
+  * **Missed draws** bluff big too (48% pot or more).
+  * **Top pair and overpairs** bet small for thin value: 48% at 1/3–1/2, 28% check.
+  * **Weak pairs** check 87%.
+* **The turn is less polarized.** Two pair or better bets pot or 1.5x 49% of the time. Top pair spreads over
+  1/3–3/4.
+* **The BB's river leads mirror the BTN's bets:** a 1/3 "blocker" lead with top pair (34%), and big leads
+  with two pair or better and missed draws.
+* **Overall the size split is broad.** No single size takes more than 14% of the BTN's turn hands or 10% of
+  its river hands. The 2.5x jump between 1/2 and 1.5x in the old grid left real options unused.
+* **Full tables:** `usage_*.csv` (by hand group, line and board) and `old_vs_fine.md` (old vs fine size use).
+
+### Folds by bet size
+
+![Fold frequency by size](output/turn_river_sizes/defence.png)
+
+* **Each player folds more as the bet gets bigger,** roughly tracking the break-even bluffing frequency
+  x / (1 + x).
+* **The BB still over-folds to the BTN's small bets:** 33% vs a 1/3-pot turn bet, where 25% is break-even.
+  This is experiment 22's leak. On the river it reaches the break-even line at about 1.5x and under-folds
+  against 2x. On the turn it stays above the line at every size.
+* **Against the BB's leads, the BTN folds close to break-even:** slightly less often on the turn, slightly
+  more on the river.
+
+### Does it help? (duplicate matches, 200,000 hands each)
+
+| Match | bb / 100 |
+|---|---|
+| fine-size bot vs old bot | +2.2 ± 2.0 |
+| vs an old bot that bets 0.8x its sizes (40%, 80%): **fine** (blend / nearest) | **+1.8 / +5.0** |
+| same opponent: **old** (blend / nearest) | **−2.9 / −3.2** |
+| vs an old bot that bets 1.3x its sizes (65%, 130%): fine (blend / nearest) | +2.5 / −0.7 |
+| same opponent: old (blend / nearest) | +0.4 / +3.0 |
+
+* **The finer sizes pay off against smaller off-grid bets:** about +6.5 bb/100 vs the 0.8x opponent, about
+  3 standard errors. The old grid's smallest size was 1/2 pot, so a 40% bet was played as 50% (or blended
+  toward pot). The fine grid has a 1/3 node underneath.
+* **Against bigger off-grid bets (1.3x) there's no difference.** The old grid already had pot and 1.5x.
+* **Head-to-head with the old bot:** +2.2 ± 2.0, not significant.
+* **Equilibrium value is unchanged** (BTN result per pot within 0.04bb in every pot type, `value.csv`).
+  Giving both players more sizes helps neither much.
+* **Blending vs snapping to the nearest size: no measurable difference.** The four pairs differ in both
+  directions, averaging −0.6 bb/100. Blending stays on: it costs nothing here, and it's the standard defence
+  against an opponent who picks sizes to sit between the nodes.
 
 ## Next steps
 
@@ -2152,7 +2226,7 @@ Every match is 40,000 hands unless noted.
 4. **Card-level flops:** experiment 28 solved one flop per texture class. Next: several flops per class, solve
    3-bet and limped pots the same way, and solve during play for exact boards.
 5. **Match bot:** the engine is in `bot/` (experiment 29). Next: the PokerNow interface (table state ->
-   `Act` lists, with confirmation before acting), a best-response test of the solver flops, and turn and
-   river sizes tested the way experiment 25 tested the flop c-bet.
+   `Act` lists) and a best-response test of the solver flops. Turn and river sizes: done (experiment 30); the
+   strategy book (`STRATEGY.md`) still shows experiment 26's sizes.
 6. **Rerun the TexasSolver comparisons** (experiments 14, 16, 22) with accurate sizes (`SOLVER_CHIP_SCALE=10`).
 7. **Multiway** play.

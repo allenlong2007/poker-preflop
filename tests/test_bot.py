@@ -78,3 +78,25 @@ def test_fold_preflop_results():
     board = parse_cards("3s4s5s6h9c")
     assert play_hand({"btn": Folder(), "bb": Station()}, {"btn": h[0], "bb": h[1]}, board) == -0.5
     assert play_hand({"btn": Station(), "bb": Folder()}, {"btn": h[0], "bb": h[1]}, board) == 1.0       # BB folds to the limp
+
+
+def test_size_weights_pseudo_harmonic():
+    from bot.engine import size_weights
+    sizes = (1 / 3, 1 / 2, 1.0)
+    assert size_weights(0.5, sizes) == [(1, 1.0)]                 # a trained size maps to itself
+    assert size_weights(0.1, sizes) == [(0, 1.0)]                 # below the range: the smallest size
+    assert size_weights(3.0, sizes) == [(2, 1.0)]                 # above: the largest
+    (a, wa), (b, wb) = size_weights(0.75, sizes)
+    assert (a, b) == (1, 2) and abs(wa + wb - 1) < 1e-12
+    assert abs(wa - (1.0 - 0.75) * 1.5 / (0.5 * 1.75)) < 1e-12    # (B - x)(1 + A) / ((B - A)(1 + x))
+    assert size_weights(0.75, sizes, translate=False) == [(2, 1.0)]   # nearest on a log scale
+
+
+def test_blended_decision_lies_between_neighbours():
+    eng = Engine(seed=0)
+    pre = [Act("btn", "raise", 3), Act("bb", "call")]
+    flop = [Act("bb", "check"), Act("btn", "check")]
+    spot = lambda b: eng.decide("bb", "Qc9d", "Kh8d3c2s", [pre, flop, [Act("bb", "check"), Act("btn", "bet", b)]],
+                                sample=False).probs["fold"]
+    lo, hi, mid = spot(3.0), spot(6.0), spot(4.5)                  # 1/2 pot, pot, 3/4 pot (pot 6bb)
+    assert min(lo, hi) - 1e-9 <= mid <= max(lo, hi) + 1e-9

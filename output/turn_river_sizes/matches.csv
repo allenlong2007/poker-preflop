@@ -1,0 +1,10 @@
+match,bb/100,se,hands
+fine sizes vs old sizes,2.244,2.033,200000
+"fine, blend vs old bot that bets 0.8x its sizes (40%, 80% ...)",1.779,1.944,200000
+"fine, nearest vs old bot that bets 0.8x its sizes (40%, 80% ...)",5.023,1.933,200000
+"old, blend vs old bot that bets 0.8x its sizes (40%, 80% ...)",-2.949,1.893,200000
+"old, nearest vs old bot that bets 0.8x its sizes (40%, 80% ...)",-3.188,1.871,200000
+"fine, blend vs old bot that bets 1.3x its sizes (65%, 130% ...)",2.464,2.146,200000
+"fine, nearest vs old bot that bets 1.3x its sizes (65%, 130% ...)",-0.673,2.111,200000
+"old, blend vs old bot that bets 1.3x its sizes (65%, 130% ...)",0.376,2.164,200000
+"old, nearest vs old bot that bets 1.3x its sizes (65%, 130% ...)",2.989,2.167,200000
