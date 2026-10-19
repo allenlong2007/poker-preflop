@@ -98,6 +98,7 @@ class Hand:
     notes: list = field(default_factory=list)
     street_high: float = 0.0        # the biggest bet on the current street (chips)
     street_inc: float = 0.0         # the biggest bet / raise increment on it (the min-raise step)
+    blinds_posted: int = 0
 
     # -- who is who (heads-up: the dealer is the small blind / BTN) ------------------------------
     def hero(self):
@@ -139,8 +140,8 @@ class Hand:
 
     def to_act(self):
         """'btn' / 'bb' whose turn it is in the replayed betting, or None if the hand is over."""
-        if self.over or not self.heads_up():
-            return None
+        if self.over or not self.heads_up() or self.blinds_posted < 2:
+            return None                                     # no decisions before both blinds are in
         st = State(self.history, stack=self.effective_bb())
         if any(st.left(p) <= 1e-9 for p in ("btn", "bb")) and st.facing("btn") <= 1e-9 and st.facing("bb") <= 1e-9:
             return None                                     # all-in and called: no more decisions
@@ -195,6 +196,7 @@ def parse_hand(messages, hero_seat=None, hero_name=None):
         verb, amt = am.group("verb"), float(am.group("amt") or 0)
         pos = h.position(s)
         if verb.startswith("posts"):
+            h.blinds_posted += 1
             if "small" in verb:
                 h.sb = amt
             elif "big" in verb:

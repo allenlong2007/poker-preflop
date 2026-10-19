@@ -176,3 +176,10 @@ def test_action_reports_are_validated():
         server.acted({"ms": "nan"})
     with pytest.raises(ValueError):
         server.acted({"ms": 1e12})
+
+
+def test_no_turn_before_the_blinds():
+    h = parse_hand(MSGS[:2], hero_seat=3)                          # hand #1: start + stacks only
+    assert h.to_act() is None
+    h = parse_hand(upto("Allen @ aL1\" posts a big blind"), hero_seat=3)
+    assert h.to_act() == "btn"                                      # blinds in: the BTN acts

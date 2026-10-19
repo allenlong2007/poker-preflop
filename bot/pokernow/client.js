@@ -6,10 +6,16 @@
   const SERVER = (document.currentScript && new URL(document.currentScript.src).origin) || "http://127.0.0.1:8765";
   const TOKEN = "__PNBOT_TOKEN__";  // filled in by the server; it rejects requests without it
   const HEADERS = { "Content-Type": "application/json", "X-Pnbot-Token": TOKEN };
-  const TURN_CHECK_MS = 350;        // how often the page is checked for "our turn" (cheap: no network)
+  // Every action is committed exactly THINK_MS after PokerNow gives us the turn, whatever the action, so
+  // the opponent learns nothing from how fast the bot acts. The decision and any raise-box typing happen
+  // before that mark; only the final committing click waits for it.
+  const THINK_MS = 5000;
+  const WATCH_MS = 10;              // fallback check for the start of our turn (a DOM observer catches it at once)
+  const TICK_MS = 100;
   const REFRESH_MS = 2500;          // overlay refresh while waiting
   const RETRY_MS = 6000;            // an action the log hasn't recorded by then is retried with a safe fallback
-  if (window.__pnbot) { clearInterval(window.__pnbot.timer); window.__pnbot.root?.remove(); }
+  if (window.__pnbot) { clearInterval(window.__pnbot.timer); window.__pnbot.clock?.terminate();
+                        window.__pnbot.observer?.disconnect(); window.__pnbot.root?.remove(); }
   const gameId = (location.pathname.match(/\/games\/([^/?#]+)/) || [])[1];
   const KEY = (k) => `pnbot-${k}-${gameId}`;
   const store = {
@@ -152,7 +158,18 @@
   const visible = (el) => !!el && el.offsetParent !== null && !el.disabled;
   const findBtn = (re) => [...document.querySelectorAll("button")]
     .find((b) => visible(b) && !root.contains(b) && re.test(b.textContent.trim()));
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // A clock that keeps time in a background tab. Browsers slow a hidden tab's timers to once a second
+  // (or a minute), which would wreck the 5.00 s timing; a Web Worker's timer is not throttled that way.
+  const due = [];                                           // [time, resolve] waiting for the clock
+  const sleep = (ms) => new Promise((r) => due.push([Date.now() + ms, r]));
+  let clock;
+  try {
+    clock = new Worker(URL.createObjectURL(new Blob(["setInterval(() => postMessage(0), 10)"], { type: "text/javascript" })));
+  } catch { clock = null; }                                 // no workers: fall back to page timers
+  function onClock() {
+    const now = Date.now();
+    for (let i = due.length - 1; i >= 0; i--) if (due[i][0] <= now) due.splice(i, 1)[0][1]();
+  }
 
   function setAmount(input, value) {
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
@@ -161,16 +178,29 @@
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  // One click on PokerNow's own buttons. Returns what was clicked, or throws if nothing fit.
-  async function act(d) {
+  // Wait for the commit moment; the turn must still be ours when it comes.
+  async function until(commitAt) {
+    const wait = commitAt - Date.now();
+    if (wait > 0) await sleep(wait);
+    if (!ourTurnOnPage()) throw new Error("the turn ended before the 5 s mark");
+  }
+
+  // One action on PokerNow's own buttons, committed at commitAt. Returns what was done, or throws.
+  async function act(d, commitAt = 0) {
     const call = () => findBtn(/^call\b/i), check = () => findBtn(/^check$/i), fold = () => findBtn(/^fold$/i);
-    const click = (b, what) => { if (!b) throw new Error(`no ${what} button`); b.click(); return what; };
-    if (d.action === "fold") return check() ? click(check(), "check (free)") : click(fold(), "fold");
-    if (d.action === "check") return check() ? click(check(), "check") : click(call() || fold(), "call/fold (no check)");
-    if (d.action === "call") return call() ? click(call(), "call") : click(check(), "check");
+    const click = async (pick, what) => {
+      await until(commitAt);
+      const b = pick();                                     // find the button at the moment of clicking
+      if (!b) throw new Error(`no ${what} button`);
+      b.click();
+      return what;
+    };
+    if (d.action === "fold") return check() ? click(check, "check (free)") : click(fold, "fold");
+    if (d.action === "check") return check() ? click(check, "check") : click(() => call() || fold(), "call/fold (no check)");
+    if (d.action === "call") return call() ? click(call, "call") : click(check, "check");
     // bet / raise: "Bet" or "Raise" exactly (not the one-click "Bet 0.20"), then the amount, then confirm.
     const open = findBtn(/^(bet|raise)$/i);
-    if (!open) return call() ? click(call(), "call (no raise possible)") : click(check(), "check (no bet possible)");
+    if (!open) return call() ? click(call, "call (no raise possible)") : click(check, "check (no bet possible)");
     open.click();
     await sleep(300);
     const form = document.querySelector(".raise-controller-form");
@@ -186,6 +216,7 @@
     await sleep(150);
     const submit = form.querySelector("input[type=submit], button[type=submit]");
     if (!submit) throw new Error("no confirm button in the raise box");
+    await until(commitAt);                                  // amount typed in advance; confirm on the mark
     submit.click();
     return `${d.action} to ${d.all_in ? "all-in" : d.to_chips.toFixed(2)}`;
   }
@@ -247,15 +278,19 @@
     return res;
   }
 
+  // The turn's start is timed by its own fast watcher, so a busy tick (a network call) can't delay it.
+  function watch() {
+    if (!ourTurnOnPage()) state.turnSince = 0;
+    else if (!state.turnSince) state.turnSince = Date.now();
+  }
+
   async function tick() {
     if (state.busy) return;
     state.busy = true;
     const dot = root.querySelector(".dot"), err = $("err");
     try {
       const now = Date.now();
-      const turn = ourTurnOnPage();
-      if (!turn) state.turnSince = 0;
-      else if (!state.turnSince) state.turnSince = now;
+      const turn = ourTurnOnPage() && state.turnSince;
       // Back from "away" (e.g. after a timeout) without waiting for anyone.
       const back = findBtn(/^i'?m back$/i);
       if (back && state.auto) back.click();
@@ -266,16 +301,14 @@
         if (d) {
           const prev = state.acted[d.id];
           if (!prev) {
-            const ms0 = Date.now() - state.turnSince;
-            await sleep(Math.max(0, Math.min(700, 1500 - ms0)) * Math.random());   // a little human-like pause
-            if (ourTurnOnPage()) {
-              let did, error = null;
-              try { did = await act(d); } catch (e) { error = String(e.message || e); }
-              const ms = Date.now() - state.turnSince;
-              state.acted[d.id] = { t: Date.now(), tries: 1 };
-              set("last", esc(`hand ${res.table.hand}: ${did || "FAILED"} in ${(ms / 1000).toFixed(1)}s` + (error ? ` · ${error}` : "")));
-              report({ id: d.id, action: did || d.action, ms, error });
-            }
+            const started = state.turnSince;
+            state.acted[d.id] = { t: Infinity, tries: 1 };    // in progress: don't start it twice
+            let did, error = null;
+            try { did = await act(d, started + THINK_MS); } catch (e) { error = String(e.message || e); }
+            const ms = Date.now() - started;
+            state.acted[d.id].t = Date.now();
+            set("last", esc(`hand ${res.table.hand}: ${did || "FAILED"} at ${(ms / 1000).toFixed(2)}s` + (error ? ` · ${error}` : "")));
+            report({ id: d.id, action: did || d.action, ms, error });
           } else if (Date.now() - prev.t > RETRY_MS && prev.tries < 3) {
             // The log never recorded our move: fall back to the safest action that commits no chips
             // (check if free, otherwise fold). The server re-confirmed above that it is still our turn.
@@ -284,7 +317,8 @@
             const safe = findBtn(/^check$/i) ? "check" : "fold";
             try { did = await act({ action: safe }); } catch (e) { error = String(e.message || e); }
             set("last", esc(`hand ${res.table.hand}: retry ${prev.tries - 1} → ${did || "FAILED"}` + (error ? ` · ${error}` : "")));
-            report({ id: d.id, action: `retry: ${did}`, ms: Date.now() - state.turnSince, error: error || "action not recorded, fell back" });
+            report({ id: d.id, action: `retry: ${did}`, ms: Date.now() - state.turnSince, retry: true,
+                     error: error || "action not recorded, fell back" });
           }
         }
       } else if (now - state.lastRefresh > REFRESH_MS) {
@@ -297,7 +331,18 @@
     } finally { state.busy = false; }
   }
 
-  const timer = setInterval(tick, TURN_CHECK_MS);
-  window.__pnbot = { timer, root, state, tick };
+  let lastWatch = 0, lastTick = 0;
+  function beat() {
+    onClock();
+    const now = Date.now();
+    if (now - lastWatch >= WATCH_MS) { lastWatch = now; watch(); }
+    if (now - lastTick >= TICK_MS) { lastTick = now; tick(); }
+  }
+  let timer = null;
+  if (clock) clock.onmessage = beat; else timer = setInterval(beat, 10);
+  // PokerNow sets "decision-current" on our seat the moment the turn is ours: time the turn from that change.
+  const observer = new MutationObserver(watch);
+  observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });
+  window.__pnbot = { timer, clock, observer, root, state, tick };
   tick();
 })();

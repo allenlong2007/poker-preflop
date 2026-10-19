@@ -2274,6 +2274,35 @@ console). An overlay appears on the table.
   ("access other apps and services on this device"). Allow it once for pokernow.com, or the overlay can't
   reach the bot. The Claude desktop app's browser pane blocks it outright.
 
+### Auto-play: a whole game with no clicks (experiment 32)
+
+The overlay now plays on its own: auto-play is on by default, with a button to switch it off.
+
+* **Fixed timing: every action is committed exactly 5 seconds after PokerNow gives the bot its turn**, so
+  its speed tells the opponent nothing.
+  * A DOM observer notices PokerNow's `decision-current` marker on the bot's seat the moment it appears.
+  * The decision and any raise-box typing happen in the first second.
+  * Only the final click waits for the 5.00 s mark.
+  * The clock runs in a Web Worker, because browsers slow a hidden tab's own timers to once a second or
+    slower.
+  * On the demo table (`/games/demo?k=…`), all 8 actions in the sample hand landed between 5.000 and
+    5.009 s, raises included.
+* **Thinking takes far less than 5 seconds.** Measured over about 22,000 self-play decisions: median
+  0.02 ms, worst 46 ms (a solved flop's first load). The server preloads everything at startup, and parsing a
+  400-hand log plus deciding takes 14 ms. Nothing needed retraining to fit.
+* **Legal sizes:** bets and raises are kept between PokerNow's minimum raise (parsed from the log) and the
+  stack. A size at the stack goes in with the All In button.
+* **Safety net:** if the log hasn't recorded a move 6 s later, the bot retries with check, or fold if
+  checking isn't free. That never commits chips. It also clicks "I'm back" if PokerNow marks it away.
+* **Monitoring:** every click is reported to the server. It prints a status line every 30 s with the hand,
+  the time-to-act range, any actions more than 0.25 s off the mark, and errors. Clicks are logged to
+  `output/pokernow/actions.jsonl`.
+* **Access control:** the server answers only the PokerNow tab. That means requests from PokerNow's own
+  domains carrying a key, which is kept in `output/pokernow/.token` (gitignored, owner-only) and built into
+  the bookmarklet.
+* **Settings for a match:** a decision time limit of at least 15 s, or none, since the bot uses 5 s plus a
+  6 s retry window. Keep the PokerNow tab open; it may be in the background.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option

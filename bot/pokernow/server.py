@@ -66,14 +66,47 @@ DEMO_LOG = Path(__file__).with_name("demo_log.csv")
 DEMO = {"step": 0}                 # how many log lines of the demo hand are visible
 DEMO_PAGE = """<!doctype html><meta charset="utf-8"><title>Demo table</title>
 <body style="background:#0b3d2e;color:#fff;font:14px system-ui;padding:24px">
-<h3>Demo table (not PokerNow)</h3><p>Replays demo_log.csv one line per click, as if it were a live game.</p>
-<button id="next">Next log line</button> <button id="reset">Restart</button> <span id="n"></span>
-<div class="table-player you-player" style="margin-top:16px"><span class="table-player-name">Allen</span></div>
+<h3>Demo table (not PokerNow)</h3>
+<p>Replays demo_log.csv. "Next log line" plays the opponent; when it's the hero's turn the page marks it like
+PokerNow does, and auto-play answers with these buttons. Each answer's time from the start of the turn is listed.</p>
+<button id="next">Next log line</button> <button id="reset">Restart</button> <button id="auto">Auto-advance: off</button>
+<span id="n"></span>
+<div class="table-player you-player" id="you" style="margin:16px 0"><span class="table-player-name">Allen</span>
+  <b id="turn"></b></div>
+<div class="action-buttons"><button>Fold</button> <button>Check</button> <button>Call</button> <button>Raise</button></div>
+<form class="raise-controller-form" style="display:none;margin-top:8px" onsubmit="return false">
+  <input class="value" type="text"> <button type="button">All In</button> <input type="submit" value="Raise"></form>
+<ol id="times"></ol>
 <script>
-const go = (u) => fetch(u, {method: "POST"}).then(r => r.json()).then(j => document.getElementById("n").textContent = "line " + j.step);
+const you = document.getElementById("you"), form = document.querySelector(".raise-controller-form");
+let t0 = 0, auto = false;
+const show = (j) => {
+  document.getElementById("n").textContent = "line " + j.step;
+  const on = j.hero_turn;
+  if (on && !you.classList.contains("decision-current")) { you.classList.add("decision-current"); t0 = performance.now(); }
+  if (!on) you.classList.remove("decision-current");
+  document.getElementById("turn").textContent = on ? "  ← hero to act" : "";
+};
+const go = (u) => fetch(u, {method: "POST"}).then(r => r.json()).then(show);
+const answered = (what) => {
+  if (!you.classList.contains("decision-current")) return;
+  const li = document.createElement("li");
+  li.textContent = what + " at " + ((performance.now() - t0) / 1000).toFixed(3) + " s";
+  document.getElementById("times").appendChild(li);
+  form.style.display = "none";
+  go("/games/demo/next");                          // the hero's own line in the scripted log
+};
+document.querySelectorAll(".action-buttons button").forEach(b => b.onclick = () =>
+  b.textContent === "Raise" ? (form.style.display = "block") : answered(b.textContent));
+form.querySelector("input[type=submit]").onclick = () => answered("Raise to " + form.querySelector("input.value").value);
 document.getElementById("next").onclick = () => go("/games/demo/next");
-document.getElementById("reset").onclick = () => go("/games/demo/reset");
-go("/games/demo/state");
+document.getElementById("reset").onclick = () => { document.getElementById("times").innerHTML = ""; go("/games/demo/reset"); };
+document.getElementById("auto").onclick = (e) => { auto = !auto; e.target.textContent = "Auto-advance: " + (auto ? "on" : "off"); };
+// Driven by a worker so it keeps running in a hidden tab (like the bot's own clock).
+const w = new Worker(URL.createObjectURL(new Blob(["setInterval(() => postMessage(0), 250)"], {type: "text/javascript"})));
+let n = 0;
+w.onmessage = () => { if (++n % 3) return go("/games/demo/state");
+  if (auto && !you.classList.contains("decision-current")) go("/games/demo/next"); else go("/games/demo/state"); };
 </script><script src="/client.js?k=__PNBOT_TOKEN__"></script></body>"""
 
 
@@ -122,7 +155,8 @@ def decide(payload):
     return {"table": table, "decision": CACHE[key], "wait": None}
 
 
-ACT_BUDGET_MS = 5000               # every action should land within 5 s of the turn starting
+THINK_MS = 5000                    # every action is committed exactly this long after the turn starts
+TOLERANCE_MS = 250                 # an action further than this from the mark counts as off-target
 
 
 def _clean(x, n):
@@ -138,10 +172,11 @@ def acted(report):
     if not math.isfinite(ms) or not 0 <= ms <= 3_600_000:
         raise ValueError("bad timing in action report")
     rec = {"id": _clean(report.get("id"), 64), "action": _clean(report.get("action"), 80), "ms": round(ms),
-           "error": _clean(report.get("error"), 200)}
+           "retry": bool(report.get("retry")), "error": _clean(report.get("error"), 200)}
     STATS["acted"] += 1
-    STATS["act_ms"].append(ms)
-    STATS["slow"] += ms > ACT_BUDGET_MS
+    if not rec["retry"]:                                     # retries are recovery, not timed actions
+        STATS["act_ms"].append(ms)
+        STATS["slow"] += abs(ms - THINK_MS) > TOLERANCE_MS
     STATS["last_action"] = f"hand {STATS['hand']}: {rec['action']} ({ms:.0f} ms)"
     if rec["error"]:
         STATS["errors"] += 1
@@ -159,7 +194,8 @@ def status_line():
     page = "page connected" if age < 10 else "NO PAGE POLLING (reload the PokerNow tab and run the bookmarklet)" \
         if STATS["last_poll"] else "waiting for the page"
     return (f"[{time.strftime('%H:%M:%S')}] hand {STATS['hand']} | actions {STATS['acted']} | time to act "
-            f"median {p(0.5):.0f} ms, max {ms[-1] if ms else 0:.0f} ms, over 5 s: {STATS['slow']} | "
+            f"median {p(0.5) / 1000:.2f}s, range {(ms[0] if ms else 0) / 1000:.2f}-{(ms[-1] if ms else 0) / 1000:.2f}s, "
+            f"off the 5.00s mark by >{TOLERANCE_MS / 1000:.2f}s: {STATS['slow']} | "
             f"errors {STATS['errors']} | {page}" + (f" | last error: {STATS['last_error']}" if STATS["errors"] else ""))
 
 
@@ -229,8 +265,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/games/demo/"):
             n = sum(1 for _ in DEMO_LOG.read_text().splitlines()) - 1
             DEMO["step"] = {"next": min(DEMO["step"] + 1, n), "reset": 0}.get(self.path.rsplit("/", 1)[1], DEMO["step"])
+            msgs = read_log(DEMO_LOG.read_text())[:DEMO["step"]]
+            hh = parse_hand(msgs, hero_seat=3) if msgs else None
+            hero_turn = bool(hh) and describe(hh)["to_act"] == "hero" and len(hh.hole) == 2
             self._headers()
-            self.wfile.write(json.dumps({"step": DEMO["step"]}).encode())
+            self.wfile.write(json.dumps({"step": DEMO["step"], "hero_turn": hero_turn}).encode())
             return
         if self.path not in ("/decide", "/acted"):
             self._headers(404)
