@@ -327,6 +327,7 @@
             const rec = state.acted[d.id] = { t: Infinity, tries: 1, pending: true };   // in flight: no retry yet
             let did, error = null;
             try { did = await act(d, started + THINK_MS, started, gen); } catch (e) { error = String(e.message || e); }
+            if (state.gen !== gen) return;                      // cancelled by the watchdog: leave its records alone
             const ms = Date.now() - started;
             rec.pending = false;
             rec.t = Date.now();                                 // the retry clock starts once the action settled
@@ -339,6 +340,7 @@
             let did, error = null;
             const safe = findBtn(/^check$/i) ? "check" : "fold";
             try { did = await act({ action: safe }, 0, 0, gen); } catch (e) { error = String(e.message || e); }
+            if (state.gen !== gen) return;
             set("last", esc(`hand ${res.table.hand}: retry ${prev.tries - 1} → ${did || "FAILED"}` + (error ? ` · ${error}` : "")));
             report({ id: d.id, action: `retry: ${did}`, ms: Date.now() - state.turnSince, retry: true,
                      error: error || "action not recorded, fell back" });
