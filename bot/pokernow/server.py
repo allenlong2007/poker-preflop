@@ -36,7 +36,8 @@ CACHE = {}                         # (hand, hash of its log, actions so far) -> 
 # per-run token (it is written into client.js when the page loads it). Other sites open in the same browser
 # can reach 127.0.0.1 too, and must not be able to feed logs in or read decisions out.
 TOKEN = secrets.token_hex(16)
-ALLOWED_ORIGIN = re.compile(r"^https://(www\.)?pokernow\.(com|club)$")
+# PokerNow's game pages (pokernow.club now redirects to pokernow.com; the live test ran on .com).
+ALLOWED_ORIGINS = {"https://www.pokernow.com", "https://pokernow.com", "https://www.pokernow.club", "https://pokernow.club"}
 PORT = {"n": 8765}
 STATS = {"started": time.time(), "last_poll": 0.0, "decisions": 0, "acted": 0,
          "act_ms": collections.deque(maxlen=5000), "slow": 0,
@@ -149,8 +150,9 @@ def monitor(every=30):
 
 
 def origin_ok(origin):
+    """Requests must name an allowed origin; browsers always send one on these cross-site requests."""
     local = {f"http://127.0.0.1:{PORT['n']}", f"http://localhost:{PORT['n']}"}      # the demo page
-    return origin is None or origin in local or bool(ALLOWED_ORIGIN.match(origin))
+    return origin is not None and (origin in local or origin in ALLOWED_ORIGINS)
 
 
 class Handler(BaseHTTPRequestHandler):

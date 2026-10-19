@@ -144,7 +144,7 @@ def test_server_only_answers_the_pokernow_tab(tmp_path, monkeypatch):
     url = f"http://127.0.0.1:{srv.server_address[1]}"
 
     def post(path, origin, token):
-        hdr = {"Content-Type": "application/json", "Origin": origin}
+        hdr = {"Content-Type": "application/json", **({"Origin": origin} if origin else {})}
         if token:
             hdr["X-Pnbot-Token"] = token
         req = urllib.request.Request(url + path, data=json.dumps({"log": "[]", "seat": 1}).encode(), headers=hdr)
@@ -158,6 +158,8 @@ def test_server_only_answers_the_pokernow_tab(tmp_path, monkeypatch):
         assert post("/decide", "https://www.pokernow.com", None)[0] == 403          # no token
         assert post("/decide", "https://evil.example", server.TOKEN) == (403, None)  # wrong site
         assert post("/acted", "https://evil.example", server.TOKEN)[0] == 403
+        assert post("/decide", "https://pokernow.com.evil.example", server.TOKEN)[0] == 403
+        assert post("/decide", None, server.TOKEN)[0] == 403                        # no Origin at all
         with urllib.request.urlopen(url + "/client.js") as r:                       # token goes into the script
             assert server.TOKEN in r.read().decode() and r.headers.get("Access-Control-Allow-Origin") is None
     finally:
