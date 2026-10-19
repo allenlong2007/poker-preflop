@@ -160,8 +160,12 @@ def test_server_only_answers_the_pokernow_tab(tmp_path, monkeypatch):
         assert post("/acted", "https://evil.example", server.TOKEN)[0] == 403
         assert post("/decide", "https://pokernow.com.evil.example", server.TOKEN)[0] == 403
         assert post("/decide", None, server.TOKEN)[0] == 403                        # no Origin at all
-        with urllib.request.urlopen(url + "/client.js") as r:                       # token goes into the script
+        with urllib.request.urlopen(f"{url}/client.js?k={server.TOKEN}") as r:      # token goes into the script
             assert server.TOKEN in r.read().decode() and r.headers.get("Access-Control-Allow-Origin") is None
+        for bad in ("/client.js", "/client.js?k=wrong"):                            # not without the key
+            with pytest.raises(urllib.error.HTTPError) as e:
+                urllib.request.urlopen(url + bad)
+            assert e.value.code == 403
     finally:
         srv.shutdown()
 

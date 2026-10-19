@@ -35,7 +35,23 @@ CACHE = {}                         # (hand, hash of its log, actions so far) -> 
 # Only the PokerNow tab may use the server: every request must come from an allowed origin and carry this
 # per-run token (it is written into client.js when the page loads it). Other sites open in the same browser
 # can reach 127.0.0.1 too, and must not be able to feed logs in or read decisions out.
-TOKEN = secrets.token_hex(16)
+def _load_token():
+    """A secret kept in a private file, so the bookmarklet (which carries it) works across restarts."""
+    path = LOG_DIR / ".token"
+    try:
+        tok = path.read_text().strip()
+        if len(tok) == 32:
+            return tok
+    except OSError:
+        pass
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    tok = secrets.token_hex(16)
+    path.write_text(tok)
+    path.chmod(0o600)
+    return tok
+
+
+TOKEN = _load_token()
 # PokerNow's game pages (pokernow.club now redirects to pokernow.com; the live test ran on .com).
 ALLOWED_ORIGINS = {"https://www.pokernow.com", "https://pokernow.com", "https://www.pokernow.club", "https://pokernow.club"}
 PORT = {"n": 8765}
@@ -54,7 +70,7 @@ const go = (u) => fetch(u, {method: "POST"}).then(r => r.json()).then(j => docum
 document.getElementById("next").onclick = () => go("/games/demo/next");
 document.getElementById("reset").onclick = () => go("/games/demo/reset");
 go("/games/demo/state");
-</script><script src="/client.js"></script></body>"""
+</script><script src="/client.js?k=__PNBOT_TOKEN__"></script></body>"""
 
 
 def decide(payload):
@@ -174,11 +190,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.split("?")[0] == "/client.js":
+            # Served only with the key the bookmarklet carries; other sites don't know it.
+            query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
+            if not secrets.compare_digest(query.get("k", ""), TOKEN):
+                self._headers(403)
+                return
             self._headers(ctype="application/javascript; charset=utf-8")
             self.wfile.write(CLIENT.read_text().replace("__PNBOT_TOKEN__", TOKEN).encode())
         elif self.path.split("?")[0] == "/games/demo":
             self._headers(ctype="text/html; charset=utf-8")
-            self.wfile.write(DEMO_PAGE.encode())
+            self.wfile.write(DEMO_PAGE.replace("__PNBOT_TOKEN__", TOKEN).encode())
         elif self.path.split("?")[0] == "/games/demo/poker_now_log_demo.csv":
             # PokerNow's CSV is newest first; show only the lines the demo has reached.
             import csv
@@ -239,12 +260,13 @@ def main():
                  f"keeps working). Stop it first (lsof -ti :{port} | xargs kill), or pick another port: "
                  f"python -m bot.pokernow.server {port + 1}")
     bookmarklet = ("javascript:(()=>{const s=document.createElement('script');"
-                   f"s.src='http://127.0.0.1:{port}/client.js?'+Date.now();document.body.appendChild(s)}})()")
+                   f"s.src='http://127.0.0.1:{port}/client.js?k={TOKEN}&t='+Date.now();document.body.appendChild(s)}})()")
     t0 = time.perf_counter()
     ENGINE.warm()                                           # no disk reads during the game
     print(f"poker bot server on http://127.0.0.1:{port}  (policies: {ENGINE.policy_dir.name}, "
           f"loaded in {time.perf_counter() - t0:.1f}s)")
-    print("bookmarklet (save as a bookmark's URL, click it on the PokerNow game tab):")
+    print("bookmarklet (save as a bookmark's URL, click it on the PokerNow game tab; it carries a private key,")
+    print("so don't share it; the key stays the same across restarts, delete output/pokernow/.token to change it):")
     print(bookmarklet)
     import threading
     threading.Thread(target=monitor, daemon=True).start()
