@@ -17,6 +17,7 @@ import collections
 import hashlib
 import json
 import math
+import os
 import re
 import secrets
 import sys
@@ -46,8 +47,11 @@ def _load_token():
         pass
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     tok = secrets.token_hex(16)
-    path.write_text(tok)
-    path.chmod(0o600)
+    # Created owner-only from the start (no window where it exists with default permissions).
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(tok)
+    os.chmod(path, 0o600)                                   # in case it existed with wider permissions
     return tok
 
 
@@ -189,12 +193,14 @@ class Handler(BaseHTTPRequestHandler):
         self._headers(204 if origin_ok(self.headers.get("Origin")) else 403)
 
     def do_GET(self):
-        if self.path.split("?")[0] == "/client.js":
-            # Served only with the key the bookmarklet carries; other sites don't know it.
+        route = self.path.split("?")[0]
+        if route in ("/client.js", "/games/demo"):
+            # Both carry the key, so both are served only to requests that already have it.
             query = dict(p.split("=", 1) for p in self.path.partition("?")[2].split("&") if "=" in p)
             if not secrets.compare_digest(query.get("k", ""), TOKEN):
                 self._headers(403)
                 return
+        if route == "/client.js":
             self._headers(ctype="application/javascript; charset=utf-8")
             self.wfile.write(CLIENT.read_text().replace("__PNBOT_TOKEN__", TOKEN).encode())
         elif self.path.split("?")[0] == "/games/demo":
@@ -268,6 +274,7 @@ def main():
     print("bookmarklet (save as a bookmark's URL, click it on the PokerNow game tab; it carries a private key,")
     print("so don't share it; the key stays the same across restarts, delete output/pokernow/.token to change it):")
     print(bookmarklet)
+    print(f"demo table (to check the overlay without PokerNow): http://127.0.0.1:{port}/games/demo?k={TOKEN}")
     import threading
     threading.Thread(target=monitor, daemon=True).start()
     srv.serve_forever()
