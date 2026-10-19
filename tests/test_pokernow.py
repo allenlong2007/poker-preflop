@@ -98,3 +98,33 @@ def test_live_json_log_format():
     t = describe(parse_hand(msgs, hero_seat=1))
     assert t["hero"]["position"] == "BTN / small blind" and t["to_act"] == "hero"
     assert t["to_call"] == 0.60 and t["pot_total"] == 1.00
+
+
+def test_legal_bet_sizes():
+    pre = ['-- starting hand #5 (id: x)  No Limit Texas Hold\'em (dealer: "A @ a1") --',
+           'Player stacks: #1 "A @ a1" (20.00) | #2 "B @ b2" (3.00)',
+           "Your hand is A♠, K♠", '"A @ a1" posts a small blind of 0.10', '"B @ b2" posts a big blind of 0.20']
+    h = parse_hand(pre, hero_seat=1)
+    assert h.legal_to(h.hero()) == (0.40, 20.00)                    # min-raise over the big blind
+    h = parse_hand(pre + ['"A @ a1" calls 0.20', '"B @ b2" raises to 0.80'], hero_seat=1)
+    assert h.legal_to(h.hero()) == (1.40, 20.00)                    # 0.80 + the 0.60 raise
+    h = parse_hand(pre + ['"A @ a1" raises to 0.60', '"B @ b2" calls 0.60', "Flop:  [2♦, 7♣, 9♥]"], hero_seat=2)
+    assert h.legal_to(h.hero()) == (0.20, 2.40)                     # first bet: at least 1bb; B has 2.40 left
+
+
+@pytest.mark.skipif(not (POLICY / "preflop.json").exists(), reason="match policies not built")
+def test_server_sizes_are_legal_and_all_in_flagged(tmp_path, monkeypatch):
+    from bot.pokernow import server
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path)
+    server.CACHE.clear()
+    # B (big blind, 3.00 = 15bb) holds aces facing a 3bb open: the bot's 3-bet can't exceed 3.00.
+    log = ['-- starting hand #9 (id: y)  No Limit Texas Hold\'em (dealer: "A @ a1") --',
+           'Player stacks: #1 "A @ a1" (20.00) | #2 "B @ b2" (3.00)',
+           "Your hand is A♠, A♥", '"A @ a1" posts a small blind of 0.10', '"B @ b2" posts a big blind of 0.20',
+           '"A @ a1" raises to 0.60']
+    for _ in range(20):                                            # sampling: check every outcome is legal
+        server.CACHE.clear()
+        d = server.decide({"log": json.dumps(log), "seat": 2})["decision"]
+        if d["action"] in ("bet", "raise"):
+            assert 1.00 <= d["to_chips"] <= 3.00
+            assert d["all_in"] == (d["to_chips"] == 3.00)

@@ -1,9 +1,12 @@
-// PokerNow page script for the match bot (experiment 31), advice-only. Served by bot/pokernow/server.py.
-// Reads the game log, asks the local server for a decision and shows a labeled overlay. It never
-// clicks: you make every move yourself. The hero is the player in the seat locked on first load.
+// PokerNow page script for the match bot (experiments 31-32). Served by bot/pokernow/server.py.
+// Reads the game log, asks the local server for a decision, shows a labeled overlay and, with auto-play
+// on (the default), makes the move itself: a whole game with no clicks from the person running it.
+// The hero is the player in the seat locked on first load.
 (() => {
   const SERVER = (document.currentScript && new URL(document.currentScript.src).origin) || "http://127.0.0.1:8765";
-  const POLL_MS = 1500;
+  const TURN_CHECK_MS = 350;        // how often the page is checked for "our turn" (cheap: no network)
+  const REFRESH_MS = 2500;          // overlay refresh while waiting
+  const RETRY_MS = 6000;            // an action the log hasn't recorded by then is retried with a safe fallback
   if (window.__pnbot) { clearInterval(window.__pnbot.timer); window.__pnbot.root?.remove(); }
   const gameId = (location.pathname.match(/\/games\/([^/?#]+)/) || [])[1];
   const KEY = (k) => `pnbot-${k}-${gameId}`;
@@ -11,7 +14,8 @@
     get: (k, d) => { try { const v = localStorage.getItem(KEY(k)); return v === null ? d : JSON.parse(v); } catch { return d; } },
     set: (k, v) => { try { localStorage.setItem(KEY(k), JSON.stringify(v)); } catch {} },
   };
-  const state = { seat: store.get("seat", null), busy: false, logUrl: null };
+  const state = { seat: store.get("seat", null), auto: store.get("auto", true), busy: false, logUrl: null,
+                  acted: {}, lastRefresh: 0, turnSince: 0 };
 
   // ------------------------------------------------------------------ overlay
   const root = document.createElement("div");
@@ -34,12 +38,15 @@
       #pnbot .red{color:#ff6b6b}
       #pnbot .rec{font-size:15px;font-weight:600;margin:2px 0 4px}
       #pnbot .mix{color:#aab3bf;font-size:11px}
+      #pnbot button.tg{font:inherit;background:#262c35;color:#e8e8e8;border:1px solid #39414c;border-radius:6px;
+        padding:3px 8px;cursor:pointer}
+      #pnbot button.tg.on{background:#1f6f43;border-color:#2b9a5d}
       #pnbot select{font:inherit;background:#262c35;color:#e8e8e8;border:1px solid #39414c;border-radius:6px;padding:2px 6px}
       #pnbot .min{border:none;background:none;padding:0 2px;color:#9aa4b2;font:inherit;cursor:pointer}
       #pnbot.collapsed .body{display:none}
       #pnbot .err{color:#ff8f8f;white-space:pre-wrap}
     </style>
-    <div class="hd"><span class="dot"></span><b>Poker bot (advice only)</b><button class="min" data-a="min">–</button></div>
+    <div class="hd"><span class="dot"></span><b>Poker bot</b><button class="min" data-a="min">–</button></div>
     <div class="body">
       <div class="sec"><div class="t">Table</div>
         <div class="row"><span>Hand</span><span class="v" data-f="hand">–</span></div>
@@ -72,8 +79,12 @@
         <div class="mix" data-f="mix"></div>
         <div class="mix" data-f="src"></div>
       </div>
+      <div class="sec"><div class="t">Auto-play</div>
+        <div class="mix" data-f="last">–</div>
+      </div>
       <div class="sec row" style="align-items:center">
-        <span>Your seat</span><select data-a="seat"><option value="">auto</option></select>
+        <button class="tg" data-a="auto">Auto-play: on</button>
+        <span>Seat <select data-a="seat"><option value="">auto</option></select></span>
       </div>
       <div class="sec err" data-f="err" style="display:none"></div>
     </div>`;
@@ -91,6 +102,10 @@
       addEventListener("mousemove", mv); addEventListener("mouseup", up); });
   })();
   root.querySelector('[data-a="min"]').onclick = () => root.classList.toggle("collapsed");
+  const autoBtn = root.querySelector('[data-a="auto"]');
+  const paintAuto = () => { autoBtn.textContent = `Auto-play: ${state.auto ? "on" : "off"}`; autoBtn.classList.toggle("on", state.auto); };
+  autoBtn.onclick = () => { state.auto = !state.auto; store.set("auto", state.auto); paintAuto(); };
+  paintAuto();
   const seatSel = root.querySelector('[data-a="seat"]');
   seatSel.onchange = () => { state.seat = seatSel.value ? +seatSel.value : null; store.set("seat", state.seat); };
 
@@ -126,6 +141,55 @@
       } catch {}
     }
     throw new Error("could not read the game log (tried the CSV and JSON log URLs)");
+  }
+
+  // ------------------------------------------------------------------ acting
+  // PokerNow marks the player whose decision it is with "decision-current". Its pre-action buttons
+  // ("Check", "Fold", "Check or Fold") also show when it is NOT our turn, so buttons alone aren't enough.
+  const ourTurnOnPage = () => !!document.querySelector(".you-player.decision-current");
+  const visible = (el) => !!el && el.offsetParent !== null && !el.disabled;
+  const findBtn = (re) => [...document.querySelectorAll("button")]
+    .find((b) => visible(b) && !root.contains(b) && re.test(b.textContent.trim()));
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function setAmount(input, value) {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
+    setter.call(input, value);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  // One click on PokerNow's own buttons. Returns what was clicked, or throws if nothing fit.
+  async function act(d) {
+    const call = () => findBtn(/^call\b/i), check = () => findBtn(/^check$/i), fold = () => findBtn(/^fold$/i);
+    const click = (b, what) => { if (!b) throw new Error(`no ${what} button`); b.click(); return what; };
+    if (d.action === "fold") return check() ? click(check(), "check (free)") : click(fold(), "fold");
+    if (d.action === "check") return check() ? click(check(), "check") : click(call() || fold(), "call/fold (no check)");
+    if (d.action === "call") return call() ? click(call(), "call") : click(check(), "check");
+    // bet / raise: "Bet" or "Raise" exactly (not the one-click "Bet 0.20"), then the amount, then confirm.
+    const open = findBtn(/^(bet|raise)$/i);
+    if (!open) return call() ? click(call(), "call (no raise possible)") : click(check(), "check (no bet possible)");
+    open.click();
+    await sleep(300);
+    const form = document.querySelector(".raise-controller-form");
+    if (!form) throw new Error("raise box did not open");
+    const allIn = [...form.querySelectorAll("button")].find((b) => /^all in$/i.test(b.textContent.trim()));
+    if (d.all_in && allIn) {
+      allIn.click();
+    } else {
+      const input = form.querySelector("input.value");
+      if (!input) throw new Error("no amount field in the raise box");
+      setAmount(input, d.to_chips.toFixed(2));
+    }
+    await sleep(150);
+    const submit = form.querySelector("input[type=submit], button[type=submit]");
+    if (!submit) throw new Error("no confirm button in the raise box");
+    submit.click();
+    return `${d.action} to ${d.all_in ? "all-in" : d.to_chips.toFixed(2)}`;
+  }
+
+  async function report(r) {
+    try { await fetch(`${SERVER}/acted`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(r) }); } catch {}
   }
 
   // ------------------------------------------------------------------ main loop
@@ -167,28 +231,70 @@
     seatSel.value = state.seat ? String(state.seat) : "";
   }
 
+  async function ask() {
+    const log = await fetchLog();
+    const name = state.seat ? null : youName();
+    const r = await fetch(`${SERVER}/decide`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ log, seat: state.seat, you_name: name }) });
+    const res = await r.json();
+    if (res.error) throw new Error(res.error);
+    if (!state.seat && res.table && res.table.hero_seat) {      // lock the seat we were found in
+      state.seat = res.table.hero_seat; store.set("seat", state.seat);
+    }
+    render(res);
+    return res;
+  }
+
   async function tick() {
     if (state.busy) return;
     state.busy = true;
     const dot = root.querySelector(".dot"), err = $("err");
     try {
-      const log = await fetchLog();
-      const name = state.seat ? null : youName();
-      const r = await fetch(`${SERVER}/decide`, { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ log, seat: state.seat, you_name: name }) });
-      const res = await r.json();
-      if (res.error) throw new Error(res.error);
-      if (!state.seat && res.table && res.table.hero_seat) {      // lock the seat we were found in
-        state.seat = res.table.hero_seat; store.set("seat", state.seat);
+      const now = Date.now();
+      const turn = ourTurnOnPage();
+      if (!turn) state.turnSince = 0;
+      else if (!state.turnSince) state.turnSince = now;
+      // Back from "away" (e.g. after a timeout) without waiting for anyone.
+      const back = findBtn(/^i'?m back$/i);
+      if (back && state.auto) back.click();
+      if (turn && state.auto) {
+        const res = await ask();
+        state.lastRefresh = Date.now();
+        const d = res.decision;
+        if (d) {
+          const prev = state.acted[d.id];
+          if (!prev) {
+            const ms0 = Date.now() - state.turnSince;
+            await sleep(Math.max(0, Math.min(700, 1500 - ms0)) * Math.random());   // a little human-like pause
+            if (ourTurnOnPage()) {
+              let did, error = null;
+              try { did = await act(d); } catch (e) { error = String(e.message || e); }
+              const ms = Date.now() - state.turnSince;
+              state.acted[d.id] = { t: Date.now(), tries: 1 };
+              set("last", esc(`hand ${res.table.hand}: ${did || "FAILED"} in ${(ms / 1000).toFixed(1)}s` + (error ? ` · ${error}` : "")));
+              report({ id: d.id, action: did || d.action, ms, error });
+            }
+          } else if (Date.now() - prev.t > RETRY_MS && prev.tries < 3) {
+            // The log never recorded our move: fall back to the safest legal action.
+            prev.tries += 1; prev.t = Date.now();
+            let did, error = null;
+            const safe = findBtn(/^call\b/i) ? "call" : findBtn(/^check$/i) ? "check" : "fold";
+            try { did = await act({ action: safe }); } catch (e) { error = String(e.message || e); }
+            set("last", esc(`hand ${res.table.hand}: retry ${prev.tries - 1} → ${did || "FAILED"}` + (error ? ` · ${error}` : "")));
+            report({ id: d.id, action: `retry: ${did}`, ms: Date.now() - state.turnSince, error: error || "action not recorded, fell back" });
+          }
+        }
+      } else if (now - state.lastRefresh > REFRESH_MS) {
+        state.lastRefresh = now;
+        await ask();
       }
-      render(res);
       dot.style.background = "#2b9a5d"; err.style.display = "none";
     } catch (e) {
       dot.style.background = "#c0392b"; err.style.display = "block"; err.textContent = String(e.message || e);
     } finally { state.busy = false; }
   }
 
-  const timer = setInterval(tick, POLL_MS);
+  const timer = setInterval(tick, TURN_CHECK_MS);
   window.__pnbot = { timer, root, state, tick };
   tick();
 })();

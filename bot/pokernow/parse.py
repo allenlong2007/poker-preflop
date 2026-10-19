@@ -96,6 +96,8 @@ class Hand:
     over: bool = False
     hero_seat: int | None = None
     notes: list = field(default_factory=list)
+    street_high: float = 0.0        # the biggest bet on the current street (chips)
+    street_inc: float = 0.0         # the biggest bet / raise increment on it (the min-raise step)
 
     # -- who is who (heads-up: the dealer is the small blind / BTN) ------------------------------
     def hero(self):
@@ -127,6 +129,13 @@ class Hand:
 
     def effective_bb(self):
         return min(s.start for s in self.seats.values()) / self.bb
+
+    def legal_to(self, s):
+        """(min, max) street total in chips for a bet or raise by player s (PokerNow's no-limit rules)."""
+        max_to = round(s.start - (s.put_in - s.street_bet), 2)
+        step = max(self.street_inc, self.bb)
+        min_to = round(self.street_high + step, 2) if self.street_high > 0 else self.bb
+        return min(min_to, max_to), max_to
 
     def to_act(self):
         """'btn' / 'bb' whose turn it is in the replayed betting, or None if the hand is over."""
@@ -175,6 +184,7 @@ def parse_hand(messages, hero_seat=None, hero_name=None):
             while h.street < new_street:
                 h.street += 1
                 h.history.append([])
+                h.street_high, h.street_inc = 0.0, 0.0
                 for s in h.seats.values():
                     s.street_bet = 0.0
             continue
@@ -189,6 +199,7 @@ def parse_hand(messages, hero_seat=None, hero_name=None):
                 h.sb = amt
             elif "big" in verb:
                 h.bb = amt
+                h.street_high, h.street_inc = amt, amt
             else:
                 h.notes.append("straddle: not modelled")
             s.put_in += amt - s.street_bet
@@ -208,6 +219,8 @@ def parse_hand(messages, hero_seat=None, hero_name=None):
             s.street_bet = to
             h.history[h.street].append(Act(pos, "call"))
         else:                                               # bets / raises to (street total)
+            h.street_inc = max(h.street_inc, amt - h.street_high)
+            h.street_high = max(h.street_high, amt)
             s.put_in += amt - s.street_bet
             s.street_bet = amt
             kind = "bet" if verb == "bets" else "raise"

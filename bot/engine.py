@@ -192,6 +192,16 @@ class Engine:
 
     # -- public ------------------------------------------------------------------------------
 
+    def warm(self):
+        """Load every policy and solved flop up front, so no decision during a game waits on disk."""
+        for pot in POTS:
+            if (self.policy_dir / f"{pot}.npz").exists():
+                self._pot(pot)
+                self.opts(pot)
+        for t in self.index:
+            self._flop(int(t))
+        return self
+
     def decide(self, hero, hole, board, history, sample=True, stack=STACK):
         """stack: effective stack in big blinds (the policies were trained at 100bb; all-ins and bet caps
         use the real stack)."""
