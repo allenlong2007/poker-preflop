@@ -128,3 +128,45 @@ def test_server_sizes_are_legal_and_all_in_flagged(tmp_path, monkeypatch):
         if d["action"] in ("bet", "raise"):
             assert 1.00 <= d["to_chips"] <= 3.00
             assert d["all_in"] == (d["to_chips"] == 3.00)
+
+
+def test_server_only_answers_the_pokernow_tab(tmp_path, monkeypatch):
+    """Other sites open in the browser can reach 127.0.0.1 too: they must get nothing."""
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+    from bot.pokernow import server
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path)
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
+    server.PORT["n"] = srv.server_address[1]
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def post(path, origin, token):
+        hdr = {"Content-Type": "application/json", "Origin": origin}
+        if token:
+            hdr["X-Pnbot-Token"] = token
+        req = urllib.request.Request(url + path, data=json.dumps({"log": "[]", "seat": 1}).encode(), headers=hdr)
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, r.headers.get("Access-Control-Allow-Origin")
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("Access-Control-Allow-Origin")
+    try:
+        assert post("/decide", "https://www.pokernow.com", server.TOKEN) == (200, "https://www.pokernow.com")
+        assert post("/decide", "https://www.pokernow.com", None)[0] == 403          # no token
+        assert post("/decide", "https://evil.example", server.TOKEN) == (403, None)  # wrong site
+        assert post("/acted", "https://evil.example", server.TOKEN)[0] == 403
+        with urllib.request.urlopen(url + "/client.js") as r:                       # token goes into the script
+            assert server.TOKEN in r.read().decode() and r.headers.get("Access-Control-Allow-Origin") is None
+    finally:
+        srv.shutdown()
+
+
+def test_action_reports_are_validated():
+    from bot.pokernow import server
+    with pytest.raises(ValueError):
+        server.acted({"ms": "nan"})
+    with pytest.raises(ValueError):
+        server.acted({"ms": 1e12})

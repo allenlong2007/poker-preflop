@@ -13,7 +13,12 @@ Endpoints:
                           -> {"table": <labeled snapshot>, "decision": {...} | null, "wait": reason | null}
 Every decision is appended to output/pokernow/decisions.jsonl for review after the session.
 """
+import collections
+import hashlib
 import json
+import math
+import re
+import secrets
 import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -26,8 +31,15 @@ ROOT = Path(__file__).resolve().parents[2]
 CLIENT = Path(__file__).with_name("client.js")
 LOG_DIR = ROOT / "output" / "pokernow"
 ENGINE = Engine()
-CACHE = {}                         # (hand number, actions so far) -> decision, so polling doesn't resample
-STATS = {"started": time.time(), "last_poll": 0.0, "decisions": 0, "acted": 0, "act_ms": [], "slow": 0,
+CACHE = {}                         # (hand, hash of its log, actions so far) -> decision, so polling doesn't resample
+# Only the PokerNow tab may use the server: every request must come from an allowed origin and carry this
+# per-run token (it is written into client.js when the page loads it). Other sites open in the same browser
+# can reach 127.0.0.1 too, and must not be able to feed logs in or read decisions out.
+TOKEN = secrets.token_hex(16)
+ALLOWED_ORIGIN = re.compile(r"^https://(www\.)?pokernow\.(com|club)$")
+PORT = {"n": 8765}
+STATS = {"started": time.time(), "last_poll": 0.0, "decisions": 0, "acted": 0,
+         "act_ms": collections.deque(maxlen=5000), "slow": 0,
          "errors": 0, "hand": 0, "last_action": "", "last_error": ""}
 DEMO_LOG = Path(__file__).with_name("demo_log.csv")
 DEMO = {"step": 0}                 # how many log lines of the demo hand are visible
@@ -62,7 +74,9 @@ def decide(payload):
                 "wait": "hand over" if h.over else "opponent to act" if table["to_act"] == "villain" else "waiting"}
     if len(h.hole) != 2:
         return {"table": table, "decision": None, "wait": "hero cards not in the log yet"}
-    key = (h.number, h.hole[0] + h.hole[1], sum(len(x) for x in h.history), len(h.board))
+    start = max(k for k, m in enumerate(msgs) if m.startswith("-- starting hand"))
+    digest = hashlib.sha256("\n".join(msgs[start:]).encode()).hexdigest()[:16]
+    key = (h.number, digest, h.hole[0] + h.hole[1], sum(len(x) for x in h.history), len(h.board))
     if key not in CACHE:
         t0 = time.perf_counter()
         hero = h.hero()
@@ -90,19 +104,30 @@ def decide(payload):
 ACT_BUDGET_MS = 5000               # every action should land within 5 s of the turn starting
 
 
+def _clean(x, n):
+    return re.sub(r"[\x00-\x1f\x7f]", " ", str(x))[:n] if x is not None else None
+
+
 def acted(report):
     """The page reports each click: how long from seeing its turn to clicking, and whether it worked."""
+    try:
+        ms = float(report.get("ms", 0))
+    except (TypeError, ValueError):
+        ms = float("nan")
+    if not math.isfinite(ms) or not 0 <= ms <= 3_600_000:
+        raise ValueError("bad timing in action report")
+    rec = {"id": _clean(report.get("id"), 64), "action": _clean(report.get("action"), 80), "ms": round(ms),
+           "error": _clean(report.get("error"), 200)}
     STATS["acted"] += 1
-    ms = float(report.get("ms", 0))
     STATS["act_ms"].append(ms)
     STATS["slow"] += ms > ACT_BUDGET_MS
-    STATS["last_action"] = f"hand {STATS['hand']}: {report.get('action')} ({ms:.0f} ms)"
-    if report.get("error"):
+    STATS["last_action"] = f"hand {STATS['hand']}: {rec['action']} ({ms:.0f} ms)"
+    if rec["error"]:
         STATS["errors"] += 1
-        STATS["last_error"] = str(report["error"])
+        STATS["last_error"] = rec["error"]
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     with open(LOG_DIR / "actions.jsonl", "a") as f:
-        f.write(json.dumps({"t": time.time(), **report}) + "\n")
+        f.write(json.dumps({"t": time.time(), **rec}) + "\n")
     return {"ok": True}
 
 
@@ -123,24 +148,32 @@ def monitor(every=30):
         print(status_line(), flush=True)
 
 
+def origin_ok(origin):
+    local = {f"http://127.0.0.1:{PORT['n']}", f"http://localhost:{PORT['n']}"}      # the demo page
+    return origin is None or origin in local or bool(ALLOWED_ORIGIN.match(origin))
+
+
 class Handler(BaseHTTPRequestHandler):
     def _headers(self, code=200, ctype="application/json"):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Private-Network", "true")   # Chrome: public page -> localhost
+        origin = self.headers.get("Origin")
+        if origin and origin_ok(origin):                    # CORS only for PokerNow (and the local demo)
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Pnbot-Token")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Private-Network", "true")   # Chrome: public page -> localhost
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
 
     def do_OPTIONS(self):
-        self._headers(204)
+        self._headers(204 if origin_ok(self.headers.get("Origin")) else 403)
 
     def do_GET(self):
         if self.path.split("?")[0] == "/client.js":
             self._headers(ctype="application/javascript; charset=utf-8")
-            self.wfile.write(CLIENT.read_bytes())
+            self.wfile.write(CLIENT.read_text().replace("__PNBOT_TOKEN__", TOKEN).encode())
         elif self.path.split("?")[0] == "/games/demo":
             self._headers(ctype="text/html; charset=utf-8")
             self.wfile.write(DEMO_PAGE.encode())
@@ -172,6 +205,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path not in ("/decide", "/acted"):
             self._headers(404)
             return
+        if not origin_ok(self.headers.get("Origin")) or not secrets.compare_digest(
+                self.headers.get("X-Pnbot-Token", ""), TOKEN):
+            self._headers(403)
+            self.wfile.write(b'{"error": "forbidden: reload the bot (click the bookmarklet again)"}')
+            return
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         try:
             out = decide(json.loads(body)) if self.path == "/decide" else acted(json.loads(body))
@@ -189,6 +227,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    PORT["n"] = port
     try:
         srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     except OSError as e:

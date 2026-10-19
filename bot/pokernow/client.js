@@ -4,6 +4,8 @@
 // The hero is the player in the seat locked on first load.
 (() => {
   const SERVER = (document.currentScript && new URL(document.currentScript.src).origin) || "http://127.0.0.1:8765";
+  const TOKEN = "__PNBOT_TOKEN__";  // filled in by the server; it rejects requests without it
+  const HEADERS = { "Content-Type": "application/json", "X-Pnbot-Token": TOKEN };
   const TURN_CHECK_MS = 350;        // how often the page is checked for "our turn" (cheap: no network)
   const REFRESH_MS = 2500;          // overlay refresh while waiting
   const RETRY_MS = 6000;            // an action the log hasn't recorded by then is retried with a safe fallback
@@ -189,7 +191,7 @@
   }
 
   async function report(r) {
-    try { await fetch(`${SERVER}/acted`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(r) }); } catch {}
+    try { await fetch(`${SERVER}/acted`, { method: "POST", headers: HEADERS, body: JSON.stringify(r) }); } catch {}
   }
 
   // ------------------------------------------------------------------ main loop
@@ -234,7 +236,7 @@
   async function ask() {
     const log = await fetchLog();
     const name = state.seat ? null : youName();
-    const r = await fetch(`${SERVER}/decide`, { method: "POST", headers: { "Content-Type": "application/json" },
+    const r = await fetch(`${SERVER}/decide`, { method: "POST", headers: HEADERS,
       body: JSON.stringify({ log, seat: state.seat, you_name: name }) });
     const res = await r.json();
     if (res.error) throw new Error(res.error);
@@ -275,10 +277,11 @@
               report({ id: d.id, action: did || d.action, ms, error });
             }
           } else if (Date.now() - prev.t > RETRY_MS && prev.tries < 3) {
-            // The log never recorded our move: fall back to the safest legal action.
+            // The log never recorded our move: fall back to the safest action that commits no chips
+            // (check if free, otherwise fold). The server re-confirmed above that it is still our turn.
             prev.tries += 1; prev.t = Date.now();
             let did, error = null;
-            const safe = findBtn(/^call\b/i) ? "call" : findBtn(/^check$/i) ? "check" : "fold";
+            const safe = findBtn(/^check$/i) ? "check" : "fold";
             try { did = await act({ action: safe }); } catch (e) { error = String(e.message || e); }
             set("last", esc(`hand ${res.table.hand}: retry ${prev.tries - 1} → ${did || "FAILED"}` + (error ? ` · ${error}` : "")));
             report({ id: d.id, action: `retry: ${did}`, ms: Date.now() - state.turnSince, error: error || "action not recorded, fell back" });
