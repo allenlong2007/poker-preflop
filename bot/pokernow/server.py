@@ -187,6 +187,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Access-Control-Allow-Private-Network", "true")   # Chrome: public page -> localhost
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")      # the key in our URLs never leaks via Referer
         self.end_headers()
 
     def do_OPTIONS(self):
