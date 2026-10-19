@@ -30,7 +30,7 @@ PLAYER = r'"(?P<name>.+?) @ (?P<pid>[^"]+)"'
 RE_START = re.compile(r"-- starting hand #(?P<no>\d+).*?(?:\(dealer: " + PLAYER + r"\))?\s*--")
 RE_END = re.compile(r"-- ending hand #(?P<no>\d+)")
 RE_STACKS = re.compile(r'#(?P<seat>\d+) "(?P<name>.+?) @ (?P<pid>[^"]+)" \((?P<stack>[\d.]+)\)')
-RE_ACTION = re.compile(PLAYER + r" (?P<verb>posts a small blind of|posts a big blind of|posts a straddle of|"
+RE_ACTION = re.compile(PLAYER + r" (?P<verb>posts an? (?:missing |missed |dead )?(?:small|big) blind of|posts a straddle of|"
                                  r"raises to|bets|calls|checks|folds)(?: (?P<amt>[\d.]+))?(?P<allin> and go all in)?")
 RE_HAND = re.compile(r"Your hand is (?P<cards>.+)")
 RE_BOARD = re.compile(r"^(?P<street>Flop|Turn|River)[^:]*:\s*(?P<cards>.+)$")
@@ -98,7 +98,8 @@ class Hand:
     notes: list = field(default_factory=list)
     street_high: float = 0.0        # the biggest bet on the current street (chips)
     street_inc: float = 0.0         # the biggest bet / raise increment on it (the min-raise step)
-    blinds_posted: int = 0
+    sb_posted: bool = False
+    bb_posted: bool = False
 
     # -- who is who (heads-up: the dealer is the small blind / BTN) ------------------------------
     def hero(self):
@@ -140,7 +141,7 @@ class Hand:
 
     def to_act(self):
         """'btn' / 'bb' whose turn it is in the replayed betting, or None if the hand is over."""
-        if self.over or not self.heads_up() or self.blinds_posted < 2:
+        if self.over or not self.heads_up() or not (self.sb_posted and self.bb_posted):
             return None                                     # no decisions before both blinds are in
         st = State(self.history, stack=self.effective_bb())
         if any(st.left(p) <= 1e-9 for p in ("btn", "bb")) and st.facing("btn") <= 1e-9 and st.facing("bb") <= 1e-9:
@@ -196,11 +197,12 @@ def parse_hand(messages, hero_seat=None, hero_name=None):
         verb, amt = am.group("verb"), float(am.group("amt") or 0)
         pos = h.position(s)
         if verb.startswith("posts"):
-            h.blinds_posted += 1
             if "small" in verb:
                 h.sb = amt
+                h.sb_posted = True
             elif "big" in verb:
                 h.bb = amt
+                h.bb_posted = True
                 h.street_high, h.street_inc = amt, amt
             else:
                 h.notes.append("straddle: not modelled")

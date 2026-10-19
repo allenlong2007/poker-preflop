@@ -87,7 +87,7 @@ const show = (j) => {
   if (!on) you.classList.remove("decision-current");
   document.getElementById("turn").textContent = on ? "  ← hero to act" : "";
 };
-const go = (u) => fetch(u, {method: "POST"}).then(r => r.json()).then(show);
+const go = (u) => fetch(u, {method: "POST", headers: {"X-Pnbot-Token": "__PNBOT_TOKEN__"}}).then(r => r.json()).then(show);
 const answered = (what) => {
   if (!you.classList.contains("decision-current")) return;
   const li = document.createElement("li");
@@ -262,7 +262,13 @@ class Handler(BaseHTTPRequestHandler):
             self._headers(404)
 
     def do_POST(self):
-        if self.path.startswith("/games/demo/"):
+        # Every POST needs an allowed Origin and the key (the demo page carries it too).
+        if not origin_ok(self.headers.get("Origin")) or not secrets.compare_digest(
+                self.headers.get("X-Pnbot-Token", ""), TOKEN):
+            self._headers(403)
+            self.wfile.write(b'{"error": "forbidden: reload the bot (click the bookmarklet again)"}')
+            return
+        if self.path in ("/games/demo/next", "/games/demo/reset", "/games/demo/state"):
             n = sum(1 for _ in DEMO_LOG.read_text().splitlines()) - 1
             DEMO["step"] = {"next": min(DEMO["step"] + 1, n), "reset": 0}.get(self.path.rsplit("/", 1)[1], DEMO["step"])
             msgs = read_log(DEMO_LOG.read_text())[:DEMO["step"]]
@@ -273,11 +279,6 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path not in ("/decide", "/acted"):
             self._headers(404)
-            return
-        if not origin_ok(self.headers.get("Origin")) or not secrets.compare_digest(
-                self.headers.get("X-Pnbot-Token", ""), TOKEN):
-            self._headers(403)
-            self.wfile.write(b'{"error": "forbidden: reload the bot (click the bookmarklet again)"}')
             return
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
         try:

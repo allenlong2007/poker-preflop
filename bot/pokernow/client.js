@@ -161,7 +161,8 @@
   // A clock that keeps time in a background tab. Browsers slow a hidden tab's timers to once a second
   // (or a minute), which would wreck the 5.00 s timing; a Web Worker's timer is not throttled that way.
   const due = [];                                           // [time, resolve] waiting for the clock
-  const sleep = (ms) => new Promise((r) => due.push([Date.now() + ms, r]));
+  // Settles on the worker clock; a page timer is a backstop so a stalled worker can never hang a wait.
+  const sleep = (ms) => new Promise((r) => { due.push([Date.now() + ms, r]); setTimeout(r, ms + 2000); });
   let clock;
   try {
     clock = new Worker(URL.createObjectURL(new Blob(["setInterval(() => postMessage(0), 10)"], { type: "text/javascript" })));
@@ -179,17 +180,18 @@
   }
 
   // Wait for the commit moment; the turn must still be ours when it comes.
-  async function until(commitAt) {
+  async function until(commitAt, started) {
     const wait = commitAt - Date.now();
     if (wait > 0) await sleep(wait);
-    if (!ourTurnOnPage()) throw new Error("the turn ended before the 5 s mark");
+    // Commit only on the same turn the decision was made for, not just "a" turn of ours.
+    if (!ourTurnOnPage() || (started && state.turnSince !== started)) throw new Error("the turn changed before the 5 s mark");
   }
 
   // One action on PokerNow's own buttons, committed at commitAt. Returns what was done, or throws.
-  async function act(d, commitAt = 0) {
+  async function act(d, commitAt = 0, started = 0) {
     const call = () => findBtn(/^call\b/i), check = () => findBtn(/^check$/i), fold = () => findBtn(/^fold$/i);
     const click = async (pick, what) => {
-      await until(commitAt);
+      await until(commitAt, started);
       const b = pick();                                     // find the button at the moment of clicking
       if (!b) throw new Error(`no ${what} button`);
       b.click();
@@ -216,7 +218,13 @@
     await sleep(150);
     const submit = form.querySelector("input[type=submit], button[type=submit]");
     if (!submit) throw new Error("no confirm button in the raise box");
-    await until(commitAt);                                  // amount typed in advance; confirm on the mark
+    try {
+      await until(commitAt, started);                       // amount typed in advance; confirm on the mark
+    } catch (e) {
+      const back = [...form.querySelectorAll("button")].find((b) => /^back$/i.test(b.textContent.trim()));
+      if (back) back.click();                               // close the raise box: nothing stale left typed
+      throw e;
+    }
     submit.click();
     return `${d.action} to ${d.all_in ? "all-in" : d.to_chips.toFixed(2)}`;
   }
@@ -285,8 +293,14 @@
   }
 
   async function tick() {
-    if (state.busy) return;
+    if (state.busy) {
+      // Watchdog: nothing legitimate keeps a tick busy this long (5 s mark + network). Free the loop.
+      if (Date.now() - state.busySince > THINK_MS + 8000) { state.busy = false; $("err").style.display = "block";
+        $("err").textContent = "a step hung and was reset"; }
+      return;
+    }
     state.busy = true;
+    state.busySince = Date.now();
     const dot = root.querySelector(".dot"), err = $("err");
     try {
       const now = Date.now();
@@ -302,9 +316,9 @@
           const prev = state.acted[d.id];
           if (!prev) {
             const started = state.turnSince;
-            state.acted[d.id] = { t: Infinity, tries: 1 };    // in progress: don't start it twice
+            state.acted[d.id] = { t: started + THINK_MS, tries: 1 };   // in progress; retry clock runs from the mark
             let did, error = null;
-            try { did = await act(d, started + THINK_MS); } catch (e) { error = String(e.message || e); }
+            try { did = await act(d, started + THINK_MS, started); } catch (e) { error = String(e.message || e); }
             const ms = Date.now() - started;
             state.acted[d.id].t = Date.now();
             set("last", esc(`hand ${res.table.hand}: ${did || "FAILED"} at ${(ms / 1000).toFixed(2)}s` + (error ? ` · ${error}` : "")));
@@ -339,7 +353,8 @@
     if (now - lastTick >= TICK_MS) { lastTick = now; tick(); }
   }
   let timer = null;
-  if (clock) clock.onmessage = beat; else timer = setInterval(beat, 10);
+  if (clock) clock.onmessage = beat;
+  timer = setInterval(beat, clock ? 250 : 10);              // backstop if the worker ever stops
   // PokerNow sets "decision-current" on our seat the moment the turn is ours: time the turn from that change.
   const observer = new MutationObserver(watch);
   observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["class"] });

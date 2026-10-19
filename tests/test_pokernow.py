@@ -160,6 +160,7 @@ def test_server_only_answers_the_pokernow_tab(tmp_path, monkeypatch):
         assert post("/acted", "https://evil.example", server.TOKEN)[0] == 403
         assert post("/decide", "https://pokernow.com.evil.example", server.TOKEN)[0] == 403
         assert post("/decide", None, server.TOKEN)[0] == 403                        # no Origin at all
+        assert post("/games/demo/next", "https://evil.example", None)[0] == 403
         with urllib.request.urlopen(f"{url}/client.js?k={server.TOKEN}") as r:      # token goes into the script
             assert server.TOKEN in r.read().decode() and r.headers.get("Access-Control-Allow-Origin") is None
         for bad in ("/client.js", "/client.js?k=wrong", "/games/demo"):              # not without the key
@@ -183,3 +184,12 @@ def test_no_turn_before_the_blinds():
     assert h.to_act() is None
     h = parse_hand(upto("Allen @ aL1\" posts a big blind"), hero_seat=3)
     assert h.to_act() == "btn"                                      # blinds in: the BTN acts
+
+
+def test_missing_and_dead_blind_wordings():
+    log = ['-- starting hand #4 (id: z)  No Limit Texas Hold\'em (dealer: "A @ a1") --',
+           'Player stacks: #1 "A @ a1" (20.00) | #2 "B @ b2" (20.00)', "Your hand is A♠, K♠",
+           '"A @ a1" posts a missing small blind of 0.10', '"B @ b2" posts a big blind of 0.20']
+    h = parse_hand(log, hero_seat=1)
+    assert h.sb_posted and h.bb_posted and h.to_act() == "btn"
+    assert parse_hand(log[:4], hero_seat=1).to_act() is None         # big blind not in yet
