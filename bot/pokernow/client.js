@@ -23,7 +23,7 @@
     set: (k, v) => { try { localStorage.setItem(KEY(k), JSON.stringify(v)); } catch {} },
   };
   const state = { seat: store.get("seat", null), auto: store.get("auto", true), busy: false, logUrl: null,
-                  acted: {}, lastRefresh: 0, turnSince: 0 };
+                  acted: {}, lastRefresh: 0, turnSince: 0, gen: 0 };
 
   // ------------------------------------------------------------------ overlay
   const root = document.createElement("div");
@@ -180,18 +180,20 @@
   }
 
   // Wait for the commit moment; the turn must still be ours when it comes.
-  async function until(commitAt, started) {
+  async function until(commitAt, started, gen) {
     const wait = commitAt - Date.now();
     if (wait > 0) await sleep(wait);
+    // A step the watchdog gave up on must never click afterwards.
+    if (gen !== undefined && gen !== state.gen) throw new Error("this step was cancelled");
     // Commit only on the same turn the decision was made for, not just "a" turn of ours.
     if (!ourTurnOnPage() || (started && state.turnSince !== started)) throw new Error("the turn changed before the 5 s mark");
   }
 
   // One action on PokerNow's own buttons, committed at commitAt. Returns what was done, or throws.
-  async function act(d, commitAt = 0, started = 0) {
+  async function act(d, commitAt = 0, started = 0, gen = undefined) {
     const call = () => findBtn(/^call\b/i), check = () => findBtn(/^check$/i), fold = () => findBtn(/^fold$/i);
     const click = async (pick, what) => {
-      await until(commitAt, started);
+      await until(commitAt, started, gen);
       const b = pick();                                     // find the button at the moment of clicking
       if (!b) throw new Error(`no ${what} button`);
       b.click();
@@ -219,7 +221,7 @@
     const submit = form.querySelector("input[type=submit], button[type=submit]");
     if (!submit) throw new Error("no confirm button in the raise box");
     try {
-      await until(commitAt, started);                       // amount typed in advance; confirm on the mark
+      await until(commitAt, started, gen);                  // amount typed in advance; confirm on the mark
     } catch (e) {
       const back = [...form.querySelectorAll("button")].find((b) => /^back$/i.test(b.textContent.trim()));
       if (back) back.click();                               // close the raise box: nothing stale left typed
@@ -295,12 +297,18 @@
   async function tick() {
     if (state.busy) {
       // Watchdog: nothing legitimate keeps a tick busy this long (5 s mark + network). Free the loop.
-      if (Date.now() - state.busySince > THINK_MS + 8000) { state.busy = false; $("err").style.display = "block";
-        $("err").textContent = "a step hung and was reset"; }
+      // Cancel the hung step (it checks its generation before any click), then free the loop.
+      if (Date.now() - state.busySince > THINK_MS + 8000) {
+        state.gen += 1;
+        for (const a of Object.values(state.acted)) if (a.pending) { a.pending = false; a.t = Date.now(); }
+        state.busy = false;
+        $("err").style.display = "block"; $("err").textContent = "a step hung and was cancelled";
+      }
       return;
     }
     state.busy = true;
     state.busySince = Date.now();
+    const gen = ++state.gen;
     const dot = root.querySelector(".dot"), err = $("err");
     try {
       const now = Date.now();
@@ -316,20 +324,21 @@
           const prev = state.acted[d.id];
           if (!prev) {
             const started = state.turnSince;
-            state.acted[d.id] = { t: started + THINK_MS, tries: 1 };   // in progress; retry clock runs from the mark
+            const rec = state.acted[d.id] = { t: Infinity, tries: 1, pending: true };   // in flight: no retry yet
             let did, error = null;
-            try { did = await act(d, started + THINK_MS, started); } catch (e) { error = String(e.message || e); }
+            try { did = await act(d, started + THINK_MS, started, gen); } catch (e) { error = String(e.message || e); }
             const ms = Date.now() - started;
-            state.acted[d.id].t = Date.now();
+            rec.pending = false;
+            rec.t = Date.now();                                 // the retry clock starts once the action settled
             set("last", esc(`hand ${res.table.hand}: ${did || "FAILED"} at ${(ms / 1000).toFixed(2)}s` + (error ? ` · ${error}` : "")));
             report({ id: d.id, action: did || d.action, ms, error });
-          } else if (Date.now() - prev.t > RETRY_MS && prev.tries < 3) {
+          } else if (!prev.pending && Date.now() - prev.t > RETRY_MS && prev.tries < 3) {
             // The log never recorded our move: fall back to the safest action that commits no chips
             // (check if free, otherwise fold). The server re-confirmed above that it is still our turn.
             prev.tries += 1; prev.t = Date.now();
             let did, error = null;
             const safe = findBtn(/^check$/i) ? "check" : "fold";
-            try { did = await act({ action: safe }); } catch (e) { error = String(e.message || e); }
+            try { did = await act({ action: safe }, 0, 0, gen); } catch (e) { error = String(e.message || e); }
             set("last", esc(`hand ${res.table.hand}: retry ${prev.tries - 1} → ${did || "FAILED"}` + (error ? ` · ${error}` : "")));
             report({ id: d.id, action: `retry: ${did}`, ms: Date.now() - state.turnSince, retry: true,
                      error: error || "action not recorded, fell back" });
@@ -342,7 +351,7 @@
       dot.style.background = "#2b9a5d"; err.style.display = "none";
     } catch (e) {
       dot.style.background = "#c0392b"; err.style.display = "block"; err.textContent = String(e.message || e);
-    } finally { state.busy = false; }
+    } finally { if (state.gen === gen) state.busy = false; }   // a cancelled step doesn't touch the new one
   }
 
   let lastWatch = 0, lastTick = 0;
