@@ -300,9 +300,19 @@
   }
 
   // The turn's start is timed by its own fast watcher, so a busy tick (a network call) can't delay it.
+  // When the bot acts twice in a row (e.g. the big blind checks preflop, then acts first on the flop)
+  // PokerNow keeps the turn marker on, so a new turn is the marker coming back or new board cards.
+  const boardCount = () => { const t = document.querySelector(".table-cards"); return t ? t.querySelectorAll("[class*=card]").length : 0; };
   function watch() {
-    if (!ourTurnOnPage()) state.turnSince = 0;
-    else if (!state.turnSince) state.turnSince = Date.now();
+    if (!ourTurnOnPage()) { state.turnSince = 0; state.waitNew = false; return; }
+    if (state.waitNew) {
+      if (boardCount() !== state.boardAtAct) { state.waitNew = false; state.turnSince = Date.now(); }
+      return;
+    }
+    if (!state.turnSince) state.turnSince = Date.now();
+  }
+  function actedNow() {                                     // our move is in: the next turn must be a new one
+    state.turnSince = 0; state.waitNew = true; state.boardAtAct = boardCount();
   }
 
   async function tick() {
@@ -323,7 +333,7 @@
     const dot = root.querySelector(".dot"), err = $("err");
     try {
       const now = Date.now();
-      const turn = ourTurnOnPage() && state.turnSince;
+      const turn = ourTurnOnPage() && (state.turnSince || state.waitNew);
       // Back from "away" (e.g. after a timeout) without waiting for anyone.
       const back = findBtn(/^i'?m back$/i);
       if (back && state.auto) back.click();
@@ -334,12 +344,15 @@
         if (d) {
           const prev = state.acted[d.id];
           if (!prev) {
+            // A new decision while still waiting for a "new turn" signal: start the clock now (never stall).
+            if (!state.turnSince) { state.waitNew = false; state.turnSince = Date.now(); }
             const started = state.turnSince;
             const rec = state.acted[d.id] = { t: Infinity, tries: 1, pending: true };   // in flight: no retry yet
             let did, error = null;
             try { did = await act(d, started + THINK_MS, started, gen); } catch (e) { error = String(e.message || e); }
             if (state.gen !== gen) return;                      // cancelled by the watchdog: leave its records alone
             const ms = Date.now() - started;
+            if (did) actedNow();
             rec.pending = false;
             rec.t = Date.now();                                 // the retry clock starts once the action settled
             set("last", esc(`hand ${res.table.hand}: ${did || "FAILED"} at ${(ms / 1000).toFixed(2)}s` + (error ? ` · ${error}` : "")));
