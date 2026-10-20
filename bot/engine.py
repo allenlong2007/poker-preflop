@@ -42,7 +42,7 @@ EPS = 1e-6
 RANK_CHARS = "23456789TJQKA"              # eval7 rank index order
 SUIT_CHARS = "cdhs"                        # eval7 suit index order
 JAM_FRACTION = 0.6                         # a preflop raise to >= 60% of the stack is treated as all-in
-SOLVED_OPEN = 3.0                          # experiment 28's flops are 3bb single-raised pots
+SOLVED_OPEN = 3.0                          # default open of the solved flops (index.json records the real one)
 
 
 @dataclass
@@ -185,7 +185,9 @@ class Engine:
         self.pre = json.load(open(POLICY / "preflop.json"))
         self.policy_dir, self.flops_dir = Path(policy_dir), Path(flops_dir)
         self.use_solver_flops = use_solver_flops and (Path(flops_dir) / "index.json").exists()
-        self.index = json.load(open(Path(flops_dir) / "index.json"))["classes"] if self.use_solver_flops else {}
+        meta = json.load(open(Path(flops_dir) / "index.json")) if self.use_solver_flops else {}
+        self.index = meta.get("classes", {})
+        self.solved_open = float(meta.get("open", SOLVED_OPEN))
         self.translate = translate
         self._pots, self._flops, self._opts = {}, {}, {}
         self.rng = np.random.default_rng(seed)
@@ -368,7 +370,7 @@ class Engine:
             sizes = bets if seq.startswith("x") else leads
             faced = aggressive[0].to / P
             notes.append(f"facing {faced:.2f} pot -> " + " / ".join(f"{sizes[k]:.2f} ({w:.0%})" for k, w in weights))
-        if s == 0 and pot == "srp" and self.use_solver_flops and abs(st.history[0][0].to - SOLVED_OPEN) < 0.26 \
+        if s == 0 and pot == "srp" and self.use_solver_flops and abs(st.history[0][0].to - self.solved_open) < 0.26 \
                 and kind in ("bb_first", "btn_vs_check", "bb_vs_bet"):
             parts = [(self._solver_flop(hole, board, kind, labels, c, bets), w) for c, w in cells]
             if all(p is not None for (p, _), _ in parts):
@@ -434,7 +436,10 @@ class Engine:
             return None, "node not in the solved flop"
         facing = None
         if kind == "bb_vs_bet":
-            facing = f"bet {bets[cell[3]] * 2 * SOLVED_OPEN:g}bb"        # the solve's own labels (pot 6bb)
+            # The solve's own label for this size: the nearest bet amount among those it faced.
+            want = bets[cell[3]] * 2 * self.solved_open
+            labels_faced = {k[1] for k in nodes[kind] if k[1]}
+            facing = min(labels_faced, key=lambda f: abs(float(f.split()[1].rstrip("b")) - want)) if labels_faced else None
         table = {k: v for k, v in nodes[kind].items() if k[1] == facing}
         bkt = cell[2]
         mapped = map_combo(hole, flop, rep)

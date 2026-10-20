@@ -35,3 +35,4 @@ output/cbet_sizes_quick/
 output/match/cache/
 output/match_quick/
 output/pokernow/
+output/match/backup_*/

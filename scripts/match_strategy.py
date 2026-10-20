@@ -73,7 +73,8 @@ STREETS = ("flop", "turn", "river")
 # Manual preflop overrides, applied to the book and to the bot's preflop policy (not to the solves).
 # 22 as the BTN: the model folds it (fold -0.50 vs limp -0.58bb) because experiment 24 rates small pairs
 # poorly postflop, which looks like an artifact of the 12 hand groups (set value is lumped in). Limp it.
-OVERRIDES = {("btn_root", "22"): {"fold": 0.0, "limp": 1.0, "raise": 0.0, "all-in": 0.0}}
+# (Experiment 26 forced 22 to limp; since experiment 33's calibration the model raises it 95% itself.)
+OVERRIDES = {}
 LINES = {"no bet last street": [0, 1, 2], "BTN bet last street": [3, 4, 5], "BB bet last street": [6, 7, 8]}
 HIGH = [("A-high", 0, "A-high"), ("K-high", 0, "K-high"), ("Q/J-high", 0, "Q/J-high"),
         ("T-high or lower", 0, "T-high or lower"), ("paired", 1, "paired"), ("monotone", 2, "monotone"),
@@ -95,9 +96,31 @@ def tag(x):
 
 # ----------------------------------------------------------------------------- 1. preflop
 
+# Experiment 33: pots that see a flop are valued the way the whole-hand model plays them (a level correction
+# per pot type, scripts/preflop_calibration.py). Limped pots keep their old value: their correction rests on
+# the whole-hand model's limped-pot value, which its over-folding BB inflates, and it alone flips the BTN
+# to limping 73%. The open is fixed at 2.25bb (2.0 scores slightly higher in the model; 2.25 is the
+# minimax-regret choice across the old and calibrated models and keeps a trained postflop pot).
+CALIBRATION = OUT / "calibration.json"
+LIMP_LEVEL_SHARE = 0.0
+MAIN_OPEN = 2.25
+VERSION = "exp33"
+
+
+def levels_for(s):
+    if not CALIBRATION.exists():
+        return None
+    best = json.load(open(CALIBRATION))["best"]
+    key = min(best, key=lambda k: abs(float(k) - s))
+    lv = dict(best[key]["levels"])
+    lv["limp"] *= LIMP_LEVEL_SHARE
+    return lv
+
+
 def _solve(job):
     s, t, r, iters = job
-    return solve_short(E, W, s, r, STACK, iters, r_oop=R_OOP, alpha=ALPHA, t3=t, adj_ip=A_IP, adj_oop=A_OOP)
+    return solve_short(E, W, s, r, STACK, iters, r_oop=R_OOP, alpha=ALPHA, t3=t, adj_ip=A_IP, adj_oop=A_OOP,
+                       levels=levels_for(s))
 
 
 def _ev(job):
@@ -105,7 +128,7 @@ def _ev(job):
 
 
 def preflop():
-    path = CACHE / "preflop.json"
+    path = CACHE / f"preflop_{VERSION}.json"
     if path.exists():
         return json.load(open(path))
     grid = [(s, round(m * s, 4), r) for s in OPENS for m in T_MULT for r in ISO]
@@ -118,7 +141,7 @@ def preflop():
         cand = {(t, r): v for (s2, t, r), v in evs.items() if s2 == s}
         t, r = min(cand, key=cand.get)          # the BB minimises the BTN's EV
         best[s] = {"t": t, "r": r, "btn_ev": cand[(t, r)]}
-    s_main = max(best, key=lambda s: best[s]["btn_ev"])
+    s_main = MAIN_OPEN if MAIN_OPEN in best else max(best, key=lambda s: best[s]["btn_ev"])
     info = {"s_main": s_main, "best": {str(k): v for k, v in best.items()},
             "grid": [{"s": s, "t": t, "r": r, "btn_ev": v} for (s, t, r), v in evs.items()]}
     json.dump(info, open(path, "w"), indent=1)
@@ -131,7 +154,7 @@ def node_policies(res):
 
 def final_solves(info):
     """Full strategies: the main spot, every open size (BB's answers) and every 3-bet size (BTN's answers)."""
-    path = CACHE / "preflop_final.json"
+    path = CACHE / f"preflop_final_{VERSION}.json"
     if path.exists():
         raw = json.load(open(path))
         return {k: {float(x): v for x, v in raw[k].items()} for k in raw}

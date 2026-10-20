@@ -41,10 +41,12 @@ MATCH = ROOT / "output" / "match"
 OUT = MATCH / "flops"
 OUT.mkdir(parents=True, exist_ok=True)
 RANGES = OUT / "srp_ranges.npz"
-ENV = {"SOLVER_TREE": "medium", "SOLVER_OPEN": "3.0", "SOLVER_RANGES": str(RANGES), "SOLVER_FLOP_SIZES": "33,66,100",
+import match_strategy as ms
+OPEN = ms.MAIN_OPEN                                # the match's open size (2.25bb since experiment 33)
+ENV = {"SOLVER_TREE": "medium", "SOLVER_OPEN": f"{OPEN:g}", "SOLVER_RANGES": str(RANGES), "SOLVER_FLOP_SIZES": "33,66,100",
        "SOLVER_FLOP_DONK": "33", "SOLVER_DUMP_ROUNDS": "2", "SOLVER_CHIP_SCALE": "10", "SOLVER_PARALLEL": "1",
        "SOLVER_THREADS": "10"}
-SCALE, POT = 10, 6.0
+SCALE, POT = 10, 2 * OPEN
 # One representative flop per texture class (experiment 28): the flop closest to the class's median ranks,
 # from all 22,100 flops; K-high dry rainbow keeps experiment 27's Kh 8d 3c. 32 of the 48 nominal classes
 # exist (a paired flop can't be monotone or connected here).
@@ -57,9 +59,10 @@ REPS = {0: "Ad Th 5s", 1: "Ad 5h 4s", 2: "Ah Ts 5s", 3: "Ah 5s 4s", 4: "As Ts 5s
 
 
 def write_ranges():
-    """The match's single-raised-pot ranges (experiment 26) in the format solver_compare.py reads."""
-    d = np.load(MATCH / "policy" / "srp.npz")
-    np.savez(RANGES, btn_range=d["btn_range"], bb_range=d["bb_range"])
+    """The match's single-raised-pot ranges (current preflop solve) in the format solver_compare.py reads."""
+    info = ms.preflop()
+    _, btn, bb = ms.pot_ranges(ms.final_solves(info), info["s_main"])["srp"]
+    np.savez(RANGES, btn_range=btn, bb_range=bb)
 
 
 def sc():
@@ -214,7 +217,7 @@ def report(flop, quiet=False):
     # 5. The per-combo policy for the bot.
     policy = {k: v.drop(columns=[c for c in ("cls", "w", "bucket") if c in v]).round(4).to_dict("records")
               for k, v in nodes.items()}
-    json.dump({"flop": flop, "pot_bb": POT, "behind_bb": 97, "nodes": policy}, open(OUT / f"{tag}.json", "w"))
+    json.dump({"flop": flop, "pot_bb": POT, "behind_bb": 100 - OPEN, "nodes": policy}, open(OUT / f"{tag}.json", "w"))
 
     json.dump(summary, open(OUT / f"{tag}_summary.json", "w"), indent=1)
     if quiet:
@@ -262,7 +265,7 @@ def report_all():
         rows.append(r)
     df = pd.DataFrame(rows)
     df.round(3).to_csv(OUT / "classes.csv", index=False)
-    json.dump({"note": "texture class -> representative solved flop (experiment 28)",
+    json.dump({"note": "texture class -> representative solved flop (experiment 28)", "open": OPEN,
                "classes": {str(k): v for k, v in index.items()}}, open(OUT / "index.json", "w"), indent=1)
     short = df.assign(label=df["flop"] + "  (" + (df["share"] * 100).round(1).astype(str) + "%)").set_index("label")
     sizes = [c for c in short.columns if c.startswith("solver ")]
