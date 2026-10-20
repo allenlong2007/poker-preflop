@@ -12,7 +12,10 @@
   const THINK_MS = 5000;
   const WATCH_MS = 10;              // fallback check for the start of our turn (a DOM observer catches it at once)
   const TICK_MS = 100;
-  const REFRESH_MS = 2500;          // overlay refresh while waiting
+  const REFRESH_MS = 6000;          // overlay refresh while waiting (the log endpoint is rate-limited)
+  // PokerNow's log endpoint answers 429 to more than about one request every 1.5-2 s (measured live).
+  const LOG_GAP_MS = 1800;
+  const LOG_BACKOFF_MS = 3000;
   const RETRY_MS = 6000;            // an action the log hasn't recorded by then is retried with a safe fallback
   if (window.__pnbot) { clearInterval(window.__pnbot.timer); window.__pnbot.clock?.terminate();
                         window.__pnbot.observer?.disconnect(); window.__pnbot.root?.remove(); }
@@ -23,7 +26,7 @@
     set: (k, v) => { try { localStorage.setItem(KEY(k), JSON.stringify(v)); } catch {} },
   };
   const state = { seat: store.get("seat", null), auto: store.get("auto", true), busy: false, logUrl: null,
-                  acted: {}, lastRefresh: 0, turnSince: 0, gen: 0 };
+                  acted: {}, lastRefresh: 0, turnSince: 0, gen: 0, nextFetchAt: 0 };
 
   // ------------------------------------------------------------------ overlay
   const root = document.createElement("div");
@@ -135,18 +138,26 @@
   };
 
   async function fetchLog() {
+    const wait = state.nextFetchAt - Date.now();              // stay under PokerNow's rate limit
+    if (wait > 0) await sleep(wait);
+    state.nextFetchAt = Date.now() + LOG_GAP_MS;
     // The JSON log is what PokerNow's log panel loads; the CSV download sits behind a captcha.
     const urls = state.logUrl ? [state.logUrl] : [
       `/games/${gameId}/log?after_at=&before_at=&mm=false`,
       `/games/${gameId}/poker_now_log_${gameId}.csv`,
     ];
+    let limited = false;
     for (const u of urls) {
-      try {
-        const r = await fetch(u, { credentials: "include", cache: "no-store" });
-        if (!r.ok) continue;
-        const text = await r.text();
-        if (/starting hand|Player stacks|"logs"/.test(text) || text.length < 20) { state.logUrl = u; return text; }
-      } catch {}
+      let r;
+      try { r = await fetch(u, { credentials: "include", cache: "no-store" }); } catch { continue; }
+      if (r.status === 429) { limited = true; break; }       // rate-limited: back off, don't try other URLs
+      if (!r.ok) continue;
+      const text = await r.text();
+      if (/starting hand|Player stacks|"logs"/.test(text) || text.length < 20) { state.logUrl = u; return text; }
+    }
+    if (limited) {
+      state.nextFetchAt = Date.now() + LOG_BACKOFF_MS;
+      throw new Error("PokerNow rate limit: waiting a moment");
     }
     throw new Error("could not read the game log (tried the CSV and JSON log URLs)");
   }
