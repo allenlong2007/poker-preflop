@@ -345,7 +345,8 @@
           const prev = state.acted[d.id];
           if (!prev) {
             // A new decision while still waiting for a "new turn" signal: start the clock now (never stall).
-            if (!state.turnSince) { state.waitNew = false; state.turnSince = Date.now(); }
+            let lateStart = false;
+            if (!state.turnSince) { state.waitNew = false; state.turnSince = Date.now(); lateStart = true; }
             const started = state.turnSince;
             const rec = state.acted[d.id] = { t: Infinity, tries: 1, pending: true };   // in flight: no retry yet
             let did, error = null;
@@ -356,7 +357,8 @@
             rec.pending = false;
             rec.t = Date.now();                                 // the retry clock starts once the action settled
             set("last", esc(`hand ${res.table.hand}: ${did || "FAILED"} at ${(ms / 1000).toFixed(2)}s` + (error ? ` · ${error}` : "")));
-            report({ id: d.id, action: did || d.action, ms, error });
+            report({ id: d.id, action: did || d.action, ms: lateStart ? ms + THINK_MS : ms,
+                     error: error || (lateStart ? "turn start not seen; clock started when the log showed the decision" : null) });
           } else if (!prev.pending && Date.now() - prev.t > RETRY_MS && prev.tries < 3) {
             // The log never recorded our move: fall back to the safest action that commits no chips
             // (check if free, otherwise fold). The server re-confirmed above that it is still our turn.
@@ -370,7 +372,7 @@
                      error: error || "action not recorded, fell back" });
           }
         }
-      } else if (now - state.lastRefresh > REFRESH_MS) {
+      } else if (!ourTurnOnPage() && now - state.lastRefresh > REFRESH_MS) {   // never spend the log budget on our turn
         state.lastRefresh = now;
         await ask();
       }

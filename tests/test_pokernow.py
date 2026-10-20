@@ -193,3 +193,13 @@ def test_missing_and_dead_blind_wordings():
     h = parse_hand(log, hero_seat=1)
     assert h.sb_posted and h.bb_posted and h.to_act() == "btn"
     assert parse_hand(log[:4], hero_seat=1).to_act() is None         # big blind not in yet
+
+
+@pytest.mark.skipif(not (POLICY / "preflop.json").exists(), reason="match policies not built")
+def test_chat_lines_do_not_change_the_decision_id(tmp_path, monkeypatch):
+    from bot.pokernow import server
+    monkeypatch.setattr(server, "LOG_DIR", tmp_path)
+    log = list(upto("bets 1.80"))
+    a = server.decide({"log": json.dumps(log), "seat": 3})["decision"]["id"]
+    b = server.decide({"log": json.dumps(log + ['The player "X @ x1" requested a seat.']), "seat": 3})["decision"]["id"]
+    assert a == b

@@ -128,8 +128,11 @@ def decide(payload):
                 "wait": "hand over" if h.over else "opponent to act" if table["to_act"] == "villain" else "waiting"}
     if len(h.hole) != 2:
         return {"table": table, "decision": None, "wait": "hero cards not in the log yet"}
+    # Identify the decision point by what happened in the hand (its id line, the actions and cards), not by
+    # the raw log text: chat or join lines must never make the same decision look new (a double action).
     start = max(k for k, m in enumerate(msgs) if m.startswith("-- starting hand"))
-    digest = hashlib.sha256("\n".join(msgs[start:]).encode()).hexdigest()[:16]
+    point = repr((msgs[start], [[(a.player, a.kind, a.to) for a in st] for st in h.history], h.board, h.hole))
+    digest = hashlib.sha256(point.encode()).hexdigest()[:16]
     key = (h.number, digest, h.hole[0] + h.hole[1], sum(len(x) for x in h.history), len(h.board))
     if key not in CACHE:
         t0 = time.perf_counter()
