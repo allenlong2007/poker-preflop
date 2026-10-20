@@ -131,7 +131,10 @@ def decide(payload):
     # Identify the decision point by what happened in the hand (its id line, the actions and cards), not by
     # the raw log text: chat or join lines must never make the same decision look new (a double action).
     start = max(k for k, m in enumerate(msgs) if m.startswith("-- starting hand"))
-    point = repr((msgs[start], [[(a.player, a.kind, a.to) for a in st] for st in h.history], h.board, h.hole))
+    point = repr((msgs[start], [[(a.player, a.kind, a.to) for a in st] for st in h.history], h.board, h.hole,
+                  h.bb, h.sb, h.street, h.street_high, h.street_inc,
+                  sorted((x.seat, x.start, round(x.put_in, 2), round(x.street_bet, 2), x.folded, x.all_in)
+                         for x in h.seats.values())))
     digest = hashlib.sha256(point.encode()).hexdigest()[:16]
     key = (h.number, digest, h.hole[0] + h.hole[1], sum(len(x) for x in h.history), len(h.board))
     if key not in CACHE:

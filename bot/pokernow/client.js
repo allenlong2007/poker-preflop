@@ -372,7 +372,7 @@
                      error: error || "action not recorded, fell back" });
           }
         }
-      } else if (!ourTurnOnPage() && now - state.lastRefresh > REFRESH_MS) {   // never spend the log budget on our turn
+      } else if (!(state.auto && ourTurnOnPage()) && now - state.lastRefresh > REFRESH_MS) {   // auto-play's turn keeps the log budget
         state.lastRefresh = now;
         await ask();
       }
