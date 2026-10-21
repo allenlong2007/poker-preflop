@@ -2369,6 +2369,47 @@ size and clipped to [0.5, 2].
 The unadapted bot does worse than before against the maniac (+92): it 4-bets small instead of shoving, and the
 maniac re-raises any two. That is the price of not shoving 100bb; the adaptation recovers it and more.
 
+## Experiments 38–39: Bet sizes, pot odds, the QQ fold, sharper adaptation
+
+From a 44-hand game against a very aggressive human (BB vs the bot's open: 3-bet 47%, shove 18%; raised 43% of
+the bot's flop bets). The bot lost 100bb, most of it folding to flop bets.
+
+**QQ folded to a shove (hand #32): a client bug, not strategy.** The engine said call 100%; PokerNow labels the
+button for calling off a stack "All In", not "Call", so the client found no call button and its fallback folded.
+Calls now use that button too (outside the raise box), and if an attempt clicked nothing the decision itself is
+retried once before the check-or-fold fallback.
+
+**Big turn and river bets (exp 38, `scripts/size_compare.py`).** Against TexasSolver on experiment 34's spots:
+as the c-bettor on a blank turn the solver bets *bigger* than the bot (1.5x pot 34% on the 2s; the bot 8%), and
+on the river it is more polarized (more 3/4-pot to overbets; the bot more 1/3–1/2). So pot-sized bets are not
+overused. The one misfit: when the preflop *caller* leads the turn, the solver only ever leads 1/3 pot (12–17%
+of its range), the bot ~4% bigger. Those leads now go to the smallest size (bot 14 / 15 / 6% vs solver 17 / 12 / 0%).
+
+**Pot odds on every call (exp 39, `bot/potodds.py`).** Facing a bet, the bot builds the opponent's range: their
+preflop line through the solved nodes (with a floor), then each postflop action narrows it by hand strength on
+that street's board. A bet keeps the top f(1 - beta) for value plus the weakest f * beta as bluffs (draws first),
+where f is how often they bet there (their profile) and beta the break-even bluff share x / (1 + 2x), scaled by
+their aggression and by what their bets of that size showed down. Equity against it (exact on turn and river, Monte
+Carlo on the flop; x0.85 out of position / x0.95 in position before the river) is compared with the price
+call / (pot after calling): +4 points better → call; on the river 10 points worse → fold. ~0.03 s a decision.
+
+| opponent (12,000 hands, duplicate) | without | with pot odds |
+|---|---|---|
+| loose-aggressive (engine + 40% extra pot bets / raises) | +13 ± 15 | +61 ± 16 |
+| maniac | +42 ± 34 | +377 ± 37 |
+| itself | -12 ± 11 | +5 ± 12 |
+| calling station | +278 | +278 |
+
+With the adaptation on as well (after 300 hands of each opponent): loose-aggressive +113 ± 22, maniac
++938 ± 41, itself +10 ± 13.
+
+**Sharper adaptation.** One person under several PokerNow ids: `python -m bot.opponent link <id> <other id>`.
+Per-node confidence n / (n + 15) (was 30). Aggression beyond the equilibrium's frequency (a human shoving 11%
+where equilibrium shoves 0%) is modelled as half loose (any hand alike) and half strong, instead of all premiums:
+against this player's shoves the bot now calls 77+, AJs+, KQs (was 99+ / AQ+). Bet sizes: the profile counts
+the opponent's bets by size (small / medium / big) and, from showdowns, how often each size was a bluff; that
+scales the bluff share in the pot-odds range.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option

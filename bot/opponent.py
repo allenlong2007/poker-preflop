@@ -8,6 +8,7 @@
 Usage:
     python -m bot.opponent import <log.json> [hero name]     (store every finished hand of a downloaded log)
     python -m bot.opponent stats [opponent id]               (print the profile)
+    python -m bot.opponent link <main id> <other id> ...    (one person under several PokerNow ids)
 """
 import json
 import re
@@ -89,9 +90,33 @@ def store(records):
     return new
 
 
+def aliases():
+    """{player id: canonical id}: one person seen under several PokerNow ids (another browser, cleared cookies)."""
+    path = HANDS / "aliases.json"
+    return json.load(open(path)) if path.exists() else {}
+
+
+def canonical(opp_id):
+    return aliases().get(opp_id, opp_id)
+
+
+def link(*ids):
+    """Record that these player ids are one person (the first is the canonical id)."""
+    HANDS.mkdir(parents=True, exist_ok=True)
+    a = aliases()
+    for i in ids:
+        a[i] = ids[0]
+    (HANDS / "aliases.json").write_text(json.dumps(a, indent=1))
+
+
 def load(opp_id=None):
-    """All stored hands against one opponent (or everyone, if opp_id is None)."""
-    files = [HANDS / f"{opp_id}.jsonl"] if opp_id else sorted(HANDS.glob("*.jsonl"))
+    """All stored hands against one opponent, under any of their linked ids (or everyone, if opp_id is None)."""
+    if opp_id:
+        c = canonical(opp_id)
+        ids = {c} | {k for k, v in aliases().items() if v == c}
+        files = [HANDS / f"{i}.jsonl" for i in sorted(ids)]
+    else:
+        files = sorted(HANDS.glob("*.jsonl"))
     return [json.loads(l) for f in files if f.exists() for l in open(f)]
 
 
@@ -153,6 +178,7 @@ def profile(hands):
                 st["open_size"].add(f"{a[2]:g}")
         # Postflop: c-bets, folds to bets, leads, raises.
         raiser = next((p for p, k, _ in reversed(acts) if k == "raise"), None)
+        _size_bands(r, opp, st)
         for s, street in enumerate(r["history"][1:], start=1):
             name = ["flop", "turn", "river"][s - 1]
             for i, (p, k, to) in enumerate(street):
@@ -176,8 +202,61 @@ def profile(hands):
     return {"hands": len(hands), "nodes": {k: v.as_dict() for k, v in sorted(st.items())}, "shown": shows}
 
 
+SIZE_BANDS = ((0.0, 0.45, "small"), (0.45, 0.85, "medium"), (0.85, 99.0, "big"))
+
+
+def size_band(frac):
+    return next(name for lo, hi, name in SIZE_BANDS if lo <= frac < hi)
+
+
+def _size_bands(r, opp, st):
+    """Postflop bets / raises by size (share of the pot): how often, and at showdown how often a bluff (less than
+    a pair beyond the board's own)."""
+    import eval7
+    pot = sum(_put(r["history"][0]).values()) or 1.5
+    shown = r.get("shown", {}).get("opp")
+    board = r.get("board", "")
+    cards = [eval7.Card(board[i:i + 2]) for i in range(0, len(board), 2)] if board else []
+    hole = [eval7.Card(shown[:2]), eval7.Card(shown[2:4])] if shown else None
+    for s, street in enumerate(r["history"][1:], start=1):
+        put = {"btn": 0.0, "bb": 0.0}
+        for p, k, to in street:
+            if k in ("bet", "raise") and p == opp and to:
+                frac = (to - put[opp]) / max(pot + sum(put.values()), 1e-9) if k == "raise" else to / pot
+                band = size_band(frac)
+                st[f"size_{band}"].add(["", "flop", "turn", "river"][s])
+                if hole and len(cards) == 5:
+                    b = cards[:2 + s]
+                    made = eval7.evaluate(hole + b) >> 24
+                    bluff = made <= (eval7.evaluate(b) >> 24) and not _pair_above(hole, b)
+                    st[f"shown_{band}"].add("bluff" if bluff else "value")
+            if k in ("bet", "raise") and to:
+                put[p] = to
+            elif k == "call":
+                put[p] = max(put.values())
+        pot += sum(put.values())
+
+
+def _pair_above(hole, board):
+    return any(c.rank == b.rank for c in hole for b in board)
+
+
+def _put(pre):
+    put = {"btn": 0.5, "bb": 1.0}
+    for p, k, to in pre:
+        if k == "raise" and to:
+            put[p] = to
+        elif k == "call":
+            put[p] = max(put.values())
+    return put
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "stats"
+    if cmd == "link":
+        link(*sys.argv[2:])
+        print(f"linked {sys.argv[3:]} -> {sys.argv[2]}")
+        return
     if cmd == "import":
         log = json.load(open(sys.argv[2]))
         msgs = [x["msg"] for x in log]

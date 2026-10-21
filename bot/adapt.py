@@ -29,8 +29,8 @@ from bot.opponent import load, profile
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "output" / "match" / "baseline_profile.json"
-SHRINK = 20            # postflop: pseudo-hands of baseline behaviour added to each observed rate
-N_CONF, P_MAX = 30, 0.85   # preflop: confidence in the read at a node after n observations, and its cap
+SHRINK = 10            # postflop: pseudo-hands of baseline behaviour added to each observed rate
+N_CONF, P_MAX = 15, 0.85   # preflop: confidence in the read at a node after n observations, and its cap
 PRIOR = 2              # preflop: pseudo-observations of equilibrium play smoothing each observed node
 MIN_NEW = 3            # re-solve preflop after this many new hands
 
@@ -71,6 +71,25 @@ def postflop_exploit(prof, base):
     return {"bluff": round(bluff, 3), "defend": round(defend, 3), "n_fold": n_f, "n_bet": n_b}
 
 
+LOOSE_SHARE = 0.5      # of an action's excess over equilibrium, the share played by any hand alike
+BAND_BLUFF = {"small": 0.20, "medium": 0.28, "big": 0.36}   # bluff share at showdown we'd expect by default
+SIZE_SHRINK = 6
+
+
+def size_value(prof):
+    """Experiment 39: scale of the opponent's bluff share by bet size, from the bets they showed down; feeds the
+    pot-odds range (bot/potodds.py). 1 = as expected; 0.5 = half the bluffs (fold more); 2 = twice (call more)."""
+    nodes = prof["nodes"]
+    scale = {}
+    for band, base in BAND_BLUFF.items():
+        sh = nodes.get(f"shown_{band}", {})
+        n = sh.get("n", 0)
+        bluffs = n * sh.get("bluff", 0.0)
+        scale[band] = float(np.clip((bluffs + SIZE_SHRINK * base) / (n + SIZE_SHRINK) / base, 0.5, 2.0))
+    from bot.opponent import size_band
+    return lambda frac: scale[size_band(frac)], scale
+
+
 class Preflop:
     """Equilibrium and locked re-solves of the main 100bb preflop spot."""
     def __init__(self):
@@ -91,8 +110,11 @@ class Preflop:
                                 jam4_depth=ms.JAM4_DEPTH, lock=lock, no_jam=no_jam)
 
     def lock_for(self, node, who, freqs):
-        """Per-hand strategy at `node` giving these action frequencies over the hands that reach it: the most
-        aggressive action to the strongest hands."""
+        """Per-hand strategy at `node` giving these action frequencies over the hands that reach it. Up to the
+        equilibrium's own frequency an aggressive action goes to the strongest hands (then calls, then folds);
+        of the aggression beyond it (e.g. shoving 11% where equilibrium shoves 0%), LOOSE_SHARE is spread evenly
+        over the whole range and the rest goes to the strongest hands: over-aggression is partly loose, not only
+        premiums (one shown 100bb shove was 22)."""
         reach = self.eq.reach(node)[0 if who == "btn" else 1] * self.w
         acts = list(self.eq.actions(node))
         order = np.argsort(-self.strength)
@@ -101,6 +123,14 @@ class Preflop:
         ranked = [a for a in AGGRESSION if a in acts and freqs.get(a, 0) > 0]
         if total <= 1e-9 or not ranked:
             return None
+        eq_f = {a: float(np.dot(reach, v) / total) for a, v in self.eq.actions(node).items()}
+        loose = {a: LOOSE_SHARE * max(0.0, freqs[a] - eq_f.get(a, 0.0)) for a in ranked
+                 if a in ("all-in", "4-bet", "3-bet", "re-raise", "raise")}
+        spread = sum(loose.values())
+        for a, x in loose.items():
+            out[a] += x                                           # the same share of every hand
+        freqs = {a: freqs[a] - loose.get(a, 0.0) for a in ranked}
+        reach = reach * (1 - spread)
         quota = {a: freqs[a] * total for a in ranked}
         k = 0
         for i in order:
@@ -172,6 +202,8 @@ class Adapter:
         self.state = {}
 
     def update(self, opp_id, force=False):
+        from bot.opponent import canonical
+        opp_id = canonical(opp_id)
         hands = load(opp_id)
         if not hands or (not force and len(hands) - self.done.get(opp_id, -MIN_NEW) < MIN_NEW):
             return
@@ -189,6 +221,9 @@ class Adapter:
             pre = self.pre.adapt(prof)
             post = postflop_exploit(prof, self.base) if self.base else {"bluff": 1.0, "defend": 1.0}
             self.engine.set_adaptation(pre["nodes"] if pre else {}, pre["lam"] if pre else 0.0, post)
+            fn, scale = size_value(prof)
+            self.engine.opp_profile, self.engine.size_value = prof, fn
+            post = dict(post, sizes=scale)
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
                           "postflop": post, "locked": pre["locked"] if pre else {}}
         finally:
@@ -249,7 +284,7 @@ def main():
                 e = {a: f"{np.dot(rw, v) / rw.sum():.0%}" for a, v in pp.eq.actions(node).items()}
                 print(f"  bot at {node}: best response {f}  (equilibrium {e})")
         print(f"  model BTN EV: equilibrium {pre['btn_ev_eq'] * 100:+.2f} bb/100")
-    print("postflop:", postflop_exploit(prof, base))
+    print("postflop:", postflop_exploit(prof, base), "| bluff share by size vs expected:", size_value(prof)[1])
 
 
 if __name__ == "__main__":

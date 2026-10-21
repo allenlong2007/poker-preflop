@@ -167,8 +167,8 @@
   // ("Check", "Fold", "Check or Fold") also show when it is NOT our turn, so buttons alone aren't enough.
   const ourTurnOnPage = () => !!document.querySelector(".you-player.decision-current");
   const visible = (el) => !!el && el.offsetParent !== null && !el.disabled;
-  const findBtn = (re) => [...document.querySelectorAll("button")]
-    .find((b) => visible(b) && !root.contains(b) && re.test(b.textContent.trim()));
+  const findBtn = (re, ok = () => true) => [...document.querySelectorAll("button")]
+    .find((b) => visible(b) && !root.contains(b) && ok(b) && re.test(b.textContent.trim().replace(/\s+/g, " ")));
   // A clock that keeps time in a background tab. Browsers slow a hidden tab's timers to once a second
   // (or a minute), which would wreck the 5.00 s timing; a Web Worker's timer is not throttled that way.
   const due = [];                                           // [time, resolve] waiting for the clock
@@ -202,7 +202,10 @@
 
   // One action on PokerNow's own buttons, committed at commitAt. Returns what was done, or throws.
   async function act(d, commitAt = 0, started = 0, gen = undefined) {
-    const call = () => findBtn(/^call\b/i), check = () => findBtn(/^check$/i), fold = () => findBtn(/^fold$/i);
+    // Calling an all-in (or calling off the whole stack) shows PokerNow's "All In" button instead of "Call": the
+    // one outside the raise box. Hand #32 of the second live game folded QQ to a shove for want of this.
+    const call = () => findBtn(/^call\b/i) || findBtn(/^(call )?all[\s-]?in\b/i, (b) => !b.closest(".raise-controller-form")),
+      check = () => findBtn(/^check$/i), fold = () => findBtn(/^fold$/i);
     const click = async (pick, what) => {
       await until(commitAt, started, gen);
       const b = pick();                                     // find the button at the moment of clicking
@@ -355,17 +358,22 @@
             const ms = Date.now() - started;
             if (did) actedNow();
             rec.pending = false;
+            rec.failed = !did;                                  // nothing was clicked (e.g. a button not found)
             rec.t = Date.now();                                 // the retry clock starts once the action settled
             set("last", esc(`hand ${res.table.hand}: ${did || "FAILED"} at ${(ms / 1000).toFixed(2)}s` + (error ? ` · ${error}` : "")));
             report({ id: d.id, action: did || d.action, ms: lateStart ? ms + THINK_MS : ms,
                      error: error || (lateStart ? "turn start not seen; clock started when the log showed the decision" : null) });
           } else if (!prev.pending && Date.now() - prev.t > RETRY_MS && prev.tries < 3) {
-            // The log never recorded our move: fall back to the safest action that commits no chips
-            // (check if free, otherwise fold). The server re-confirmed above that it is still our turn.
+            // The log never recorded our move: retry it if nothing was clicked, else fall back to the safest
+            // action that commits no chips (check if free, otherwise fold). The server re-confirmed our turn.
             prev.tries += 1; prev.t = Date.now();
             let did, error = null;
-            const safe = findBtn(/^check$/i) ? "check" : "fold";
-            try { did = await act({ action: safe }, 0, 0, gen); } catch (e) { error = String(e.message || e); }
+            // If the first attempt clicked nothing, the decision itself is retried once (the server re-confirmed
+            // it is still this decision); otherwise, or if that fails too, the safest action is taken.
+            const again = prev.failed && prev.tries === 2;
+            const safe = again ? d : { action: findBtn(/^check$/i) ? "check" : "fold" };
+            try { did = await act(safe, 0, 0, gen); } catch (e) { error = String(e.message || e); }
+            prev.failed = !did;
             if (state.gen !== gen) return;
             set("last", esc(`hand ${res.table.hand}: retry ${prev.tries - 1} → ${did || "FAILED"}` + (error ? ` · ${error}` : "")));
             report({ id: d.id, action: `retry: ${did}`, ms: Date.now() - state.turnSince, retry: true,

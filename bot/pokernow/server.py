@@ -33,7 +33,7 @@ from bot.pokernow.parse import describe, parse_hand, read_log
 ROOT = Path(__file__).resolve().parents[2]
 CLIENT = Path(__file__).with_name("client.js")
 LOG_DIR = ROOT / "output" / "pokernow"
-ENGINE = Engine()
+ENGINE = Engine(pot_odds=True)   # experiment 39: every call is checked against the price
 ADAPT = Adapter(ENGINE)            # experiment 37: re-fits the bot to the opponent as hands finish
 SEEN_HANDS = set()                 # hand ids already stored this run
 CACHE = {}                         # (hand, hash of its log, actions so far) -> decision, so polling doesn't resample

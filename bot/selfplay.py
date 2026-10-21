@@ -5,7 +5,7 @@ out to showdown) and the engine's history format. Matches are "duplicate": every
 with the seats swapped, so card luck mostly cancels.
 
 Usage:
-    python -m bot.selfplay [hands] [opponent]      opponent: station | maniac | model | self   (default 2000, station)
+    python -m bot.selfplay [hands] [opponent]      opponent: station | maniac | model | self | aggro   (default 2000, station)
 """
 import sys
 import time
@@ -45,6 +45,23 @@ class Maniac:
     def act(self, seat, hole, board, history, facing):
         st = State(history)
         return "raise", max(st.inp.values()) + st.pot() + facing
+
+
+class Aggro:
+    """A loose-aggressive player: the engine's strategy, but 40% of its checks and calls postflop become pot-sized
+    bets / raises, and 25% of preflop calls become 3x raises (experiment 39)."""
+    name = "aggressive (engine + 40% extra pot bets / raises)"
+
+    def __init__(self, engine, rate=0.4, seed=7):
+        self.engine, self.rate, self.rng = engine, rate, np.random.default_rng(seed)
+
+    def act(self, seat, hole, board, history, facing):
+        d = self.engine.decide(seat, hole, board, history)
+        st = State(history)
+        rate = self.rate if st.street > 0 else 0.25
+        if d.action in ("check", "call") and self.rng.random() < rate:
+            return "raise", max(st.inp.values()) + st.pot() + facing if st.street > 0 else max(st.inp.values()) * 3
+        return d.action, d.to
 
 
 def play_hand(agents, holes, board, stack=STACK, log=None):
@@ -116,7 +133,7 @@ def main():
     opp = sys.argv[2] if len(sys.argv) > 2 else "station"
     a = EngineAgent(Engine(seed=1), "engine (solver flops)")
     b = {"station": Station(), "maniac": Maniac(), "model": EngineAgent(Engine(use_solver_flops=False, seed=2), "engine (model flops)"),
-         "self": EngineAgent(Engine(seed=2), "engine (solver flops)")}[opp]
+         "self": EngineAgent(Engine(seed=2), "engine (solver flops)"), "aggro": Aggro(Engine(seed=2))}[opp]
     t0 = time.time()
     r = match(a, b, hands)
     per100 = r.mean() / 2 * 100                              # two hands per deal

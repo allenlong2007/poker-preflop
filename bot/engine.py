@@ -26,6 +26,7 @@ from pathlib import Path
 import eval7
 import numpy as np
 
+from bot import potodds
 from preflop import fullgame as fg
 from preflop.cards import HANDS, INDEX
 from preflop.flopgame import texture as flop_texture
@@ -185,12 +186,15 @@ def size_weights(x, sizes, translate=True):
 
 class Engine:
     def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
-                 defend_keep=None, river_lead=None):
+                 defend_keep=None, river_lead=None, pot_odds=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
         self.defend_keep = dict(DEFEND_KEEP if defend_keep is None else defend_keep)
         self.adapted, self.lam, self.exploit = {}, 0.0, {"bluff": 1.0, "defend": 1.0}
+        self.pot_odds = pot_odds              # experiment 39: equity vs the opponent's range against the price
+        self.opp_profile = None               # the opponent's profile (bot/opponent.py), set by the adapter
+        self.size_value = None                # experiment 39: bluff-share scale by the opponent's bet size
         self.river_lead = RIVER_LEAD if river_lead is None else river_lead
         if policy_dir is None:
             policy_dir = POLICY_FINE if all((POLICY_FINE / f"{p}.npz").exists() for p in POTS) else POLICY
@@ -225,6 +229,12 @@ class Engine:
             d = self._preflop(hero, hole, st)
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
+            if self.pot_odds and st.facing(hero) > EPS:
+                if "fold" in self._options and "call" in self._options:
+                    probs = {k: d.probs.get(k, 0.0) for k in set(d.probs) | {"fold", "call"}}
+                    d.probs = _normalise(potodds.check(probs, hole, board[:2 + st.street], st, hero, self.pre,
+                                                       self.opp_profile, self.exploit["defend"], d.notes,
+                                                       self.size_value))
         if sample:
             labels = list(d.probs)
             p = np.array([d.probs[k] for k in labels], dtype=float)
@@ -426,6 +436,8 @@ class Engine:
             probs = _blend([(dict(zip(labels, map(float, table[c]))), w) for c, w in cells])
             notes.append(f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}")
             probs = self._oop_correction(probs, s, kind, bkt, st, notes, aggressive[0].to / P if aggressive else 0)
+            if kind == "bb_first" and s == 1 and pot in ("srp", "srp_alt"):
+                probs = _small_leads(probs, notes)
 
         probs = self._exploit(probs, kind, bkt, notes, aggressive[0].to / P if aggressive else 0)
         # Can't raise an all-in player; a raise that needs the whole stack is an all-in.
@@ -585,6 +597,18 @@ def _opts_from_json(text):
         if k in o:
             o[k] = tuple(o[k])
     return o
+
+
+def _small_leads(probs, notes):
+    """Experiment 38: when the preflop caller leads the turn, TexasSolver only ever leads 1/3 pot (12-17% of
+    its range on blank turns, never bigger); the model's bigger turn leads (~4% of the range) move to the
+    smallest lead."""
+    leads = sorted((k for k in probs if k.startswith("lead")), key=lambda k: float(k.split()[1]))
+    big = sum(probs[k] for k in leads[1:])
+    if len(leads) > 1 and big > 0:
+        probs = dict(probs, **{leads[0]: probs[leads[0]] + big}, **{k: 0.0 for k in leads[1:]})
+        notes.append(f"turn lead sized down: {big:.0%} to {leads[0]}")
+    return probs
 
 
 def _normalise(p):
