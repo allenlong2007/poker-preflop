@@ -16,7 +16,7 @@ opponent is. Here, facing a bet, the bot estimates the opponent's range and its 
             turn scaled by a realization factor (out of position realizes less)
 
 The price is call / (pot after calling). Clearly better (+4 points): the bot calls (the fold moves to call). On the
-river clearly worse (-10 points): the call moves to fold. Raises are left alone.
+river the price decides both ways (3 points either side; experiment 40). Raises are left alone.
 """
 import numpy as np
 import eval7
@@ -29,8 +29,14 @@ SUITS = "cdhs"
 DECK = [eval7.Card(r + s) for r in RANKS for s in SUITS]
 FLOOR = 0.12                 # share of the preflop weight every class keeps whatever the line says
 DEFAULT_BET = {1: 0.40, 2: 0.33, 3: 0.33}       # how often a player bets a street, before data
+DEFAULT_RAISE = {1: 0.12, 2: 0.09, 3: 0.07}     # how often a player raises a bet, before data
 REALIZE = {"ip": 0.95, "oop": 0.85}             # equity realized before the river
 CALL_MARGIN, FOLD_MARGIN = 0.04, 0.10
+RAISE_BLUFF = {1: 1.0, 2: 0.7, 3: 0.5}   # raises carry fewer bluffs than bets, most of all on the river: players
+                                         # under-bluff river raises (both shown river raises here were value)
+BET_FLOOR = 0.75           # bets at least this big (share of pot) need a pair beyond the board to be value
+RIVER_SHIFT_EQ, RIVER_WIDTH = -0.02, 0.07   # experiment 41: centre and width of the river calling curve
+RIVER_MARGIN = 0.03        # on the river the decision is the price: call above it, fold below (experiment 40)
 FLOP_SAMPLES = 1500
 
 
@@ -110,22 +116,50 @@ def _strength(rng, board):
     return cum
 
 
-def narrow(rng, board, kind, frac, f_bet, aggression):
-    """Reweight the range for one opponent action on this board."""
+def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None):
+    """Reweight the range for one opponent action on this board. p_bluff: the learned bluff share for this bet
+    (bot/bluffmodel.py); without it, the break-even share x / (1 + 2x) times their aggression."""
     if kind not in ("bet", "raise", "call", "check"):
         return rng
     pct = _strength(rng, board)
     w = np.array([x[2] for x in rng])
     tot = w.sum()
     if kind in ("bet", "raise"):
-        beta = float(np.clip(frac / (1 + 2 * frac) * aggression * (1.3 if len(board) < 5 else 1.0), 0.05, 0.6))
+        if p_bluff is not None:
+            beta = float(np.clip(p_bluff, 0.03, 0.7))
+        else:
+            beta = float(np.clip(frac / (1 + 2 * frac) * aggression * (1.3 if len(board) < 5 else 1.0), 0.05, 0.6))
         f = float(np.clip(f_bet, 0.05, 0.95))
         v_cut = 1 - f * (1 - beta)                 # value: everything above this percentile
         b_cut = f * beta                           # bluffs: the weakest b_cut (by weight), draws count as weak here
         draw = np.array([len(board) < 5 and fg._has_draw((c1, c2), board) for c1, c2, _ in rng])
         bluff_pct = np.where(draw, 0.0, pct)       # draws are the first bluffs
-        keep = np.clip((pct - v_cut) / 0.08 + 0.5, 0, 1) + np.clip((b_cut - bluff_pct) / 0.08 + 0.5, 0, 1)
-        new = w * np.clip(keep, 0.03, 1)
+        value = np.clip((pct - v_cut) / 0.08 + 0.5, 0, 1)
+        # Absolute floor (experiment 40): a value raise needs two pair or better beyond the board, a value bet of
+        # 3/4 pot or more at least a pair beyond it, whatever the rest of their range is. Ranking only within the
+        # range let a capped range "value-raise" one pair (K-T called a river check-raise as a favourite).
+        need = 2 if kind == "raise" else 1 if frac >= BET_FLOOR else 0
+        if need:
+            btype = eval7.evaluate(board) >> 24
+            made = np.array([(eval7.evaluate([c1, c2] + board) >> 24) - btype for c1, c2, _ in rng])
+            value = value * np.where(made >= need, 1.0, 0.1)
+        bluff = np.clip((b_cut - bluff_pct) / 0.08 + 0.5, 0, 1) * (1 - value)
+        # Bluffs are a share of the betting range: bluff weight = value weight * beta / (1 - beta). When strong value
+        # hands are rare in their range, so are their bluffs (a balanced bettor; their aggression scales beta).
+        v_mass, b_mass = float((w * value).sum()), float((w * bluff).sum())
+        if b_mass > 0:
+            bluff = bluff * min(1.0, v_mass * beta / max(1 - beta, 1e-9) / b_mass)
+        # The betting range must add up to how often they bet (f): what strong hands and balanced bluffs don't
+        # cover is spread over the rest of their hands (thin value and bluffs alike). For a normal player this is
+        # small; for someone who raises everything (a maniac) it makes the range nearly everything (experiment 41;
+        # without it the strength floor made the bot fold to a player raising any two cards).
+        short = f * tot - v_mass - float((w * bluff).sum())
+        rest = np.clip(1 - value - bluff, 0, 1)
+        r_mass = float((w * rest).sum())
+        if short > 0 and r_mass > 0:
+            bluff = bluff + rest * min(1.0, short / r_mass)
+        keep = value + bluff
+        new = w * np.clip(keep, 0.003, 1)            # a tiny floor: a narrow action (a river raise) must stay narrow
     elif kind == "call":
         new = w * np.where(pct < 0.3, 0.25, np.where(pct > 0.93, 0.6, 1.0))
     else:
@@ -176,26 +210,46 @@ def equity(hole, board, rng, rng_seed=0):
     return win / FLOP_SAMPLES
 
 
-def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_value=None):
+def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_value=None, bluff_model=None):
     """The opponent's weighted combos given everything they did in the hand so far."""
     opp = "bb" if hero == "btn" else "btn"
     dead = set(hole) | set(board)
     rng = combos(preflop_weights(pre, st.history[0], opp), dead)
     nodes = (prof or {}).get("nodes", prof or {})
+    barrels = 0
     for s in range(1, st.street + 1):
         b = board[:2 + s]
         pot = st.street_start[s][0]
         for a in st.history[s]:
             if a.player != opp:
                 continue
-            frac = (a.to / pot) if a.kind in ("bet", "raise") and pot > 0 else 0.0
             name = ["", "flop", "turn", "river"][s]
-            f_bet = _bet_rate(nodes, name, DEFAULT_BET[s])
-            agg = aggression
+            if a.kind == "raise":
+                # A raise: its size is the increment over the bet it raises, as a share of the pot that bet made
+                # (pot + bet + call); how often they raise comes from their raise rate facing bets, which is far
+                # lower than their betting rate, so a raise narrows the range much more (experiment 40).
+                prev = max((x.to for x in st.history[s] if x is not a and x.player != opp), default=0.0)
+                frac = (a.to - prev) / max(pot + 2 * prev, 1e-9)
+                f_bet = _raise_rate(nodes, name, DEFAULT_RAISE[s])
+            else:
+                frac = (a.to / pot) if a.kind == "bet" and pot > 0 else 0.0
+                f_bet = _bet_rate(nodes, name, DEFAULT_BET[s])
+            agg = aggression * (RAISE_BLUFF[s] if a.kind == "raise" else 1.0)
             if size_value is not None and a.kind in ("bet", "raise"):
                 agg *= size_value(frac)
-            rng = narrow(rng, b, a.kind, frac, f_bet, agg)
+            p = None
+            if bluff_model is not None and a.kind in ("bet", "raise"):
+                p = bluff_model.predict(s, frac, a.kind == "raise", barrels, b, opp == "btn")
+            rng = narrow(rng, b, a.kind, frac, f_bet, agg, p)
+            if a.kind in ("bet", "raise"):
+                barrels += 1
     return rng
+
+
+def _raise_rate(nodes, street, default, shrink=10):
+    x = nodes.get(f"{street}_vs_bet", {})
+    n = x.get("n", 0)
+    return (n * x.get("raise", 0.0) + shrink * default) / (n + shrink)
 
 
 def _bet_rate(nodes, street, default, shrink=10):
@@ -205,26 +259,41 @@ def _bet_rate(nodes, street, default, shrink=10):
     return (hits + shrink * default) / (n + shrink)
 
 
-def check(probs, hole, board, st, hero, pre, prof, aggression, notes, size_value=None):
+def check(probs, hole, board, st, hero, pre, prof, aggression, notes, size_value=None, bluff_model=None):
     """Adjust a facing-a-bet decision by pot odds; returns probs."""
     call_amt = st.facing(hero)
     if call_amt <= 1e-9 or "call" not in probs or "fold" not in probs:
         return probs
     pot_after = st.pot() + call_amt
     need = call_amt / pot_after
-    rng = opponent_range(pre, st, hero, board, hole, prof, aggression, size_value)
+    rng = opponent_range(pre, st, hero, board, hole, prof, aggression, size_value, bluff_model)
     eq = equity(list(hole), list(board), rng)
     real = 1.0 if len(board) == 5 else REALIZE["oop" if hero == "bb" else "ip"]
     eff = eq * real
     out = dict(probs)
-    if eff >= need + CALL_MARGIN and out["fold"] > 0:
+    river = len(board) == 5
+    out = dict(probs)
+    raises = [k for k in out if k.startswith("raise")]
+    if river and raises and 0.15 < eq < 0.6:
+        # A medium hand raising the river is only called by better: its raises become a call or a fold by price.
+        moved = sum(out[k] for k in raises)
+        for k in raises:
+            out[k] = 0.0
+        out["call"] += moved
+        if moved > 0.005:
+            notes.append(f"no river raise with a medium hand ({moved:.0%} moved)")
+    if river:
+        # Experiment 41: on the river the price decides, smoothly. Bluff-catchers sit near the price together, so a
+        # hard threshold flips the whole range between calling and folding; at equilibrium they mix. P(call) is a
+        # logistic in (equity - price - RIVER_SHIFT_EQ) / RIVER_WIDTH, over the fold + call mass.
+        mass = out["fold"] + out["call"]
+        p_call = 1 / (1 + np.exp(-(eff - need - RIVER_SHIFT_EQ) / RIVER_WIDTH))
+        out["call"], out["fold"] = mass * p_call, mass * (1 - p_call)
+        notes.append(f"pot odds: equity {eq:.0%} vs price {need:.0%}: call {p_call:.0%}")
+    elif eff >= need + CALL_MARGIN and out["fold"] > 0:
         out["call"] += out["fold"]
         out["fold"] = 0.0
         notes.append(f"pot odds: equity {eq:.0%} (x{real:.2f}) vs price {need:.0%}: call")
-    elif len(board) == 5 and eff <= need - FOLD_MARGIN and out["call"] > 0:
-        out["fold"] += out["call"]
-        out["call"] = 0.0
-        notes.append(f"pot odds: equity {eq:.0%} vs price {need:.0%}: fold")
     else:
         notes.append(f"pot odds: equity {eq:.0%} (x{real:.2f}) vs price {need:.0%}")
     return out

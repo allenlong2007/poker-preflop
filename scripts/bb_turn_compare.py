@@ -8,6 +8,7 @@ Usage:
     python scripts/bb_turn_compare.py [turn keep, river keep, river lead]   (default: the engine's settings)
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -56,7 +57,8 @@ def averaged(eng, rng, board, hist):
 
 def main():
     keep_t, keep_r, lead = (float(x) for x in sys.argv[1:4]) if len(sys.argv) > 3 else (None, None, None)
-    eng = Engine(seed=0) if keep_t is None else Engine(seed=0, defend_keep={1: keep_t, 2: keep_r}, river_lead=lead)
+    po = os.environ.get("POT_ODDS") == "1"
+    eng = Engine(seed=0, pot_odds=po) if keep_t is None else Engine(seed=0, defend_keep={1: keep_t, 2: keep_r}, river_lead=lead, pot_odds=po)
     c = round(OPEN * 2 / 3, 4)
     pre = [Act("btn", "raise", OPEN), Act("bb", "call")]
     flop = [Act("bb", "check"), Act("btn", "bet", c), Act("bb", "call")]

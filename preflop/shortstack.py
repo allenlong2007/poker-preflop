@@ -28,6 +28,7 @@ import numpy as np
 
 from .solver import _regret_match
 
+JAM_ONLY_RAISE = ("bb_vs_4bet_small", "bb_vs_limp_3bet")
 BTN_ACTIONS = ("fold", "limp", "raise", "all-in")
 
 
@@ -163,8 +164,11 @@ def solve_short(E, W, s=2.0, r=3.0, stack=15, iters=3000, r_ip=1.0, r_oop=1.0, a
     root = build_tree(E, s, r, stack, r_ip, r_oop, alpha, limp, jam, r_oop_limp, t3, bb_jam, adj_ip, adj_oop, levels,
                       f4, jam4_depth)
     if no_jam:
+        # "btn" / "bb" / "both". Facing a 4-bet (or a re-raise of an iso-raise) the all-in is the only raise left
+        # and stays.
         for nd in _nodes(root):
-            if nd.player == no_jam and "all-in" in nd.children and len(nd.children) > 2:
+            if (no_jam in ("both", nd.player) and "all-in" in nd.children and len(nd.children) > 2
+                    and nd.name not in JAM_ONLY_RAISE):
                 del nd.children["all-in"]
     W = W / W.sum()
     n = len(W)

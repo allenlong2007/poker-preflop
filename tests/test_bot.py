@@ -133,4 +133,28 @@ def test_adaptation_never_adds_deep_all_ins():
     assert out and all(0 < u["confidence"] <= 0.85 for u in out["locked"].values())
     for name, acts in out["nodes"].items():
         # The bot's answers come from a tree without its all-ins (except where fold / call is all that's left).
-        assert "all-in" not in acts or len(acts) == 2, name
+        from preflop.shortstack import JAM_ONLY_RAISE
+        assert "all-in" not in acts or len(acts) == 2 or name in JAM_ONLY_RAISE, name
+
+
+def test_river_calls_depend_on_the_raise_size():
+    """Experiments 40-41: one pair folds more to a bigger river raise; top two pair always calls."""
+    eng = Engine(seed=0, pot_odds=True)
+    line = lambda r: [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "call")],
+                      [Act("bb", "check"), Act("btn", "check")], [Act("bb", "bet", 7.5), Act("btn", "call")],
+                      [Act("bb", "bet", 12.5), Act("btn", "raise", r)]]
+    board = "8h2hAhJs9s"
+    small = eng.decide("bb", "TsJh", board, line(25), sample=False).probs["call"]
+    big = eng.decide("bb", "TsJh", board, line(62.5), sample=False).probs["call"]
+    assert small > big + 0.1
+    assert eng.decide("bb", "AcJd", board, line(62.5), sample=False).probs["call"] > 0.85   # flushes and straights possible
+
+
+def test_short_stack_postflop_jams_or_checks():
+    """Experiment 40: with ~5bb behind, no small c-bets: shove with equity, check without it."""
+    eng = Engine(seed=0)
+    hist = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check")]]
+    strong = eng.decide("btn", "KsKd", "Kc7d2s", hist, sample=False, stack=7)
+    weak = eng.decide("btn", "4h3d", "KcQdJs", hist, sample=False, stack=7)
+    assert strong.label == "all-in" and strong.source == "short"
+    assert weak.label == "check"

@@ -2410,6 +2410,55 @@ against this player's shoves the bot now calls 77+, AJs+, KQs (was 99+ / AQ+). B
 the opponent's bets by size (small / medium / big) and, from showdowns, how often each size was a bluff; that
 scales the bluff share in the pot-odds range.
 
+## Experiments 40–41: Raise sizes, short stacks, river calibration, a learned bluff model
+
+From a 42-hand game (the bot lost 100bb).
+
+**River raises: the size was ignored.** Facing a river raise the model looked up the bot's own bet size ("facing
+0.50 pot") and the pot-odds range treated a raise like a bet (63–84% equity for middle pair against 3x and 5x
+raises; both were value). Now a raise narrows by the opponent's *raise* rate (not their bet rate) and its real
+size; raises carry fewer bluffs than bets (x0.5 on the river); value raises need two pair or better beyond the
+board and value bets of 3/4 pot or more a pair (whatever the rest of their range); bluffs are a share of the
+betting range (value x beta / (1 - beta)), not of the whole range; and the floor that kept 3% of every hand in a
+narrowed range is 0.3%. On the river the price decides, smoothly: P(call) = logistic((equity - price + 0.02) / 0.07)
+(a hard threshold flipped all bluff-catchers together). Against TexasSolver's river defense on experiment 34's
+spots the bot now folds 27 / 37 / 43 / 51% to 1/2 / 3/4 / pot / 1.5x pot (solver 28 / 34 / 42 / 51%) on the 2s
+turn line and 30 / 40 / 46 / 53% (solver 35 / 41 / 45 / 55%) on the As line. Medium hands no longer raise the
+river.
+
+**River sizes.** The model bet the river smaller than the solver (1/3 pot 14% of the range vs 5%; 3/4 to pot 15%
+vs 34%). 60% of its 1/3-pot bets now go to 3/4 and 30% of its 1/2-pot bets to pot: 6 / 14 / 16 / 13% vs the
+solver's 5 / 18 / 20 / 14%. Flop pot-sized bets come from the solved flops (pot ~22% of the BTN's range after a
+check), so they stay.
+
+**Short stacks.** Below ~12bb behind (or 1.2 pots) the postflop model had untrained cells (uniform play) and made
+small c-bets. Now: untrained cells fall back to the same spot at a deep stack-to-pot ratio, and short-stack mode
+shoves with 55%+ equity against the opponent's range, check-folds otherwise, and calls a bet by its price. Preflop
+the tree is also solved at 10 and 6bb; the BTN plays 82% of hands from 100 to 40bb, 86% at 25, 78% at 15, 72% at
+10 (29% shoves), 69% at 6 (56% shoves): slightly tighter below 25bb, in line with push / fold charts.
+
+**No early shoves at 40bb+.** A 22 shoved 49bb over a limp from the 40bb tree. The 40 and 60bb trees are now
+solved without shoves (except facing a 4-bet, where it is the only raise).
+
+**Raising a limp to 5bb is right.** BTN EV against the BB's raise size over a limp (100bb, lower is better for
+the BB): 3bb +8.2, 3.5bb +7.3, 4bb +6.6, **5bb +5.85**, 6bb +5.9, 7bb +6.3, 8bb +6.7 bb/100. Against it the limper
+folds 56%, calls 40%, re-raises 3%: a limp-reraise range of 0.5% of hands (QJs, 66, 99, ATs, JJ, mixed).
+
+**A learned bluff model (exp 41, `bot/bluffmodel.py`).** Logistic regression for P(bluff) of an opponent's bet
+(bluff = no pair beyond the board and no strong draw when it is made) from street, size, raise or bet, earlier
+bets this hand, board texture and position. The prior is fit on 15,000 self-play bets with known cards (raises
+-0.8, river -0.5, flush boards -0.6, size +0.19 per log-pot); each opponent gets a MAP refit around it on their own
+shown-down bets, redone on every adaptation update. Its prediction is the bluff share in the pot-odds range.
+The betting range always adds up to the opponent's observed betting frequency: what strong hands and balanced
+bluffs don't cover is spread over their other hands (otherwise the strength floor folds to a player raising any
+two cards).
+
+**The cost, measured.** Stricter calling of raises costs against an unknown maniac (+426 → -94 bb/100 before any
+hands on them; with the old pot-odds module the same code makes +488). With adaptation (after 300 hands): maniac
++841 ± 53 (was +938 ± 41), loose-aggressive +27 ± 20 (was +113 ± 22; that opponent is the bot's engine plus
+extra aggression, so it improved too), itself -13 ± 14 (was +10 ± 13). Against unknown aggression the bot is now
+deliberately careful with one pair against big raises until it has data.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option

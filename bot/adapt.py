@@ -223,6 +223,10 @@ class Adapter:
             self.engine.set_adaptation(pre["nodes"] if pre else {}, pre["lam"] if pre else 0.0, post)
             fn, scale = size_value(prof)
             self.engine.opp_profile, self.engine.size_value = prof, fn
+            from bot import bluffmodel
+            bm, n_shown = bluffmodel.for_opponent(hands)        # experiment 41: retrained on every update
+            if bm is not None:
+                self.engine.bluff_model = bm
             post = dict(post, sizes=scale)
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
                           "postflop": post, "locked": pre["locked"] if pre else {}}

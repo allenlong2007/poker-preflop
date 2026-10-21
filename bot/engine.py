@@ -49,6 +49,10 @@ JAM_FRACTION = 0.6                         # a preflop raise to >= 60% of the st
 # rarely after the turn checked through. These corrections move part of the fold (or check) to call (or lead),
 # only for hands with a pair or better (a live draw on the turn, overcards against small bets); air folds.
 DEFEND_KEEP = {1: 0.7, 2: 0.85}            # street -> share of a model fold kept (turn, river), for those hands
+FALLBACK_UNTRAINED = True
+RIVER_SHIFT = (0.6, 0.3)                  # experiment 40: (1/3 -> 3/4, 1/2 -> pot) share of the model's river bets
+SHORT_BB, SHORT_SPR = 12.0, 1.2           # experiment 40: postflop short-stack mode thresholds (behind, at street start)
+SHORT_JAM = 0.55                          # equity vs the opponent's range needed to put the stack in unprompted
 RIVER_LEAD = 0.5                           # extra share of a model river check turned into a lead (value hands)
 SOLVED_OPEN = 3.0                          # default open of the solved flops (index.json records the real one)
 
@@ -191,10 +195,12 @@ class Engine:
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
         self.defend_keep = dict(DEFEND_KEEP if defend_keep is None else defend_keep)
+        self.river_shift = RIVER_SHIFT
         self.adapted, self.lam, self.exploit = {}, 0.0, {"bluff": 1.0, "defend": 1.0}
         self.pot_odds = pot_odds              # experiment 39: equity vs the opponent's range against the price
         self.opp_profile = None               # the opponent's profile (bot/opponent.py), set by the adapter
         self.size_value = None                # experiment 39: bluff-share scale by the opponent's bet size
+        self.bluff_model = None               # experiment 41: learned P(bluff) for the opponent's bets
         self.river_lead = RIVER_LEAD if river_lead is None else river_lead
         if policy_dir is None:
             policy_dir = POLICY_FINE if all((POLICY_FINE / f"{p}.npz").exists() for p in POTS) else POLICY
@@ -229,12 +235,14 @@ class Engine:
             d = self._preflop(hero, hole, st)
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
-            if self.pot_odds and st.facing(hero) > EPS:
+            if self._short(st, hero):
+                d = self._short_stack(d, hero, hole, board[:2 + st.street], st)
+            elif self.pot_odds and st.facing(hero) > EPS:
                 if "fold" in self._options and "call" in self._options:
                     probs = {k: d.probs.get(k, 0.0) for k in set(d.probs) | {"fold", "call"}}
                     d.probs = _normalise(potodds.check(probs, hole, board[:2 + st.street], st, hero, self.pre,
                                                        self.opp_profile, self.exploit["defend"], d.notes,
-                                                       self.size_value))
+                                                       self.size_value, self._bluffs()))
         if sample:
             labels = list(d.probs)
             p = np.array([d.probs[k] for k in labels], dtype=float)
@@ -433,11 +441,22 @@ class Engine:
                 notes.append(parts[0][0][1])
         if probs is None:
             table = self._pot(pot)[f"sigma_{s}_{kind}"]
-            probs = _blend([(dict(zip(labels, map(float, table[c]))), w) for c, w in cells])
+            row = lambda c: dict(zip(labels, map(float, table[c])))
+            # Experiment 40: a cell the training never reached is uniform (every action alike); then use the same
+            # spot's deep-stack cell (line with stack-to-pot >= 4) instead of playing at random.
+            flat = lambda d: len(d) > 2 and max(d.values()) - min(d.values()) < 1e-6
+            if FALLBACK_UNTRAINED and line % 3 and any(flat(row(c)) for c, _ in cells):
+                deep = line - line % 3
+                cells = [((c[0], deep) + tuple(c[2:]), w) for c, w in cells]
+                notes.append(f"untrained cell: line {line} -> {deep}")
+                line = deep
+            probs = _blend([(row(c), w) for c, w in cells])
             notes.append(f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}")
             probs = self._oop_correction(probs, s, kind, bkt, st, notes, aggressive[0].to / P if aggressive else 0)
             if kind == "bb_first" and s == 1 and pot in ("srp", "srp_alt"):
                 probs = _small_leads(probs, notes)
+            if s == 2 and kind in ("btn_vs_check", "bb_first"):
+                probs = _polar_river(probs, notes, self.river_shift)
 
         probs = self._exploit(probs, kind, bkt, notes, aggressive[0].to / P if aggressive else 0)
         # Can't raise an all-in player; a raise that needs the whole stack is an all-in.
@@ -447,6 +466,43 @@ class Engine:
                 opts.pop(lab, None)
         self._options = opts
         return Decision("", 0, _normalise(probs), node, source, notes=notes)
+
+    # -- experiment 40: short stacks postflop -------------------------------------------------------
+
+    def _bluffs(self):
+        """The opponent's learned bluff model, or the self-play prior before there is one."""
+        if self.bluff_model is None:
+            from bot import bluffmodel
+            self.bluff_model = bluffmodel.prior() or False
+        return self.bluff_model or None
+
+    def _short(self, st, hero):
+        """Stacks too short for small-ball postflop play: at most SHORT_SPR pots behind, or SHORT_BB big blinds."""
+        P, behind = st.street_start[st.street]
+        return behind <= SHORT_BB or behind <= SHORT_SPR * P
+
+    def _short_stack(self, d, hero, hole, board, st):
+        """Get it in with equity, otherwise check / fold; call a bet by its price. Replaces small c-bets and thin
+        value at short stacks, where any bet commits a large share of the stack anyway."""
+        rng = potodds.opponent_range(self.pre, st, hero, board, hole, self.opp_profile, self.exploit["defend"],
+                                     self.size_value, self._bluffs())
+        eq = potodds.equity(list(hole), list(board), rng)
+        b = st.facing(hero)
+        all_in = st.inp[hero] + st.left(hero)
+        other = "bb" if hero == "btn" else "btn"
+        can_raise = st.left(other) > EPS and st.left(hero) > b + EPS
+        opts = {"fold": ("fold", 0), "check": ("check", 0), "call": ("call", min(st.inp[other], all_in)),
+                "all-in": ("raise" if b > EPS else "bet", all_in)}
+        if b > EPS:
+            need = b / (st.pot() + b)
+            probs = ({"all-in": 1.0} if can_raise and eq >= SHORT_JAM else {"call": 1.0}) if eq >= need else {"fold": 1.0}
+            why = f"equity {eq:.0%} vs price {need:.0%}"
+        else:
+            probs = {"all-in": 1.0} if eq >= SHORT_JAM else {"check": 1.0}
+            why = f"equity {eq:.0%} vs jam threshold {SHORT_JAM:.0%}"
+        self._options = opts
+        return Decision("", 0, probs, d.node + " (short stack)", "short",
+                        notes=d.notes + [f"short stack ({st.left(hero):.1f}bb behind): {why}"])
 
     def set_adaptation(self, nodes, lam, exploit):
         """Experiment 37 (bot/adapt.py): best-response preflop nodes blended in with weight lam, and the
@@ -597,6 +653,25 @@ def _opts_from_json(text):
         if k in o:
             o[k] = tuple(o[k])
     return o
+
+
+def _polar_river(probs, notes, shift):
+    """Experiment 40: the model bets the river smaller than TexasSolver (1/3 and 1/2 pot 34% of the range vs 23%;
+    3/4 to pot 15% vs 34%). shift = (share of 1/3-pot bets moved to 3/4, share of 1/2-pot moved to pot)."""
+    a, b = shift
+    keys = {round(float(k.split()[1]), 2): k for k in probs if k.startswith(("bet", "lead"))}
+    moves = [(0.33, 0.75, a), (0.5, 1.0, b)]
+    out = dict(probs)
+    moved = 0.0
+    for src, dst, share in moves:
+        if src in keys and dst in keys and share > 0:
+            x = out[keys[src]] * share
+            out[keys[src]] -= x
+            out[keys[dst]] += x
+            moved += x
+    if moved > 0.005:
+        notes.append(f"river sizing toward the solver: {moved:.0%} moved to bigger bets")
+    return out
 
 
 def _small_leads(probs, notes):

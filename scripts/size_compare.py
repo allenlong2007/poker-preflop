@@ -38,6 +38,8 @@ def sizes(eng, seat, w, board, hist):
 
 def main():
     eng = Engine(seed=0)
+    if len(sys.argv) > 2:
+        eng.river_shift = (float(sys.argv[1]), float(sys.argv[2]))
     c = round(OPEN * 2 / 3, 4)
     pre = [Act("btn", "raise", OPEN), Act("bb", "call")]
     flop = [Act("bb", "check"), Act("btn", "bet", c), Act("bb", "call")]

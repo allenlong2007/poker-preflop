@@ -112,10 +112,12 @@ MAIN_OPEN = 2.25
 # limps ~14% instead of ~32%.
 F4 = 2.2
 JAM4_DEPTH = 40
-DEPTHS = (60, 40, 25, 15)
+DEPTHS = (60, 40, 25, 15, 10, 6)
+NO_JAM_DEPTH = 40                              # experiment 40: from this depth up, no early shoves (over a limp, as a
+                                               # 3-bet, as an open); a 22 shoved 49bb over a limp from the 40bb tree
 SMALL_3BETS = (1.5, 2.0)                       # extra 3-bet sizes (x the open) the BTN gets answers for
 LIMP_ISO_SHIFT = -0.015
-VERSION = "exp36"
+VERSION = "exp40"
 
 
 def levels_for(s):
@@ -132,8 +134,11 @@ def levels_for(s):
 def _solve(job):
     s, t, r, iters, *rest = job
     stack = rest[0] if rest else STACK
-    return solve_short(E, W, s, r, stack, iters, r_oop=R_OOP, alpha=ALPHA, t3=t, adj_ip=A_IP, adj_oop=A_OOP,
-                       levels=levels_for(s), f4=F4, jam4_depth=JAM4_DEPTH)
+    no_jam = "both" if NO_JAM_DEPTH <= stack < STACK else None
+    t3 = t if t < 0.6 * stack else None                     # very short: the only 3-bet is all-in
+    r = r if r < 0.6 * stack else max(2.0, round(0.3 * stack, 2))
+    return solve_short(E, W, s, r, stack, iters, r_oop=R_OOP, alpha=ALPHA, t3=t3, adj_ip=A_IP, adj_oop=A_OOP,
+                       levels=levels_for(s), f4=F4, jam4_depth=JAM4_DEPTH, no_jam=no_jam)
 
 
 def _ev(job):
