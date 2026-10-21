@@ -120,7 +120,12 @@ def evidence_strictness(hands, prof=None, base=None):
     from bot import bluffmodel
     labels = [y for r in hands for _, y in bluffmodel.examples_from_record(r, "opp")]
     est = (sum(labels) + LOOSE_BLUFF * PRIOR_WEIGHT) / (len(labels) + PRIOR_WEIGHT)
-    return float(np.clip(1 - est / LOOSE_BLUFF, 0.0, 1.0))
+    s = float(np.clip(1 - est / LOOSE_BLUFF, 0.0, 1.0))
+    if prof is not None and base is not None:
+        # Capped by their measured aggression: a player betting / raising far above normal can't be read as
+        # value-heavy off a few (self-selected) showdowns: at twice the normal rate the cap is 0.31, at e times 0.
+        s = min(s, strictness(prof, base, 1.0, 1.0))
+    return s
 
 
 class Preflop:
@@ -260,8 +265,7 @@ class Adapter:
             bm, n_shown = bluffmodel.for_opponent(hands)        # experiment 41: retrained on every update
             if bm is not None:
                 self.engine.bluff_model = bm
-            if self.base:
-                self.engine.strict = evidence_strictness(hands, prof, self.base)
+            self.engine.strict = evidence_strictness(hands, prof, self.base) if self.base else 0.0
             post = dict(post, sizes=scale)
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
                           "postflop": post, "locked": pre["locked"] if pre else {}}
