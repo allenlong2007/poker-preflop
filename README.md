@@ -2403,7 +2403,7 @@ call / (pot after calling): +4 points better → call; on the river 10 points wo
 With the adaptation on as well (after 300 hands of each opponent): loose-aggressive +113 ± 22, maniac
 +938 ± 41, itself +10 ± 13.
 
-**Sharper adaptation.** One person under several PokerNow ids: `python -m bot.opponent link <id> <other id>`.
+**Sharper adaptation.** Every PokerNow id is its own player and starts from zero; `python -m bot.opponent compare <id> <id>` reports how alike two ids play (evidence only), and ids are linked by hand (`link`) only on overwhelming evidence.
 Per-node confidence n / (n + 15) (was 30). Aggression beyond the equilibrium's frequency (a human shoving 11%
 where equilibrium shoves 0%) is modelled as half loose (any hand alike) and half strong, instead of all premiums:
 against this player's shoves the bot now calls 77+, AJs+, KQs (was 99+ / AQ+). Bet sizes: the profile counts

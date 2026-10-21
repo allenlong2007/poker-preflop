@@ -8,7 +8,10 @@
 Usage:
     python -m bot.opponent import <log.json> [hero name]     (store every finished hand of a downloaded log)
     python -m bot.opponent stats [opponent id]               (print the profile)
-    python -m bot.opponent link <main id> <other id> ...    (one person under several PokerNow ids)
+    python -m bot.opponent compare <id> <other id>           (are two ids likely one person? evidence only)
+    python -m bot.opponent link <main id> <other id> ...    (one person under several PokerNow ids; every new
+                                                             id starts from zero: link only on overwhelming
+                                                             evidence, confirmed by the user)
 """
 import json
 import re
@@ -202,6 +205,32 @@ def profile(hands):
     return {"hands": len(hands), "nodes": {k: v.as_dict() for k, v in sorted(st.items())}, "shown": shows}
 
 
+def compare(a, b, nodes=("btn_first_in", "bb_vs_open", "bb_vs_limp", "btn_vs_3bet", "flop_vs_bet", "flop_cbet",
+                           "open_size")):
+    """How alike two ids play: per node, the largest gap in an action's frequency and its z-score (two-proportion
+    test). Many nodes with |z| < 1 and decent samples is consistent with one person; any |z| > 3 says two people.
+    It is evidence, never proof: ids are linked only by hand (`link`)."""
+    pa, pb = profile(load(a))["nodes"], profile(load(b))["nodes"]
+    out, worst = {}, 0.0
+    for n in nodes:
+        x, y = pa.get(n), pb.get(n)
+        if not x or not y:
+            continue
+        acts = {k for k in x if k != "n"} | {k for k in y if k != "n"}
+        zs = {}
+        for k in acts:
+            p1, p2 = x.get(k, 0.0), y.get(k, 0.0)
+            p = (p1 * x["n"] + p2 * y["n"]) / (x["n"] + y["n"])
+            se = (p * (1 - p) * (1 / x["n"] + 1 / y["n"])) ** 0.5
+            zs[k] = round((p1 - p2) / se, 2) if se > 0 else 0.0
+        k = max(zs, key=lambda k: abs(zs[k]))
+        out[n] = {"n": (x["n"], y["n"]), "biggest gap": k, "a": x.get(k, 0), "b": y.get(k, 0), "z": zs[k]}
+        worst = max(worst, abs(zs[k]))
+    verdict = ("different players" if worst > 3 else
+               "not distinguishable (not proof of one player)" if worst < 1.5 else "inconclusive")
+    return {"nodes": out, "max |z|": round(worst, 2), "verdict": verdict}
+
+
 SIZE_BANDS = ((0.0, 0.45, "small"), (0.45, 0.85, "medium"), (0.85, 99.0, "big"))
 
 
@@ -253,6 +282,9 @@ def _put(pre):
 
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "stats"
+    if cmd == "compare":
+        print(json.dumps(compare(sys.argv[2], sys.argv[3]), indent=1))
+        return
     if cmd == "link":
         link(*sys.argv[2:])
         print(f"linked {sys.argv[3:]} -> {sys.argv[2]}")

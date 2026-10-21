@@ -9,7 +9,7 @@
   // Every action is committed exactly THINK_MS after PokerNow gives us the turn, whatever the action, so
   // the opponent learns nothing from how fast the bot acts. The decision and any raise-box typing happen
   // before that mark; only the final committing click waits for it.
-  const THINK_MS = 5000;
+  const THINK_MS = 4500;
   const WATCH_MS = 10;              // fallback check for the start of our turn (a DOM observer catches it at once)
   const TICK_MS = 100;
   const REFRESH_MS = 6000;          // overlay refresh while waiting (the log endpoint is rate-limited)
@@ -170,7 +170,7 @@
   const findBtn = (re, ok = () => true) => [...document.querySelectorAll("button")]
     .find((b) => visible(b) && !root.contains(b) && ok(b) && re.test(b.textContent.trim().replace(/\s+/g, " ")));
   // A clock that keeps time in a background tab. Browsers slow a hidden tab's timers to once a second
-  // (or a minute), which would wreck the 5.00 s timing; a Web Worker's timer is not throttled that way.
+  // (or a minute), which would wreck the 4.50 s timing; a Web Worker's timer is not throttled that way.
   const due = [];                                           // [time, resolve] waiting for the clock
   // Settles on the worker clock; a page timer is a backstop so a stalled worker can never hang a wait.
   const sleep = (ms) => new Promise((r) => { due.push([Date.now() + ms, r]); setTimeout(r, ms + 2000); });
@@ -197,7 +197,7 @@
     // A step the watchdog gave up on must never click afterwards.
     if (gen !== undefined && gen !== state.gen) throw new Error("this step was cancelled");
     // Commit only on the same turn the decision was made for, not just "a" turn of ours.
-    if (!ourTurnOnPage() || (started && state.turnSince !== started)) throw new Error("the turn changed before the 5 s mark");
+    if (!ourTurnOnPage() || (started && state.turnSince !== started)) throw new Error("the turn changed before the 4.5 s mark");
   }
 
   // One action on PokerNow's own buttons, committed at commitAt. Returns what was done, or throws.
@@ -320,7 +320,7 @@
 
   async function tick() {
     if (state.busy) {
-      // Watchdog: nothing legitimate keeps a tick busy this long (5 s mark + network). Free the loop.
+      // Watchdog: nothing legitimate keeps a tick busy this long (the 4.5 s mark + network). Free the loop.
       // Cancel the hung step (it checks its generation before any click), then free the loop.
       if (Date.now() - state.busySince > THINK_MS + 8000) {
         state.gen += 1;

@@ -187,7 +187,7 @@ def _track(msgs, h):
         STATS["track_error"] = repr(e)[:200]
 
 
-THINK_MS = 5000                    # every action is committed exactly this long after the turn starts
+THINK_MS = 4500                    # every action is committed exactly this long after the turn starts
 TOLERANCE_MS = 250                 # an action further than this from the mark counts as off-target
 
 
@@ -227,7 +227,7 @@ def status_line():
         if STATS["last_poll"] else "waiting for the page"
     return (f"[{time.strftime('%H:%M:%S')}] hand {STATS['hand']} | actions {STATS['acted']} | time to act "
             f"median {p(0.5) / 1000:.2f}s, range {(ms[0] if ms else 0) / 1000:.2f}-{(ms[-1] if ms else 0) / 1000:.2f}s, "
-            f"off the 5.00s mark by >{TOLERANCE_MS / 1000:.2f}s: {STATS['slow']} | "
+            f"off the {THINK_MS / 1000:.2f}s mark by >{TOLERANCE_MS / 1000:.2f}s: {STATS['slow']} | "
             f"errors {STATS['errors']} | {page}" + (f" | last error: {STATS['last_error']}" if STATS["errors"] else "")
             + _adapt_line())
 
