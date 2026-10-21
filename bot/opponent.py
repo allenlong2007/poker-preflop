@@ -82,7 +82,7 @@ def store(records):
         if r:
             by_opp[r["opp_id"]].append(r)
     for opp, rs in by_opp.items():
-        path = HANDS / f"{opp}.jsonl"
+        path = _path(opp)
         seen = {json.loads(l)["id"] for l in open(path)} if path.exists() else set()
         with open(path, "a") as f:
             for r in rs:
@@ -91,6 +91,16 @@ def store(records):
                     seen.add(r["id"])
                     new += 1
     return new
+
+
+SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def _path(opp_id):
+    """The hand file for a player id. Ids come from the game log, so only plain ids may become file names."""
+    if not SAFE_ID.fullmatch(str(opp_id)):
+        raise ValueError(f"unsafe player id {opp_id!r}")
+    return HANDS / f"{opp_id}.jsonl"
 
 
 def aliases():
@@ -117,7 +127,7 @@ def load(opp_id=None):
     if opp_id:
         c = canonical(opp_id)
         ids = {c} | {k for k, v in aliases().items() if v == c}
-        files = [HANDS / f"{i}.jsonl" for i in sorted(ids)]
+        files = [_path(i) for i in sorted(ids)]
     else:
         files = sorted(HANDS.glob("*.jsonl"))
     return [json.loads(l) for f in files if f.exists() for l in open(f)]
@@ -235,7 +245,9 @@ SIZE_BANDS = ((0.0, 0.45, "small"), (0.45, 0.85, "medium"), (0.85, 99.0, "big"))
 
 
 def size_band(frac):
-    return next(name for lo, hi, name in SIZE_BANDS if lo <= frac < hi)
+    """Total: any number (negative, huge, NaN) lands in a band; this runs in the live decision path."""
+    frac = 0.0 if frac != frac else min(max(float(frac), 0.0), 98.999)
+    return next((name for lo, hi, name in SIZE_BANDS if lo <= frac < hi), "big")
 
 
 def _size_bands(r, opp, st):
