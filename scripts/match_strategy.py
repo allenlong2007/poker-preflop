@@ -81,7 +81,8 @@ HIGH = [("A-high", 0, "A-high"), ("K-high", 0, "K-high"), ("Q/J-high", 0, "Q/J-h
         ("connected", 3, "connected")]
 
 
-for _a, _c in {"limp": "#86b6ef", "raise": "#2a78d6", "all-in": "#eb6834", "check": "#e4e3df"}.items():
+for _a, _c in {"limp": "#86b6ef", "raise": "#2a78d6", "all-in": "#eb6834", "check": "#e4e3df",
+            "4-bet": "#b8401a", "re-raise": "#b8401a"}.items():
     ACTION_COLORS.setdefault(_a, _c)
 
 
@@ -104,7 +105,17 @@ def tag(x):
 CALIBRATION = OUT / "calibration.json"
 LIMP_LEVEL_SHARE = 0.0
 MAIN_OPEN = 2.25
-VERSION = "exp33"
+# Experiment 36: a non-all-in 4-bet (and a re-raise over the BB's raise of a limp) to F4 x the raise; the BTN's
+# all-in 4-bet only at JAM4_DEPTH bb or shallower; the main spot is also solved at DEPTHS for shorter stacks.
+# Limped and iso-raised pots lose LIMP_ISO_SHIFT of the pot for the BTN: limping is worth only ~1bb/100 in
+# the model and vanishes at -0.03, inside the model's error (its BB over-folds, experiment 35), so the BTN
+# limps ~14% instead of ~32%.
+F4 = 2.2
+JAM4_DEPTH = 40
+DEPTHS = (60, 40, 25, 15)
+SMALL_3BETS = (1.5, 2.0)                       # extra 3-bet sizes (x the open) the BTN gets answers for
+LIMP_ISO_SHIFT = -0.015
+VERSION = "exp36"
 
 
 def levels_for(s):
@@ -113,14 +124,16 @@ def levels_for(s):
     best = json.load(open(CALIBRATION))["best"]
     key = min(best, key=lambda k: abs(float(k) - s))
     lv = dict(best[key]["levels"])
-    lv["limp"] *= LIMP_LEVEL_SHARE
+    lv["limp"] = lv["limp"] * LIMP_LEVEL_SHARE + LIMP_ISO_SHIFT
+    lv["iso"] += LIMP_ISO_SHIFT
     return lv
 
 
 def _solve(job):
-    s, t, r, iters = job
-    return solve_short(E, W, s, r, STACK, iters, r_oop=R_OOP, alpha=ALPHA, t3=t, adj_ip=A_IP, adj_oop=A_OOP,
-                       levels=levels_for(s))
+    s, t, r, iters, *rest = job
+    stack = rest[0] if rest else STACK
+    return solve_short(E, W, s, r, stack, iters, r_oop=R_OOP, alpha=ALPHA, t3=t, adj_ip=A_IP, adj_oop=A_OOP,
+                       levels=levels_for(s), f4=F4, jam4_depth=JAM4_DEPTH)
 
 
 def _ev(job):
@@ -161,10 +174,14 @@ def final_solves(info):
     s_main = info["s_main"]
     b = info["best"]
     jobs = [(s, b[str(s)]["t"], b[str(s)]["r"], ITERS_FINAL) for s in OPENS]
-    jobs += [(s_main, round(m * s_main, 4), b[str(s_main)]["r"], ITERS_FINAL) for m in T_MULT]
+    jobs += [(s_main, round(m * s_main, 4), b[str(s_main)]["r"], ITERS_FINAL) for m in SMALL_3BETS + tuple(T_MULT)]
+    deep = [(s_main, b[str(s_main)]["t"], b[str(s_main)]["r"], ITERS_FINAL, depth) for depth in DEPTHS]
     with Pool(12) as pool:
-        results = pool.map(_solve, jobs)
-    d = {"by_open": {}, "by_3bet": {}}
+        results = pool.map(_solve, jobs + deep)
+    by_depth = {depth: {"nodes": node_policies(res), "btn_ev": res.btn_ev()}
+                for (*_, depth), res in zip(deep, results[len(jobs):])}
+    results = results[:len(jobs)]
+    d = {"by_open": {}, "by_3bet": {}, "by_depth": by_depth}
     for (s, t, r, _), res in zip(jobs[:len(OPENS)], results[:len(OPENS)]):
         d["by_open"][s] = {"t": t, "r": r, "btn_ev": res.btn_ev(), "nodes": node_policies(res),
                            "reach": {n: [x.tolist() for x in res.reach(n)] for n in res.strat}}
@@ -288,7 +305,7 @@ def book():
          "reach the decision. Postflop tables are by hand strength (12 groups), averaged over boards.", ""]
     # Preflop.
     L += ["## Preflop", "", f"**BTN opens {s_main:g}bb.** The BB 3-bets to **{main['t']:g}bb** and raises limps to "
-          f"**{main['r']:g}bb**. A 4-bet is all-in.", ""]
+          f"**{main['r']:g}bb**. A 4-bet goes to {F4:g}x the 3-bet (all-in only at {JAM4_DEPTH}bb or shorter).", ""]
     nd = main["nodes"]
     for (node, hand), new in OVERRIDES.items():
         for a, v in new.items():
@@ -297,8 +314,10 @@ def book():
                                           for (n, h), new in OVERRIDES.items()) + " (see `OVERRIDES`).", ""]
     reach = {k: (np.array(v[0]), np.array(v[1])) for k, v in main["reach"].items()}
     for name, who, title in (("btn_root", 0, "BTN first action"), ("bb_vs_raise", 1, "BB vs the open"),
-                             ("btn_vs_3bet_small", 0, "BTN vs the 3-bet"), ("bb_vs_4bet", 1, "BB vs a 4-bet (all-in)"),
+                             ("btn_vs_3bet_small", 0, "BTN vs the 3-bet"), ("bb_vs_4bet_small", 1, "BB vs a 4-bet"),
+                             ("btn_vs_5bet", 0, "BTN vs a 5-bet (all-in)"), ("bb_vs_4bet", 1, "BB vs a 4-bet (all-in)"),
                              ("bb_vs_limp", 1, "BB vs a limp"), ("btn_vs_iso", 0, "BTN vs the BB's raise over its limp"),
+                             ("bb_vs_limp_3bet", 1, "BB vs a re-raise of its iso-raise"),
                              ("bb_vs_limp_reraise", 1, "BB vs a limp-reraise (all-in)"),
                              ("btn_vs_3bet", 0, "BTN vs an all-in 3-bet"), ("bb_vs_open_jam", 1, "BB vs an all-in open")):
         if name not in nd:
@@ -322,13 +341,13 @@ def book():
         n2 = v["nodes"]["bb_vs_raise"]
         L.append(f"| {s:g}bb | {pct(np.array(n2['fold'])):.0%} | {pct(np.array(n2['call'])):.0%} | "
                  f"{pct(np.array(n2['3-bet'])):.0%} | {v['t']:g}bb | {1000 * v['btn_ev']:+.0f} |")
-    L += ["", "### The BTN against other 3-bet sizes", "", "| BB 3-bets to | BTN folds | calls | 4-bets all-in |",
+    L += ["", "### The BTN against other 3-bet sizes", "", "| BB 3-bets to | BTN folds | calls | 4-bets |",
           "|---|---|---|---|"]
     raised = np.array(main["nodes"]["btn_root"]["raise"])
     for t, v in sorted(d["by_3bet"].items()):
         n3 = v["nodes"]["btn_vs_3bet_small"]
         L.append(f"| {t:g}bb | {pct(np.array(n3['fold']), raised):.0%} | {pct(np.array(n3['call']), raised):.0%} | "
-                 f"{pct(np.array(n3['all-in']), raised):.0%} |")
+                 f"{pct(np.array(n3.get('4-bet', n3.get('all-in'))), raised):.0%} |")
     L.append("")
     # Per-hand preflop table for the bot and for reference.
     pre_rows = []
@@ -344,6 +363,8 @@ def book():
                "vs_open": {f"{k:g}": {"threebet_to": v["t"], "bb_vs_raise": v["nodes"]["bb_vs_raise"]}
                            for k, v in d["by_open"].items()},
                "vs_3bet": {f"{k:g}": v["nodes"]["btn_vs_3bet_small"] for k, v in d["by_3bet"].items()},
+               "fourbet_x": F4, "jam4_depth": JAM4_DEPTH,
+               "by_depth": {f"{k:g}": v["nodes"] for k, v in d.get("by_depth", {}).items()},
                "hands": HANDS, "overrides": [f"{h}@{n}" for n, h in OVERRIDES]},
               open(POLICY / "preflop.json", "w"))
 

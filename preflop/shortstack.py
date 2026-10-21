@@ -4,15 +4,18 @@ Game tree ("to" amounts in bb, effective stack S, blinds 0.5 / 1):
 
     BTN:  fold | limp | raise to s | all-in
       limp   -> BB: check (limped pot of 2, seen down with realization) | raise to r | all-in
-                  raise  -> BTN: fold | call (pot 2r) | all-in -> BB: fold | call
+                  raise  -> BTN: fold | call (pot 2r) | re-raise to f4 * r | all-in -> BB: fold | call
+                            re-raise -> BB: fold | call (pot 2 f4 r) | all-in -> BTN: fold | call
                   all-in -> BTN: fold | call
       raise  -> BB: fold | call (pot 2s) | 3-bet to t3 | all-in
-                  3-bet  -> BTN: fold | call (pot 2 t3) | all-in -> BB: fold | call
+                  3-bet  -> BTN: fold | call (pot 2 t3) | 4-bet to t4 = f4 * t3 | all-in -> BB: fold | call
+                            4-bet  -> BB: fold | call (pot 2 t4) | all-in -> BTN: fold | call
                   all-in -> BTN: fold | call
       all-in -> BB: fold | call
 
 At 30bb and below the BB's best 3-bet is all-in (experiment 19), so by default that is its only 3-bet;
-pass t3 for a normal 3-bet size (deep stacks), and bb_jam=False to drop the all-in 3-bet. With limp=False,
+pass t3 for a normal 3-bet size (deep stacks), and bb_jam=False to drop the all-in 3-bet. f4 (experiment 36)
+adds a non-all-in 4-bet; with it the BTN's all-in 4-bet is only offered at jam4_depth or shallower. With limp=False,
 jam=False, bb_jam=False and t3 set, the tree is exactly solver.py's.
 adj_ip / adj_oop: per-hand postflop adjustments as shares of the pot (experiment 24), added to every pot
 that sees a flop.
@@ -34,7 +37,7 @@ class Node:
 
 
 def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True, r_oop_limp=None,
-               t3=None, bb_jam=True, adj_ip=None, adj_oop=None, levels=None):
+               t3=None, bb_jam=True, adj_ip=None, adj_oop=None, levels=None, f4=None, jam4_depth=40):
     """r_oop_limp: the BB's realization in limped pots (default: same as raised pots)."""
     def share_for(ro):
         x = E ** alpha * np.asarray(r_ip, float).reshape(-1, 1)
@@ -48,7 +51,7 @@ def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=Tr
     d = a[:, None] - b[None, :]                               # postflop adjustment, share of the pot
     lv = levels or {}
     # BTN profit when both put in pot_to and see a flop (pot type sets the level correction)
-    seen = lambda pot_to, kind: 2 * pot_to * (share + d + lv.get(kind, 0.0)) - pot_to
+    seen = lambda pot_to, kind: 2 * pot_to * (share + d + lv.get(kind, lv.get("3bet", 0.0) if kind == "4bet" else 0.0)) - pot_to
     limped = 2 * (share_for(r_oop if r_oop_limp is None else r_oop_limp) + d + lv.get("limp", 0.0)) - 1
     allin = 2 * stack * E - stack
 
@@ -57,14 +60,28 @@ def build_tree(E, s, r, stack, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=Tr
     if limp:
         vs_limp = {"check": limped}
         if r < stack:
-            vs_limp["raise"] = Node("btn_vs_iso", "btn", {"fold": const(-1), "call": seen(r, "iso"),
-                                                         "all-in": vs_jam("bb_vs_limp_reraise", r)})
+            vs_iso = {"fold": const(-1), "call": seen(r, "iso")}
+            t4 = f4 * r if f4 else None
+            if t4 is not None and t4 < 0.6 * stack:
+                vs_iso["re-raise"] = Node("bb_vs_limp_3bet", "bb", {
+                    "fold": const(r), "call": seen(t4, "3bet"),
+                    "all-in": Node("btn_vs_limp_4bet", "btn", {"fold": const(-t4), "call": allin})})
+            if t4 is None or t4 >= 0.6 * stack or stack <= jam4_depth:
+                vs_iso["all-in"] = vs_jam("bb_vs_limp_reraise", r)
+            vs_limp["raise"] = Node("btn_vs_iso", "btn", vs_iso)
         vs_limp["all-in"] = Node("btn_vs_limp_jam", "btn", {"fold": const(-1), "call": allin})
         root["limp"] = Node("bb_vs_limp", "bb", vs_limp)
     vs_raise = {"fold": const(1), "call": seen(s, "srp")}
     if t3 is not None and t3 < stack:
-        vs_raise["3-bet"] = Node("btn_vs_3bet_small", "btn", {
-            "fold": const(-s), "call": seen(t3, "3bet"), "all-in": vs_jam("bb_vs_4bet", t3)})
+        vs3 = {"fold": const(-s), "call": seen(t3, "3bet")}
+        t4 = f4 * t3 if f4 else None
+        if t4 is not None and t4 < 0.6 * stack:
+            vs3["4-bet"] = Node("bb_vs_4bet_small", "bb", {
+                "fold": const(t3), "call": seen(t4, "4bet"),
+                "all-in": Node("btn_vs_5bet", "btn", {"fold": const(-t4), "call": allin})})
+        if t4 is None or t4 >= 0.6 * stack or stack <= jam4_depth:
+            vs3["all-in"] = vs_jam("bb_vs_4bet", t3)
+        vs_raise["3-bet"] = Node("btn_vs_3bet_small", "btn", vs3)
     if bb_jam:
         vs_raise["all-in"] = Node("btn_vs_3bet", "btn", {"fold": const(-s), "call": allin})
     root["raise"] = Node("bb_vs_raise", "bb", vs_raise)
@@ -137,9 +154,18 @@ class ShortResult:
 
 
 def solve_short(E, W, s=2.0, r=3.0, stack=15, iters=3000, r_ip=1.0, r_oop=1.0, alpha=1.0, limp=True, jam=True,
-                r_oop_limp=None, t3=None, bb_jam=True, adj_ip=None, adj_oop=None, levels=None):
-    """Equilibrium of the short-stack tree for one open size s and one BB raise-vs-limp size r."""
-    root = build_tree(E, s, r, stack, r_ip, r_oop, alpha, limp, jam, r_oop_limp, t3, bb_jam, adj_ip, adj_oop, levels)
+                r_oop_limp=None, t3=None, bb_jam=True, adj_ip=None, adj_oop=None, levels=None, f4=None, jam4_depth=40,
+                lock=None, no_jam=None):
+    """Equilibrium of the short-stack tree for one open size s and one BB raise-vs-limp size r.
+    lock: {node name: {action: per-hand probabilities}} fixes those nodes (an opponent model); the other
+    player's nodes then converge to a best response to it. no_jam ("btn" / "bb"): that player has no all-in
+    option wherever another raise or a call exists (experiment 37: no adaptive 100bb shoves)."""
+    root = build_tree(E, s, r, stack, r_ip, r_oop, alpha, limp, jam, r_oop_limp, t3, bb_jam, adj_ip, adj_oop, levels,
+                      f4, jam4_depth)
+    if no_jam:
+        for nd in _nodes(root):
+            if nd.player == no_jam and "all-in" in nd.children and len(nd.children) > 2:
+                del nd.children["all-in"]
     W = W / W.sum()
     n = len(W)
     nodes = list(_nodes(root))
@@ -158,6 +184,8 @@ def solve_short(E, W, s=2.0, r=3.0, stack=15, iters=3000, r_ip=1.0, r_oop=1.0, a
         node._kids = kids
         return out
 
+    FREE = {}
+
     def update(node, sig, pb, po, it):
         p = sig[node.name]
         if node.player == "btn":
@@ -166,8 +194,9 @@ def solve_short(E, W, s=2.0, r=3.0, stack=15, iters=3000, r_ip=1.0, r_oop=1.0, a
         else:
             u = -np.stack([(W * pb[:, None] * vc).sum(0) for vc in node._kids], 1)
             own = po
-        R[node.name] = np.maximum(R[node.name] + u - (p * u).sum(1, keepdims=True), 0)    # CFR+
-        S[node.name] += it * own[:, None] * p                                             # linear averaging
+        q = FREE.get(node.name, p)        # a partly locked node learns (and averages) its free part only
+        R[node.name] = np.maximum(R[node.name] + u - (q * u).sum(1, keepdims=True), 0)    # CFR+
+        S[node.name] += it * own[:, None] * q                                             # linear averaging
         for a, c in enumerate(node.children.values()):
             if isinstance(c, Node):
                 if node.player == "btn":
@@ -175,8 +204,23 @@ def solve_short(E, W, s=2.0, r=3.0, stack=15, iters=3000, r_ip=1.0, r_oop=1.0, a
                 else:
                     update(c, sig, pb, po * p[:, a], it)
 
+    # lock values: {action: probs} (fully fixed) or ({action: probs}, p): a restricted Nash response, where
+    # that player follows the fixed strategy with probability p and otherwise best-responds (Johanson et al.).
+    fixed, conf = {}, {}
+    for name, val in (lock or {}).items():
+        acts, p_fix = val if isinstance(val, tuple) else (val, 1.0)
+        nd = next((x for x in nodes if x.name == name), None)
+        if nd is not None:
+            f = np.stack([np.asarray(acts.get(a, np.zeros(n)), float) for a in nd.children], 1)
+            fixed[name] = f / np.maximum(f.sum(1, keepdims=True), 1e-12)
+            conf[name] = float(p_fix)
+    mix = lambda name, free: conf[name] * fixed[name] + (1 - conf[name]) * free
     for it in range(1, iters + 1):
         sig = {k: _regret_match(v) for k, v in R.items()}
+        FREE.clear()
+        FREE.update({k: sig[k] for k in fixed})
+        sig |= {k: mix(k, sig[k]) for k in fixed}
         value(root, sig)
         update(root, sig, np.ones(n), np.ones(n), it)
-    return ShortResult(root, W, {k: _regret_match(v) for k, v in S.items()})
+    final = {k: _regret_match(v) for k, v in S.items()}
+    return ShortResult(root, W, final | {k: mix(k, final[k]) for k in fixed})

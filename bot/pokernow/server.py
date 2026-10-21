@@ -25,13 +25,17 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from bot.adapt import Adapter
 from bot.engine import Engine
+from bot.opponent import record, split_hands, store
 from bot.pokernow.parse import describe, parse_hand, read_log
 
 ROOT = Path(__file__).resolve().parents[2]
 CLIENT = Path(__file__).with_name("client.js")
 LOG_DIR = ROOT / "output" / "pokernow"
 ENGINE = Engine()
+ADAPT = Adapter(ENGINE)            # experiment 37: re-fits the bot to the opponent as hands finish
+SEEN_HANDS = set()                 # hand ids already stored this run
 CACHE = {}                         # (hand, hash of its log, actions so far) -> decision, so polling doesn't resample
 # Only the PokerNow tab may use the server: every request must come from an allowed origin and carry this
 # per-run token (it is written into client.js when the page loads it). Other sites open in the same browser
@@ -114,6 +118,7 @@ def decide(payload):
     STATS["last_poll"] = time.time()
     msgs = read_log(payload["log"], payload.get("kind", "auto"))
     h = parse_hand(msgs, hero_seat=payload.get("seat"), hero_name=payload.get("you_name"))
+    _track(msgs, h)
     table = describe(h)
     STATS["hand"] = h.number
     table["seats_in_hand"] = [{"seat": s.seat, "name": s.name} for s in h.seats.values()]
@@ -161,6 +166,27 @@ def decide(payload):
     return {"table": table, "decision": CACHE[key], "wait": None}
 
 
+def _track(msgs, h):
+    """Store every finished hand in the log page (bot/opponent.py) and refresh the adaptation. Never lets a
+    tracking problem get in the way of a decision."""
+    try:
+        hero = h.hero()
+        if hero is None:
+            return
+        for hand in split_hands(msgs):
+            hid = hand[0]
+            if hid in SEEN_HANDS:
+                continue
+            SEEN_HANDS.add(hid)
+            rec = record(hand, hero.name)
+            if rec and store([rec]):
+                STATS["stored"] = STATS.get("stored", 0) + 1
+            if rec:
+                ADAPT.update(rec["opp_id"])
+    except Exception as e:                                   # noqa: BLE001 - tracking is best effort
+        STATS["track_error"] = repr(e)[:200]
+
+
 THINK_MS = 5000                    # every action is committed exactly this long after the turn starts
 TOLERANCE_MS = 250                 # an action further than this from the mark counts as off-target
 
@@ -202,7 +228,18 @@ def status_line():
     return (f"[{time.strftime('%H:%M:%S')}] hand {STATS['hand']} | actions {STATS['acted']} | time to act "
             f"median {p(0.5) / 1000:.2f}s, range {(ms[0] if ms else 0) / 1000:.2f}-{(ms[-1] if ms else 0) / 1000:.2f}s, "
             f"off the 5.00s mark by >{TOLERANCE_MS / 1000:.2f}s: {STATS['slow']} | "
-            f"errors {STATS['errors']} | {page}" + (f" | last error: {STATS['last_error']}" if STATS["errors"] else ""))
+            f"errors {STATS['errors']} | {page}" + (f" | last error: {STATS['last_error']}" if STATS["errors"] else "")
+            + _adapt_line())
+
+
+def _adapt_line():
+    a = ADAPT.state
+    if not a:
+        return f" | hands stored {STATS.get('stored', 0)}" + (f" (tracking error {STATS['track_error']})"
+                                                              if STATS.get("track_error") else "")
+    p = a["postflop"]
+    return (f" | opponent {a['hands']} hands, preflop adapted {a['lam']:.0%}, bluff x{p['bluff']:.2f}, "
+            f"defend x{p['defend']:.2f}")
 
 
 def monitor(every=30):

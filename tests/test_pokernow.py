@@ -203,3 +203,23 @@ def test_chat_lines_do_not_change_the_decision_id(tmp_path, monkeypatch):
     a = server.decide({"log": json.dumps(log), "seat": 3})["decision"]["id"]
     b = server.decide({"log": json.dumps(log + ['The player "X @ x1" requested a seat.']), "seat": 3})["decision"]["id"]
     assert a == b
+
+
+def test_finished_hands_are_stored_per_opponent(tmp_path, monkeypatch):
+    """bot/opponent.py: every finished heads-up hand is kept once, under the opponent's id."""
+    from bot import opponent
+    monkeypatch.setattr(opponent, "HANDS", tmp_path)
+    msgs = [
+        '-- starting hand #7 (id: abc123)  No Limit Texas Hold\'em (dealer: "Bot @ B1") --',
+        'Player stacks: #1 "Bot @ B1" (20.00) | #6 "Vil @ V9" (20.00)',
+        '"Bot @ B1" posts a small blind of 0.10', '"Vil @ V9" posts a big blind of 0.20',
+        '"Bot @ B1" raises to 0.45', '"Vil @ V9" folds',
+        'Uncalled bet of 0.25 returned to "Bot @ B1"', '"Bot @ B1" collected 0.40 from pot',
+        '-- ending hand #7 --']
+    hands = opponent.split_hands(msgs)
+    rec = opponent.record(hands[0], "Bot")
+    assert rec["opp_id"] == "V9" and rec["hero_pos"] == "btn" and rec["history"][0][-1][:2] == ["bb", "fold"]
+    assert abs(rec["net"]["hero"] - 1.0) < 1e-6
+    assert opponent.store([rec]) == 1 and opponent.store([rec]) == 0
+    prof = opponent.profile(opponent.load("V9"))
+    assert prof["nodes"]["bb_vs_open"] == {"n": 1, "fold": 1.0}

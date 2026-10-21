@@ -100,3 +100,37 @@ def test_blended_decision_lies_between_neighbours():
                                 sample=False).probs["fold"]
     lo, hi, mid = spot(3.0), spot(6.0), spot(4.5)                  # 1/2 pot, pot, 3/4 pot (pot 6bb)
     assert min(lo, hi) - 1e-9 <= mid <= max(lo, hi) + 1e-9
+
+
+def test_no_deep_preflop_jam_over_a_3bet():
+    """Experiment 36: at 100bb the BTN 4-bets small instead of jamming; all-ins only at short stacks."""
+    eng = Engine(seed=0)
+    pre = lambda t: [[Act("btn", "raise", 2.25), Act("bb", "raise", t)]]
+    for hole in ("Ah4d", "KhKd", "AdKs", "As5s", "QsJs"):
+        for t, stack in ((3.5, 79), (6.75, 100)):
+            d = eng.decide("btn", hole, "", pre(t), sample=False, stack=stack)
+            assert d.probs.get("all-in", 0) < 1e-6, (hole, t, d.probs)
+    d = eng.decide("btn", "KhKd", "", pre(6.75), sample=False)
+    assert d.label == "4-bet" and abs(d.to - 2.2 * 6.75) < 0.01
+    d = eng.decide("btn", "KhKd", "", pre(6.75), sample=False, stack=25)
+    assert d.probs.get("all-in", 0) > 0.5
+    # The BB answers a small 4-bet with fold / call / all-in; the BTN answers the 5-bet jam with fold / call.
+    four = [[Act("btn", "raise", 2.25), Act("bb", "raise", 6.75), Act("btn", "raise", 14.85)]]
+    assert set(eng.decide("bb", "AhAd", "", four).probs) <= {"fold", "call", "all-in"}
+    five = [four[0] + [Act("bb", "raise", 100)]]
+    assert set(eng.decide("btn", "QhQd", "", five).probs) <= {"fold", "call"}
+
+
+def test_adaptation_never_adds_deep_all_ins():
+    """Experiment 37: a best response to an extreme opponent model stays off 100bb shoves."""
+    from bot.adapt import Preflop
+    pre = Preflop()
+    prof = {"hands": 300, "nodes": {
+        "btn_first_in": {"n": 150, "limp": 0.6, "raise": 0.3, "fold": 0.1},
+        "bb_vs_limp": {"n": 90, "raise": 0.9, "check": 0.1},
+        "bb_vs_open": {"n": 60, "fold": 0.7, "call": 0.2, "raise": 0.1}}}
+    out = pre.adapt(prof)
+    assert out and all(0 < u["confidence"] <= 0.85 for u in out["locked"].values())
+    for name, acts in out["nodes"].items():
+        # The bot's answers come from a tree without its all-ins (except where fold / call is all that's left).
+        assert "all-in" not in acts or len(acts) == 2, name

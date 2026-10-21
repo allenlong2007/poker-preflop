@@ -2318,6 +2318,57 @@ BB raises limps to 5; BTN EV +7.3 bb/100. All 32 flops were re-solved at 2.25x, 
 on the new ranges (BTN net per pot: srp +0.76bb, 6bb srp +0.74bb, 3-bet −0.61bb, limped +0.33bb, iso −1.10bb).
 The old policies are in `output/match/backup_exp30/`.
 
+## Experiments 35–37: Fixes from the second live game; opponent modelling
+
+A 57-hand game against a human (`python -m bot.opponent import <log>`) raised five issues.
+
+**1. An early 100bb all-in with A4o (exp 36).** Facing a min-3-bet at 79bb, the bot shoved. The preflop
+tree's BTN could only fold, call or jam over a 3-bet, so every 4-bet was 100bb. Now (`preflop/shortstack.py`
+`f4`, `jam4_depth`): a 4-bet to 2.2x the 3-bet (BB: fold / call / 5-bet jam), likewise a re-raise over the BB's
+raise of a limp, and the BTN's all-in 4-bet only exists at 40bb or shorter. The main spot is also solved at
+60 / 40 / 25 / 15bb and the engine uses the nearest depth. At 100bb A4o now folds to a 3-bet (calls a min-3-bet);
+KK / AA / QQ / AKo 4-bet small; at 25–30bb they jam.
+
+**2. Limping too much (exp 36).** In the model limping is worth only +1.2 bb/100 over never limping, and the
+best limp rate falls to 0% if limped and iso-raised pots are 3% of the pot worse for the BTN than modelled,
+inside the model's error (its BB over-folds, below). With a -1.5% shift the BTN limps 14% (was 26–32%), raises
+68%, folds 18%, for -1.1 bb/100 in the model's own terms. Against aggressive BBs (locking the BB to raise
+60–100% of limps), the unchanged strategy earns *more* (+5.9 to +6.9 bb/100): over-raising limps is a mistake
+the limp-trap punishes, and the tree now has a re-raise to do it with.
+
+**3. Too tight out of position; too few leads (exp 35).** The exact flop solves agree with the bot (BB folds
+31 / 47 / 56% to 1/3 / 2/3 / pot; it never leads the flop in a single-raised pot). On the turn and river the bot
+(whole-hand model, 12 hand groups) was compared with TexasSolver on the same spots (K83, three turns, six
+rivers; `scripts/bb_turn_compare.py`): on blank turns it folded 10–15 points more than the solver, on rivers
+5–7 more, and led the river after a turn check-through ~43% vs 56–62%. Cause: bluff-catchers share a group
+with air. Engine correction (`DEFEND_KEEP`, `RIVER_LEAD`): part of a model fold moves to call for pairs or
+better, turn draws, and overcards against bets up to 0.6 pot (air still folds); value hands lead the river
+more after a turn check-through. Mean fold error vs the solver: ~10 → ~7 points (blank turns +9..+15 → +1..+7;
+an ace turn ends a little too loose). The full fix is finer hand groups and a retrain.
+
+**4. Opponent tracking (exp 37, `bot/opponent.py`).** The server stores every finished hand
+(`output/pokernow/hands/<opponent id>.jsonl`, git-ignored): positions, all actions, board, our cards, shown
+cards, result. `profile()` counts the opponent's frequencies at every preflop node and postflop (c-bet, fold to
+bets, leads, raises) plus their shown hands.
+
+**5. Adapting (exp 37, `bot/adapt.py`).** Preflop: a restricted Nash response (Johanson et al. 2007). The
+opponent's observed frequencies become a fixed strategy (strongest hands take the most aggressive action),
+which they follow with probability n / (n + 30) (max 85%) at each node, best-responding otherwise; the tree is
+re-solved (two solves, one per seat, ~8 s, in a background thread after every 3 new hands) without all-in
+options for the bot. A plain best response to the shrunk read was tried first and lost 250 bb/100 to a maniac
+(it bluffed into lines that only work if the read is exact). Postflop: bluffs scale with the opponent's fold
+rate and calling down with their betting rate, relative to the bot's own self-play profile, shrunk by sample
+size and clipped to [0.5, 2].
+
+| opponent (60,000 hands, duplicate) | plain | adapted (after 300 hands) |
+|---|---|---|
+| itself | +2 ± 5 | +3 ± 5 |
+| calling station | +252 ± 8 | +312 ± 6 |
+| maniac (bets / raises pot always) | +19 ± 13 | +243 ± 19 |
+
+The unadapted bot does worse than before against the maniac (+92): it 4-bets small instead of shoving, and the
+maniac re-raises any two. That is the price of not shoving 100bb; the adaptation recovers it and more.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option

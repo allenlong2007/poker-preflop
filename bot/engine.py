@@ -42,6 +42,13 @@ EPS = 1e-6
 RANK_CHARS = "23456789TJQKA"              # eval7 rank index order
 SUIT_CHARS = "cdhs"                        # eval7 suit index order
 JAM_FRACTION = 0.6                         # a preflop raise to >= 60% of the stack is treated as all-in
+# Experiment 35: the whole-hand model's 12 hand groups make the BB fold too much on the turn and river
+# (bluff-catchers share a group with air). Against TexasSolver on the same spots (scripts/bb_turn_compare.py)
+# the BB folded ~10-15 points too often to turn bets and ~5-7 points to river bets, and led the river too
+# rarely after the turn checked through. These corrections move part of the fold (or check) to call (or lead),
+# only for hands with a pair or better (a live draw on the turn, overcards against small bets); air folds.
+DEFEND_KEEP = {1: 0.7, 2: 0.85}            # street -> share of a model fold kept (turn, river), for those hands
+RIVER_LEAD = 0.5                           # extra share of a model river check turned into a lead (value hands)
 SOLVED_OPEN = 3.0                          # default open of the solved flops (index.json records the real one)
 
 
@@ -177,9 +184,14 @@ def size_weights(x, sizes, translate=True):
 # ----------------------------------------------------------------------------- the engine
 
 class Engine:
-    def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None):
+    def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
+                 defend_keep=None, river_lead=None):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
-        experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size."""
+        experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
+        defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
+        self.defend_keep = dict(DEFEND_KEEP if defend_keep is None else defend_keep)
+        self.adapted, self.lam, self.exploit = {}, 0.0, {"bluff": 1.0, "defend": 1.0}
+        self.river_lead = RIVER_LEAD if river_lead is None else river_lead
         if policy_dir is None:
             policy_dir = POLICY_FINE if all((POLICY_FINE / f"{p}.npz").exists() for p in POTS) else POLICY
         self.pre = json.load(open(POLICY / "preflop.json"))
@@ -229,8 +241,15 @@ class Engine:
         acts = st.history[0]
         kinds = [(a.player, a.kind) for a in acts]
         jam = lambda a: a.to >= JAM_FRACTION * st.stack - EPS
-        n = self.pre["nodes"]
+        # Experiment 36: shorter stacks use the tree solved at the nearest depth (the all-in 4-bet only
+        # exists at 40bb or shorter); the per-size answers (vs_open, vs_3bet) are 100bb solves.
+        depths = {float(k): v for k, v in self.pre.get("by_depth", {}).items()}
+        depth = min([STACK] + list(depths), key=lambda d: abs(math.log(d / max(st.stack, 1.0))))
+        deep = depth == STACK
+        n = self.pre["nodes"] if deep else depths[depth]
+        f4 = self.pre.get("fourbet_x")
         opts = {}
+        raise_ = lambda to: ("raise", min(round(to, 2), st.stack))
         if hero == "btn" and not acts:
             node, pol = "btn_root", n["btn_root"]
             opts = {"fold": ("fold", 0), "limp": ("call", 1.0), "raise": ("raise", self.pre["open"]),
@@ -245,9 +264,8 @@ class Engine:
             else:
                 key = min(self.pre["vs_open"], key=lambda k: abs(math.log(float(k) / s)))
                 spot = self.pre["vs_open"][key]
-                node, pol = f"bb_vs_raise (open {key})", spot["bb_vs_raise"]
-                opts = {"3-bet": ("raise", round(spot["threebet_to"] * s / float(key), 2)),
-                        "all-in": ("raise", st.stack)}
+                node, pol = f"bb_vs_raise (open {key})", spot["bb_vs_raise"] if deep else n["bb_vs_raise"]
+                opts = {"3-bet": raise_(spot["threebet_to"] * s / float(key)), "all-in": ("raise", st.stack)}
             opts.update({"fold": ("fold", 0), "call": ("call", min(s, st.stack))})
         elif hero == "btn" and kinds == [("btn", "call"), ("bb", "raise")]:
             r = acts[1].to
@@ -256,6 +274,8 @@ class Engine:
             else:
                 node, pol = "btn_vs_iso", n["btn_vs_iso"]
                 opts = {"all-in": ("raise", st.stack)}
+                if f4:
+                    opts["re-raise"] = raise_(f4 * r)
             opts.update({"fold": ("fold", 0), "call": ("call", min(r, st.stack))})
         elif hero == "btn" and kinds == [("btn", "raise"), ("bb", "raise")]:
             t = acts[1].to
@@ -263,18 +283,42 @@ class Engine:
                 node, pol = "btn_vs_3bet (all-in)", n["btn_vs_3bet"]
             else:
                 key = min(self.pre["vs_3bet"], key=lambda k: abs(math.log(float(k) / t)))
-                node, pol = f"btn_vs_3bet_small (3-bet {key})", self.pre["vs_3bet"][key]
+                node, pol = f"btn_vs_3bet_small (3-bet {key})", self.pre["vs_3bet"][key] if deep \
+                    else n["btn_vs_3bet_small"]
                 opts = {"all-in": ("raise", st.stack)}
+                if f4:
+                    opts["4-bet"] = raise_(f4 * t)
             opts.update({"fold": ("fold", 0), "call": ("call", min(t, st.stack))})
+        elif hero == "bb" and len(acts) == 3 and kinds[1:] == [("bb", "raise"), ("btn", "raise")] \
+                and not jam(acts[2]) and kinds[0][0] == "btn":
+            # A non-all-in 4-bet (or a re-raise of our raise over a limp): fold / call / jam.
+            name = "bb_vs_4bet_small" if kinds[0] == ("btn", "raise") else "bb_vs_limp_3bet"
+            node = name
+            pol = n.get(name) or self.pre["nodes"].get(name)
+            opts = {"fold": ("fold", 0), "call": ("call", min(acts[2].to, st.stack)), "all-in": ("raise", st.stack)}
         else:
             # Facing an all-in (or a raise we treat as one) deeper in the tree: call / fold from the
             # matching node.
             last = acts[-1]
-            name = {"bb": "bb_vs_4bet" if kinds[0] == ("btn", "raise") else "bb_vs_limp_reraise",
-                    "btn": "btn_vs_3bet" if kinds[0] == ("btn", "raise") else "btn_vs_limp_jam"}[hero]
-            node, pol = name, n[name]
+            first = kinds[0] == ("btn", "raise")
+            if hero == "btn" and len(acts) >= 4:
+                name = "btn_vs_5bet" if first else "btn_vs_limp_4bet"
+            elif hero == "bb":
+                name = "bb_vs_4bet" if first else "bb_vs_limp_reraise"
+            else:
+                name = "btn_vs_3bet" if first else "btn_vs_limp_jam"
+            node = name
+            pol = n.get(name) or self.pre["nodes"].get(name) or n["bb_vs_4bet" if hero == "bb" else "btn_vs_3bet"]
             opts = {"fold": ("fold", 0), "call": ("call", min(last.to, st.stack))}
         probs = {a: float(v[i]) for a, v in pol.items() if a in opts}
+        base = node.split(" ")[0]
+        if deep and self.lam > 0 and base in self.adapted:
+            ad = self.adapted[base]
+            probs = {a: (1 - self.lam) * p + self.lam * float(ad[a][i]) if a in ad else (1 - self.lam) * p
+                     for a, p in probs.items()}
+            node += f" (adapted {self.lam:.0%})"
+        if not deep:
+            node += f" ({depth:g}bb tree)"
         self._options = opts
         return Decision("", 0, _normalise(probs), node, "preflop")
 
@@ -381,7 +425,9 @@ class Engine:
             table = self._pot(pot)[f"sigma_{s}_{kind}"]
             probs = _blend([(dict(zip(labels, map(float, table[c]))), w) for c, w in cells])
             notes.append(f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}")
+            probs = self._oop_correction(probs, s, kind, bkt, st, notes, aggressive[0].to / P if aggressive else 0)
 
+        probs = self._exploit(probs, kind, bkt, notes, aggressive[0].to / P if aggressive else 0)
         # Can't raise an all-in player; a raise that needs the whole stack is an all-in.
         if opp_all_in or hero_left <= b_facing + EPS:
             for lab in [l for l in probs if l.startswith("raise")]:
@@ -389,6 +435,55 @@ class Engine:
                 opts.pop(lab, None)
         self._options = opts
         return Decision("", 0, _normalise(probs), node, source, notes=notes)
+
+    def set_adaptation(self, nodes, lam, exploit):
+        """Experiment 37 (bot/adapt.py): best-response preflop nodes blended in with weight lam, and the
+        postflop bluff / defend scales against the current opponent."""
+        self.adapted, self.lam = dict(nodes), float(lam)
+        self.exploit = {"bluff": float(exploit.get("bluff", 1.0)), "defend": float(exploit.get("defend", 1.0))}
+
+    def _exploit(self, probs, kind, bkt, notes, faced=0.0):
+        """Scale bluffs by how often the opponent folds, and calling down by how often they bet."""
+        b, d = self.exploit["bluff"], self.exploit["defend"]
+        if kind in ("btn_vs_check", "bb_first") and bkt >= 9 and abs(b - 1) > 0.02:
+            bets = [k for k in probs if k.startswith(("bet", "lead"))]
+            tot = sum(probs[k] for k in bets)
+            if 0 < tot < 1:
+                new = min(0.95, tot * b)
+                probs = {k: (v * new / tot if k in bets else v * (1 - new) / (1 - tot)) for k, v in probs.items()}
+                notes.append(f"opponent folds x{b:.2f}: bluff {tot:.0%} -> {new:.0%}")
+        elif kind in ("bb_vs_bet", "btn_vs_lead", "btn_vs_xr", "bb_vs_raise") and abs(d - 1) > 0.02:
+            made = bkt <= 7 or bkt in (8, 9) or (bkt == 10 and faced <= 0.6)
+            f, c = probs.get("fold", 0), probs.get("call", 0)
+            if d > 1 and made and f > 0:                           # aggressive: fold less
+                moved = f * (1 - 1 / d)
+                probs = dict(probs, fold=f - moved, call=c + moved)
+                notes.append(f"opponent bets x{d:.2f}: {moved:.0%} fold -> call")
+            elif d < 1 and bkt >= 5 and c > 0:                     # passive: fold marginal hands more
+                moved = c * (1 - d)
+                probs = dict(probs, fold=f + moved, call=c - moved)
+                notes.append(f"opponent bets x{d:.2f}: {moved:.0%} call -> fold")
+        return probs
+
+    def _oop_correction(self, probs, s, kind, bkt, st, notes, faced=0.0):
+        """Experiment 35's BB corrections to the model (see DEFEND_KEEP / RIVER_LEAD)."""
+        # A pair or better; on the turn also a draw; against small bets (<= 0.6 pot) also overcards.
+        made = bkt <= 7 or (s == 1 and bkt <= 9) or (bkt == 10 and faced <= 0.6)
+        if kind == "bb_vs_bet" and s in DEFEND_KEEP and made and probs.get("fold", 0) > 0:
+            moved = probs["fold"] * (1 - self.defend_keep[s])
+            probs = dict(probs, fold=probs["fold"] - moved, call=probs.get("call", 0) + moved)
+            notes.append(f"defense correction: {moved:.0%} fold -> call")
+        elif kind == "bb_first" and s == 2 and bkt <= 6 and self.river_lead > 0 \
+                and [a.kind for a in st.history[2]] == ["check", "check"]:
+            leads = [k for k in probs if k.startswith("lead")]
+            moved = probs.get("check", 0) * self.river_lead
+            if leads and moved > 0:
+                tot = sum(probs[k] for k in leads)
+                probs = dict(probs, check=probs["check"] - moved)
+                for k in leads:
+                    probs[k] += moved * (probs[k] / tot if tot > 0 else 1 / len(leads))
+                notes.append(f"river lead correction: {moved:.0%} check -> lead")
+        return probs
 
     def _rule(self, hero, bkt, st, acts):
         """Facing a re-raise: jam the nuts, call strong made hands, fold the rest."""

@@ -1,0 +1,104 @@
+{
+ "hands": 6000,
+ "nodes": {
+  "bb_vs_4bet": {
+   "n": 105,
+   "all-in": 0.086,
+   "call": 0.6,
+   "fold": 0.314
+  },
+  "bb_vs_limp": {
+   "n": 427,
+   "all-in": 0.014,
+   "check": 0.496,
+   "raise": 0.489
+  },
+  "bb_vs_open": {
+   "n": 2026,
+   "call": 0.224,
+   "fold": 0.39,
+   "raise": 0.386
+  },
+  "btn_first_in": {
+   "n": 3000,
+   "fold": 0.182,
+   "limp": 0.142,
+   "raise": 0.675
+  },
+  "btn_vs_3bet": {
+   "n": 782,
+   "call": 0.625,
+   "fold": 0.24,
+   "raise": 0.134
+  },
+  "btn_vs_iso": {
+   "n": 215,
+   "call": 0.372,
+   "fold": 0.595,
+   "raise": 0.033
+  },
+  "flop_bet_when_checked_to": {
+   "n": 441,
+   "bet": 0.56,
+   "check": 0.44
+  },
+  "flop_cbet": {
+   "n": 1042,
+   "bet": 0.608,
+   "check": 0.392
+  },
+  "flop_lead": {
+   "n": 734,
+   "bet": 0.094,
+   "check": 0.906
+  },
+  "flop_vs_bet": {
+   "n": 1122,
+   "call": 0.423,
+   "fold": 0.423,
+   "raise": 0.153
+  },
+  "open_size": {
+   "n": 2026,
+   "2.25": 1.0
+  },
+  "preflop_other": {
+   "n": 16,
+   "call": 0.562,
+   "fold": 0.438
+  },
+  "river_bet_when_checked_to": {
+   "n": 331,
+   "bet": 0.48,
+   "check": 0.52
+  },
+  "river_lead": {
+   "n": 563,
+   "bet": 0.412,
+   "check": 0.588
+  },
+  "river_vs_bet": {
+   "n": 458,
+   "call": 0.395,
+   "fold": 0.459,
+   "raise": 0.146
+  },
+  "turn_bet_when_checked_to": {
+   "n": 542,
+   "bet": 0.52,
+   "check": 0.48
+  },
+  "turn_lead": {
+   "n": 827,
+   "bet": 0.345,
+   "check": 0.655
+  },
+  "turn_vs_bet": {
+   "n": 666,
+   "call": 0.468,
+   "fold": 0.383,
+   "raise": 0.149
+  }
+ },
+ "shown": []
+}

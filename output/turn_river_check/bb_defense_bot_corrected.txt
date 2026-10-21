@@ -1,0 +1,39 @@
+turn 2s: BB first: {'bet': 0.142, 'check': 0.858}
+   BB vs turn bet 0.33 pot: {'call': 0.533, 'fold': 0.363, 'raise': 0.104} | max fold 0.248
+   BB vs turn bet 0.50 pot: {'call': 0.522, 'fold': 0.426, 'raise': 0.052} | max fold 0.333
+   BB vs turn bet 0.75 pot: {'call': 0.458, 'fold': 0.498, 'raise': 0.044} | max fold 0.428
+   BB vs turn bet 1.00 pot: {'call': 0.456, 'fold': 0.5, 'raise': 0.044} | max fold 0.500
+   BB vs turn bet 1.50 pot: {'call': 0.379, 'fold': 0.593, 'raise': 0.028} | max fold 0.600
+   BB first on river after turn x-x: {'check': 0.519, 'bet': 0.481}
+   BB vs river bet 0.33 pot (turn x-x): {'fold': 0.288, 'call': 0.391, 'raise': 0.321} | max fold 0.248
+   BB vs river bet 0.50 pot (turn x-x): {'fold': 0.339, 'call': 0.43, 'raise': 0.231} | max fold 0.333
+   BB vs river bet 0.75 pot (turn x-x): {'fold': 0.39, 'call': 0.465, 'raise': 0.144} | max fold 0.428
+   BB vs river bet 1.00 pot (turn x-x): {'fold': 0.452, 'call': 0.47, 'raise': 0.077} | max fold 0.500
+   BB vs river bet 1.50 pot (turn x-x): {'fold': 0.531, 'call': 0.43, 'raise': 0.039} | max fold 0.600
+   BB vs river bet 2.00 pot (turn x-x): {'fold': 0.601, 'call': 0.377, 'raise': 0.023} | max fold 0.667
+turn 7h: BB first: {'bet': 0.154, 'check': 0.846}
+   BB vs turn bet 0.33 pot: {'call': 0.526, 'fold': 0.294, 'raise': 0.181} | max fold 0.248
+   BB vs turn bet 0.50 pot: {'call': 0.501, 'fold': 0.36, 'raise': 0.139} | max fold 0.333
+   BB vs turn bet 0.75 pot: {'call': 0.439, 'fold': 0.43, 'raise': 0.13} | max fold 0.428
+   BB vs turn bet 1.00 pot: {'call': 0.462, 'fold': 0.441, 'raise': 0.097} | max fold 0.500
+   BB vs turn bet 1.50 pot: {'call': 0.375, 'fold': 0.539, 'raise': 0.086} | max fold 0.600
+   BB first on river after turn x-x: {'check': 0.51, 'bet': 0.49}
+   BB vs river bet 0.33 pot (turn x-x): {'fold': 0.273, 'call': 0.395, 'raise': 0.332} | max fold 0.248
+   BB vs river bet 0.50 pot (turn x-x): {'fold': 0.317, 'call': 0.407, 'raise': 0.276} | max fold 0.333
+   BB vs river bet 0.75 pot (turn x-x): {'fold': 0.369, 'call': 0.448, 'raise': 0.183} | max fold 0.428
+   BB vs river bet 1.00 pot (turn x-x): {'fold': 0.417, 'call': 0.489, 'raise': 0.094} | max fold 0.500
+   BB vs river bet 1.50 pot (turn x-x): {'fold': 0.49, 'call': 0.456, 'raise': 0.054} | max fold 0.600
+   BB vs river bet 2.00 pot (turn x-x): {'fold': 0.563, 'call': 0.413, 'raise': 0.024} | max fold 0.667
+turn As: BB first: {'bet': 0.062, 'check': 0.938}
+   BB vs turn bet 0.33 pot: {'call': 0.576, 'fold': 0.192, 'raise': 0.231} | max fold 0.248
+   BB vs turn bet 0.50 pot: {'call': 0.517, 'fold': 0.29, 'raise': 0.193} | max fold 0.333
+   BB vs turn bet 0.75 pot: {'call': 0.43, 'fold': 0.367, 'raise': 0.203} | max fold 0.428
+   BB vs turn bet 1.00 pot: {'call': 0.402, 'fold': 0.412, 'raise': 0.186} | max fold 0.500
+   BB vs turn bet 1.50 pot: {'call': 0.399, 'fold': 0.461, 'raise': 0.14} | max fold 0.600
+   BB first on river after turn x-x: {'check': 0.553, 'bet': 0.447}
+   BB vs river bet 0.33 pot (turn x-x): {'fold': 0.233, 'call': 0.495, 'raise': 0.273} | max fold 0.248
+   BB vs river bet 0.50 pot (turn x-x): {'fold': 0.287, 'call': 0.472, 'raise': 0.241} | max fold 0.333
+   BB vs river bet 0.75 pot (turn x-x): {'fold': 0.341, 'call': 0.467, 'raise': 0.192} | max fold 0.428
+   BB vs river bet 1.00 pot (turn x-x): {'fold': 0.393, 'call': 0.524, 'raise': 0.083} | max fold 0.500
+   BB vs river bet 1.50 pot (turn x-x): {'fold': 0.476, 'call': 0.456, 'raise': 0.068} | max fold 0.600
+   BB vs river bet 2.00 pot (turn x-x): {'fold': 0.566, 'call': 0.413, 'raise': 0.021} | max fold 0.667
