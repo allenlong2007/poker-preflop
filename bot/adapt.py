@@ -238,6 +238,22 @@ class Adapter:
         self.done = {}                        # opponent id -> hands count at the last adaptation
         self.lock = threading.Lock()
         self.state = {}
+        self.states = {}                      # opponent id -> what the engine should use against them
+
+    def apply(self, opp_id):
+        """Load this opponent's adaptation into the engine (defaults if there is none yet). The caller holds the
+        decision lock, so two tables never interleave."""
+        from bot.engine import STRICT_PRIOR
+        from bot.opponent import canonical
+        st = self.states.get(canonical(opp_id)) if opp_id else None
+        e = self.engine
+        if st is None:
+            e.set_adaptation({}, 0.0, {"bluff": 1.0, "defend": 1.0})
+            e.opp_profile, e.size_value, e.bluff_model, e.strict = None, None, None, STRICT_PRIOR
+            return
+        e.set_adaptation(st["nodes"], st["lam"], st["post"])
+        e.opp_profile, e.size_value, e.strict = st["profile"], st["size_value"], st["strict"]
+        e.bluff_model = st["bluff_model"]
 
     def update(self, opp_id, force=False):
         from bot.opponent import canonical
@@ -258,17 +274,16 @@ class Adapter:
                 self.pre = Preflop()
             pre = self.pre.adapt(prof)
             post = postflop_exploit(prof, self.base) if self.base else {"bluff": 1.0, "defend": 1.0}
-            self.engine.set_adaptation(pre["nodes"] if pre else {}, pre["lam"] if pre else 0.0, post)
             fn, scale = size_value(prof)
-            self.engine.opp_profile, self.engine.size_value = prof, fn
             from bot import bluffmodel
             bm, n_shown = bluffmodel.for_opponent(hands)        # experiment 41: retrained on every update
-            if bm is not None:
-                self.engine.bluff_model = bm
-            self.engine.strict = evidence_strictness(hands, prof, self.base) if self.base else 0.0
-            post = dict(post, sizes=scale)
+            # Kept per opponent (several tables at once) and loaded into the engine before each of their decisions.
+            self.states[opp_id] = {
+                "nodes": pre["nodes"] if pre else {}, "lam": pre["lam"] if pre else 0.0, "post": post,
+                "profile": prof, "size_value": fn, "bluff_model": bm,
+                "strict": evidence_strictness(hands, prof, self.base) if self.base else 0.0}
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
-                          "postflop": post, "locked": pre["locked"] if pre else {}}
+                          "postflop": dict(post, sizes=scale), "locked": pre["locked"] if pre else {}}
         finally:
             self.lock.release()
 

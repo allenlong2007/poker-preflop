@@ -21,6 +21,7 @@ import os
 import re
 import secrets
 import sys
+import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -35,6 +36,7 @@ CLIENT = Path(__file__).with_name("client.js")
 LOG_DIR = ROOT / "output" / "pokernow"
 ENGINE = Engine(pot_odds=True)   # experiment 39: every call is checked against the price
 ADAPT = Adapter(ENGINE)            # experiment 37: re-fits the bot to the opponent as hands finish
+DECIDE_LOCK = threading.Lock()
 SEEN_HANDS = set()                 # hand ids already stored this run
 CACHE = {}                         # (hand, hash of its log, actions so far) -> decision, so polling doesn't resample
 # Only the PokerNow tab may use the server: every request must come from an allowed origin and carry this
@@ -145,7 +147,10 @@ def decide(payload):
     if key not in CACHE:
         t0 = time.perf_counter()
         hero = h.hero()
-        d = ENGINE.decide(h.position(hero), "".join(h.hole), "".join(h.board), h.history, stack=h.effective_bb())
+        opp = next((x for x in h.seats.values() if x is not hero), None)
+        with DECIDE_LOCK:                                   # several tables: one opponent's state at a time
+            ADAPT.apply(opp.pid if opp else None)
+            d = ENGINE.decide(h.position(hero), "".join(h.hole), "".join(h.board), h.history, stack=h.effective_bb())
         to_chips, all_in = round(d.to * h.bb, 2), False
         if d.action in ("bet", "raise"):
             # PokerNow's rules: at least a min-raise, at most the stack; a size at the stack is an all-in.
