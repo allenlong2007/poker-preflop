@@ -50,6 +50,7 @@ JAM_FRACTION = 0.6                         # a preflop raise to >= 60% of the st
 # only for hands with a pair or better (a live draw on the turn, overcards against small bets); air folds.
 DEFEND_KEEP = {1: 0.7, 2: 0.85}            # street -> share of a model fold kept (turn, river), for those hands
 FALLBACK_UNTRAINED = True
+MONSTER_TILT = 0.75                       # experiment 43: share of a nut-hand decision moved to max value / trap
 STRICT_PRIOR = 0.0                        # experiment 42: strictness before any data on the opponent (trained)
 RIVER_SHIFT = (0.6, 0.3)                  # experiment 40: (1/3 -> 3/4, 1/2 -> pot) share of the model's river bets
 SHORT_BB, SHORT_SPR = 12.0, 1.2           # experiment 40: postflop short-stack mode thresholds (behind, at street start)
@@ -237,6 +238,7 @@ class Engine:
             d = self._preflop(hero, hole, st)
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
+            d = self._monster(d, hero, hole, board[:2 + st.street], st)
             if self._short(st, hero):
                 d = self._short_stack(d, hero, hole, board[:2 + st.street], st)
             elif self.pot_odds and st.facing(hero) > EPS:
@@ -473,6 +475,30 @@ class Engine:
         return Decision("", 0, _normalise(probs), node, source, notes=notes)
 
     # -- experiment 40: short stacks postflop -------------------------------------------------------
+
+    def _monster(self, d, hero, hole, board, st):
+        """Experiment 43: the absolute nuts (straight flush or quads beyond the board): tilt MONSTER_TILT of the
+        decision toward maximum value: the biggest bet / raise, or a check / call to trap a very aggressive
+        opponent before the river. The rest keeps the normal mix (often already big and polarized)."""
+        made = eval7.evaluate(list(hole) + board) >> 24
+        if made < 7 or (eval7.evaluate(board) >> 24) >= 7:
+            return d
+        aggro = self.exploit["defend"] >= 1.2 and st.street < 3
+        size = lambda k: float(k.split()[-1]) if k.split()[-1].replace(".", "").isdigit() else 99.0
+        big = [k for k in d.probs if k.split()[0] in ("bet", "lead", "raise", "all-in")]
+        if aggro:
+            target = "check" if "check" in d.probs else "call"
+        elif big:
+            target = max(big, key=size)
+        else:
+            return d
+        if target not in d.probs:
+            return d
+        d.probs = {k: v * (1 - MONSTER_TILT) for k, v in d.probs.items()}
+        d.probs[target] += MONSTER_TILT
+        d.notes.append(f"nuts ({'quads' if made == 7 else 'straight flush'}): {MONSTER_TILT:.0%} to {target}"
+                       + (" (trap: aggressive opponent)" if aggro else ""))
+        return d
 
     def _bluffs(self):
         """The opponent's learned bluff model, or the self-play prior before there is one."""
