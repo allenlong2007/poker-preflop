@@ -118,6 +118,7 @@ def link(*ids):
     HANDS.mkdir(parents=True, exist_ok=True)
     a = aliases()
     for i in ids:
+        _path(i)                                            # validates the id
         a[i] = ids[0]
     (HANDS / "aliases.json").write_text(json.dumps(a, indent=1))
 
