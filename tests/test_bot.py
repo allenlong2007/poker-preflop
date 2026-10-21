@@ -46,13 +46,13 @@ def test_map_combo_keeps_hand_group_and_class():
 
 def test_decisions_are_distributions_with_legal_sizes():
     eng = Engine(seed=0)
-    pre = [Act("btn", "raise", 3), Act("bb", "call")]
+    pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
     spots = [("btn", "AhKd", "", [[]]),
              ("bb", "QsJs", "", [[Act("btn", "raise", 2.5)]]),
              ("btn", "AcQd", "Kh8d3c", [pre, [Act("bb", "check")]]),
              ("bb", "Ts9s", "Qh8s4s", [pre, [Act("bb", "check"), Act("btn", "bet", 4)]]),
              ("bb", "KdKs", "Kh8d3c2sJd", [pre, [Act("bb", "check"), Act("btn", "check")],
-                                           [Act("bb", "check"), Act("btn", "check")], [Act("bb", "check"), Act("btn", "bet", 97)]])]
+                                           [Act("bb", "check"), Act("btn", "check")], [Act("bb", "check"), Act("btn", "bet", 97.75)]])]
     for hero, hole, board, hist in spots:
         d = eng.decide(hero, hole, board, hist)
         assert abs(sum(d.probs.values()) - 1) < 1e-9
@@ -94,7 +94,7 @@ def test_size_weights_pseudo_harmonic():
 
 def test_blended_decision_lies_between_neighbours():
     eng = Engine(seed=0)
-    pre = [Act("btn", "raise", 3), Act("bb", "call")]
+    pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
     flop = [Act("bb", "check"), Act("btn", "check")]
     spot = lambda b: eng.decide("bb", "Qc9d", "Kh8d3c2s", [pre, flop, [Act("bb", "check"), Act("btn", "bet", b)]],
                                 sample=False).probs["fold"]

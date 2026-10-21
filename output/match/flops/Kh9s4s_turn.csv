@@ -1,5 +1,5 @@
-line,who,check,bet 4bb,bet 6.6bb,most bets on,fewest bets on
-"BTN bets 33%, BB calls",BB first,0.793,0.0,0.207,9h 39% 5c 36% 5d 36% 5h 35%,Ac 2% Ad 2% As 3% Qs 4%
-"BTN bets 33%, BB calls",BTN after check,0.505,0.0,0.495,Ah 71% Ts 68% As 67% Ac 64%,4d 36% 4c 36% 9d 36% 9c 36%
-check-check,BB first,0.644,0.356,0.0,5s 48% 3s 46% 2s 43% 3c 43%,Ac 15% Ad 15% Ah 17% As 22%
-check-check,BTN after check,0.362,0.638,0.0,Th 75% Jh 71% Tc 71% Td 71%,Ac 46% Ad 46% Ah 50% As 58%
+line,who,check,bet 3bb,bet 5bb,most bets on,fewest bets on
+"BTN bets 33%, BB calls",BB first,0.783,0.0,0.217,Kc 45% Kd 45% 7h 36% 8d 36%,Qc 4% Qd 4% Ad 4% Ac 4%
+"BTN bets 33%, BB calls",BTN after check,0.558,0.0,0.442,Ts 68% Js 67% Qs 65% As 60%,4d 29% 4c 29% 4h 31% 3c 33%
+check-check,BB first,0.713,0.287,0.0,8s 43% 3s 43% 5s 40% 2s 37%,9c 17% 9d 17% 9h 17% Kd 17%
+check-check,BTN after check,0.271,0.729,0.0,Ts 84% Th 83% 5h 82% 2s 82%,Ac 41% Ad 41% Ah 44% As 60%

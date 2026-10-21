@@ -2303,6 +2303,21 @@ The overlay now plays on its own: auto-play is on by default, with a button to s
 * **Settings for a match:** a decision time limit of at least 15 s, or none, since the bot uses 5 s plus a
   6 s retry window. Keep the PokerNow tab open; it may be in the background.
 
+## Experiment 33/34: Calibrated preflop, 2.25x open, retrained postflop
+
+Live play against a human showed big bets, a 3x button open and a high limp rate. Two checks:
+
+- **Turn/river sizes (exp 34, `scripts/turn_river_check.py`).** TexasSolver on K83 after a ⅓-pot c-bet and call
+  uses pot and 1.5x-pot bets often (e.g. 1.5x pot 34% on a 2♠ turn). The bot bets big no more often, so sizes stay.
+- **Preflop (exp 33, `scripts/preflop_calibration.py`).** The preflop model gave the button far less of each pot than
+  the whole-hand model (BTN EV −7.7 bb/100). Each pot type now gets a level correction (whole-hand minus preflop
+  share, one step; the limped-pot correction is set to 0, since the full one made the BTN limp 73%).
+
+Result: open 2.25x; BTN raise 65% / limp 26% / fold 9%; BB vs open fold 36%, call 28%, 3-bet 36% (to 6.75);
+BB raises limps to 5; BTN EV +7.3 bb/100. All 32 flops were re-solved at 2.25x, and every postflop policy was retrained
+on the new ranges (BTN net per pot: srp +0.76bb, 6bb srp +0.74bb, 3-bet −0.61bb, limped +0.33bb, iso −1.10bb).
+The old policies are in `output/match/backup_exp30/`.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option

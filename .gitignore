@@ -36,3 +36,4 @@ output/match/cache/
 output/match_quick/
 output/pokernow/
 output/match/backup_*/
+output/turn_river_check/raw/
