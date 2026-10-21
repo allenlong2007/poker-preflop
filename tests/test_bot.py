@@ -138,8 +138,10 @@ def test_adaptation_never_adds_deep_all_ins():
 
 
 def test_river_calls_depend_on_the_raise_size():
-    """Experiments 40-41: one pair folds more to a bigger river raise; top two pair always calls."""
+    """Experiments 40-41: one pair folds more to a bigger river raise; top two pair always calls (against an
+    opponent read as value-heavy, strictness 1)."""
     eng = Engine(seed=0, pot_odds=True)
+    eng.strict = 1.0
     line = lambda r: [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "call")],
                       [Act("bb", "check"), Act("btn", "check")], [Act("bb", "bet", 7.5), Act("btn", "call")],
                       [Act("bb", "bet", 12.5), Act("btn", "raise", r)]]

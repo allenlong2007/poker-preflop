@@ -90,6 +90,39 @@ def size_value(prof):
     return lambda frac: scale[size_band(frac)], scale
 
 
+# Experiment 42: strictness = clip(S0 - K * ln(aggression), 0, 1) where aggression is their postflop raise and
+# bet rates relative to the bot's own self-play (each shrunk by SHRINK pseudo-hands toward it). Trained by
+# scripts/strictness_train.py over a population of opponents.
+S0, K = 1.0, 1.0
+
+
+def strictness(prof, base, s0=None, k=None):
+    s0, k = S0 if s0 is None else s0, K if k is None else k
+    def ratio(names, kind):
+        h, n = _pooled(prof["nodes"], names, kind)
+        hb, nb = _pooled(base["nodes"], names, kind)
+        if not nb or hb <= 0:
+            return 1.0
+        f_base = hb / nb
+        return float(np.clip((h + SHRINK * f_base) / (n + SHRINK) / f_base, 0.25, 4.0))
+    agg = np.sqrt(ratio(POST_FOLD, "raise") * ratio(POST_BET, "bet"))
+    return float(np.clip(s0 - k * np.log(agg), 0.0, 1.0))
+
+
+LOOSE_BLUFF, PRIOR_WEIGHT = 0.35, 5.0   # experiment 42: prior bluff share of an opponent's bets, worth 5 shown bets
+
+
+def evidence_strictness(hands, prof=None, base=None):
+    """Experiment 42: trust in the value-heavy reading of this opponent's bets and raises, from what they showed
+    down. Their bluff share among shown bets / raises is estimated with a prior of LOOSE_BLUFF worth PRIOR_WEIGHT
+    bets; strictness = how far it sits below LOOSE_BLUFF (0 with no showdowns or when they show bluffs; 0.5 after
+    five value showdowns; ~0.7 after ten)."""
+    from bot import bluffmodel
+    labels = [y for r in hands for _, y in bluffmodel.examples_from_record(r, "opp")]
+    est = (sum(labels) + LOOSE_BLUFF * PRIOR_WEIGHT) / (len(labels) + PRIOR_WEIGHT)
+    return float(np.clip(1 - est / LOOSE_BLUFF, 0.0, 1.0))
+
+
 class Preflop:
     """Equilibrium and locked re-solves of the main 100bb preflop spot."""
     def __init__(self):
@@ -227,6 +260,8 @@ class Adapter:
             bm, n_shown = bluffmodel.for_opponent(hands)        # experiment 41: retrained on every update
             if bm is not None:
                 self.engine.bluff_model = bm
+            if self.base:
+                self.engine.strict = evidence_strictness(hands, prof, self.base)
             post = dict(post, sizes=scale)
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
                           "postflop": post, "locked": pre["locked"] if pre else {}}

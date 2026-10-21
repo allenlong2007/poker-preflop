@@ -64,6 +64,27 @@ class Aggro:
         return d.action, d.to
 
 
+class ValueHeavy:
+    """A value-heavy player (experiment 42): the engine's strategy, but postflop it only bets or raises with two pair
+    or better (pot-sized) and never bluffs; with less, its bets become checks and its raises calls."""
+    name = "value-heavy (bets / raises only two pair+, pot-sized)"
+
+    def __init__(self, engine):
+        self.engine = engine
+
+    def act(self, seat, hole, board, history, facing):
+        d = self.engine.decide(seat, hole, board, history)
+        st = State(history)
+        if st.street == 0:
+            return d.action, d.to
+        made = (eval7.evaluate(list(hole) + board) >> 24) - (eval7.evaluate(board) >> 24)
+        if made >= 2:
+            return "raise", max(st.inp.values()) + st.pot() + facing
+        if d.action in ("bet", "raise"):
+            return ("call", 0) if facing > EPS else ("check", 0)
+        return d.action, d.to
+
+
 def play_hand(agents, holes, board, stack=STACK, log=None):
     """One hand; returns the BTN's net result in bb. agents / holes: {"btn": ..., "bb": ...}."""
     total = {"btn": 0.0, "bb": 0.0}

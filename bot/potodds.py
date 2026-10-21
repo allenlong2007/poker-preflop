@@ -116,19 +116,20 @@ def _strength(rng, board):
     return cum
 
 
-def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None):
+def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None, strict=1.0):
     """Reweight the range for one opponent action on this board. p_bluff: the learned bluff share for this bet
-    (bot/bluffmodel.py); without it, the break-even share x / (1 + 2x) times their aggression."""
+    (bot/bluffmodel.py); without it, the break-even share x / (1 + 2x) times their aggression.
+    strict (experiment 42, 0..1): how much to trust the value-heavy priors (the learned bluff share, the two-pair
+    floor for value raises) over a loose read (the break-even bluff share scaled by their aggression, no floor)."""
     if kind not in ("bet", "raise", "call", "check"):
         return rng
     pct = _strength(rng, board)
     w = np.array([x[2] for x in rng])
     tot = w.sum()
     if kind in ("bet", "raise"):
-        if p_bluff is not None:
-            beta = float(np.clip(p_bluff, 0.03, 0.7))
-        else:
-            beta = float(np.clip(frac / (1 + 2 * frac) * aggression * (1.3 if len(board) < 5 else 1.0), 0.05, 0.6))
+        loose = float(np.clip(frac / (1 + 2 * frac) * aggression * (1.3 if len(board) < 5 else 1.0), 0.05, 0.7))
+        tight = float(np.clip(p_bluff, 0.03, 0.7)) if p_bluff is not None else loose
+        beta = strict * tight + (1 - strict) * loose
         f = float(np.clip(f_bet, 0.05, 0.95))
         v_cut = 1 - f * (1 - beta)                 # value: everything above this percentile
         b_cut = f * beta                           # bluffs: the weakest b_cut (by weight), draws count as weak here
@@ -142,7 +143,7 @@ def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None):
         if need:
             btype = eval7.evaluate(board) >> 24
             made = np.array([(eval7.evaluate([c1, c2] + board) >> 24) - btype for c1, c2, _ in rng])
-            value = value * np.where(made >= need, 1.0, 0.1)
+            value = value * np.where(made >= need, 1.0, 0.1 + 0.9 * (1 - strict))
         bluff = np.clip((b_cut - bluff_pct) / 0.08 + 0.5, 0, 1) * (1 - value)
         # Bluffs are a share of the betting range: bluff weight = value weight * beta / (1 - beta). When strong value
         # hands are rare in their range, so are their bluffs (a balanced bettor; their aggression scales beta).
@@ -157,7 +158,8 @@ def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None):
         rest = np.clip(1 - value - bluff, 0, 1)
         r_mass = float((w * rest).sum())
         if short > 0 and r_mass > 0:
-            bluff = bluff + rest * min(1.0, short / r_mass)
+            # Shown-down value (strictness, experiment 42) says their frequent bets are strong, not filler.
+            bluff = bluff + rest * min(1.0, short / r_mass) * (1 - strict)
         keep = value + bluff
         new = w * np.clip(keep, 0.003, 1)            # a tiny floor: a narrow action (a river raise) must stay narrow
     elif kind == "call":
@@ -210,7 +212,8 @@ def equity(hole, board, rng, rng_seed=0):
     return win / FLOP_SAMPLES
 
 
-def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_value=None, bluff_model=None):
+def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_value=None, bluff_model=None,
+                   strict=1.0):
     """The opponent's weighted combos given everything they did in the hand so far."""
     opp = "bb" if hero == "btn" else "btn"
     dead = set(hole) | set(board)
@@ -234,13 +237,13 @@ def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_v
             else:
                 frac = (a.to / pot) if a.kind == "bet" and pot > 0 else 0.0
                 f_bet = _bet_rate(nodes, name, DEFAULT_BET[s])
-            agg = aggression * (RAISE_BLUFF[s] if a.kind == "raise" else 1.0)
+            agg = aggression * ((1 - strict * (1 - RAISE_BLUFF[s])) if a.kind == "raise" else 1.0)
             if size_value is not None and a.kind in ("bet", "raise"):
                 agg *= size_value(frac)
             p = None
             if bluff_model is not None and a.kind in ("bet", "raise"):
                 p = bluff_model.predict(s, frac, a.kind == "raise", barrels, b, opp == "btn")
-            rng = narrow(rng, b, a.kind, frac, f_bet, agg, p)
+            rng = narrow(rng, b, a.kind, frac, f_bet, agg, p, strict)
             if a.kind in ("bet", "raise"):
                 barrels += 1
     return rng
@@ -259,14 +262,14 @@ def _bet_rate(nodes, street, default, shrink=10):
     return (hits + shrink * default) / (n + shrink)
 
 
-def check(probs, hole, board, st, hero, pre, prof, aggression, notes, size_value=None, bluff_model=None):
+def check(probs, hole, board, st, hero, pre, prof, aggression, notes, size_value=None, bluff_model=None, strict=1.0):
     """Adjust a facing-a-bet decision by pot odds; returns probs."""
     call_amt = st.facing(hero)
     if call_amt <= 1e-9 or "call" not in probs or "fold" not in probs:
         return probs
     pot_after = st.pot() + call_amt
     need = call_amt / pot_after
-    rng = opponent_range(pre, st, hero, board, hole, prof, aggression, size_value, bluff_model)
+    rng = opponent_range(pre, st, hero, board, hole, prof, aggression, size_value, bluff_model, strict)
     eq = equity(list(hole), list(board), rng)
     real = 1.0 if len(board) == 5 else REALIZE["oop" if hero == "bb" else "ip"]
     eff = eq * real

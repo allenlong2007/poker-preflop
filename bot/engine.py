@@ -50,6 +50,7 @@ JAM_FRACTION = 0.6                         # a preflop raise to >= 60% of the st
 # only for hands with a pair or better (a live draw on the turn, overcards against small bets); air folds.
 DEFEND_KEEP = {1: 0.7, 2: 0.85}            # street -> share of a model fold kept (turn, river), for those hands
 FALLBACK_UNTRAINED = True
+STRICT_PRIOR = 0.0                        # experiment 42: strictness before any data on the opponent (trained)
 RIVER_SHIFT = (0.6, 0.3)                  # experiment 40: (1/3 -> 3/4, 1/2 -> pot) share of the model's river bets
 SHORT_BB, SHORT_SPR = 12.0, 1.2           # experiment 40: postflop short-stack mode thresholds (behind, at street start)
 SHORT_JAM = 0.55                          # equity vs the opponent's range needed to put the stack in unprompted
@@ -201,6 +202,7 @@ class Engine:
         self.opp_profile = None               # the opponent's profile (bot/opponent.py), set by the adapter
         self.size_value = None                # experiment 39: bluff-share scale by the opponent's bet size
         self.bluff_model = None               # experiment 41: learned P(bluff) for the opponent's bets
+        self.strict = STRICT_PRIOR            # experiment 42: trust in value-heavy priors, set from opponent data
         self.river_lead = RIVER_LEAD if river_lead is None else river_lead
         if policy_dir is None:
             policy_dir = POLICY_FINE if all((POLICY_FINE / f"{p}.npz").exists() for p in POTS) else POLICY
@@ -242,7 +244,7 @@ class Engine:
                     probs = {k: d.probs.get(k, 0.0) for k in set(d.probs) | {"fold", "call"}}
                     d.probs = _normalise(potodds.check(probs, hole, board[:2 + st.street], st, hero, self.pre,
                                                        self.opp_profile, self.exploit["defend"], d.notes,
-                                                       self.size_value, self._bluffs()))
+                                                       self.size_value, self._bluffs(), self.strict))
         if sample:
             labels = list(d.probs)
             p = np.array([d.probs[k] for k in labels], dtype=float)
@@ -485,7 +487,7 @@ class Engine:
         """Get it in with equity, otherwise check / fold; call a bet by its price. Replaces small c-bets and thin
         value at short stacks, where any bet commits a large share of the stack anyway."""
         rng = potodds.opponent_range(self.pre, st, hero, board, hole, self.opp_profile, self.exploit["defend"],
-                                     self.size_value, self._bluffs())
+                                     self.size_value, self._bluffs(), self.strict)
         eq = potodds.equity(list(hole), list(board), rng)
         b = st.facing(hero)
         all_in = st.inp[hero] + st.left(hero)

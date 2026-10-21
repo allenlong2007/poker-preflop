@@ -2459,6 +2459,33 @@ hands on them; with the old pot-odds module the same code makes +488). With adap
 extra aggression, so it improved too), itself -13 ± 14 (was +10 ± 13). Against unknown aggression the bot is now
 deliberately careful with one pair against big raises until it has data.
 
+## Experiment 42: How strict against big bets and raises, learned from the opponent
+
+Experiments 40–41 made the bot stricter with one pair against big raises, and that cost against aggressive
+opponents it had no data on (an unknown maniac: +426 → -94 bb/100). Now the strictness is a number per opponent,
+s in 0..1, that blends the value-heavy reading (the learned bluff model's share, the two-pair floor for value
+raises, fewer bluffs in raises, no filler in a frequent bettor's range) with a loose one (the break-even bluff
+share scaled by their *measured* aggression).
+
+s comes from their showdowns (`bot/adapt.py evidence_strictness`): their bluff share among shown bets and raises,
+with a prior of 35% worth five bets; s = how far below 35% it sits. No showdowns: s = 0, the measured-aggression
+read (which is already strict against a passive player: low aggression, few bluffs assumed). Value shown: s
+rises (0.5 after five value showdowns). Bluffs shown: s stays 0.
+
+Training (`scripts/strictness_train.py`): five opponents (itself, loose-aggressive at 20% and 40% extra
+aggression, a maniac, a new value-heavy player who only bets / raises two pair or better, pot-sized, never
+bluffing), adapted after 20 and after 150 deals, 2,000-deal duplicate matches, three policies:
+
+| bb/100 | always strict (s = 1) | always loose (s = 0) | evidence-based |
+|---|---|---|---|
+| average over the population | +72 | +177 | +173 |
+| without the maniac | -6 | +9 | +5 |
+| maniac, after 20 deals | -140 ± 71 | +754 ± 74 | +754 ± 74 |
+| value-heavy, after 150 deals | +38 ± 16 | +47 ± 18 | +39 ± 16 |
+
+Loose and evidence-based are within noise of each other; both beat always-strict, by a lot against aggression.
+The evidence-based policy is the live one because it can still turn strict when a real player shows value.
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
