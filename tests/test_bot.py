@@ -160,3 +160,14 @@ def test_short_stack_postflop_jams_or_checks():
     weak = eng.decide("btn", "4h3d", "KcQdJs", hist, sample=False, stack=7)
     assert strong.label == "all-in" and strong.source == "short"
     assert weak.label == "check"
+
+
+def test_every_depth_can_answer_a_shove():
+    """The 40 / 60bb trees have no shoves of their own; facing one they must still answer (100bb nodes)."""
+    eng = Engine(seed=0)
+    for st in (100, 60, 45, 40, 30, 25, 15, 10, 6):
+        for hero, hist in (("bb", [[Act("btn", "raise", st)]]),
+                           ("btn", [[Act("btn", "raise", 2.25), Act("bb", "raise", st)]]),
+                           ("bb", [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "raise", st)]])):
+            d = eng.decide(hero, "QhQd", "", hist, sample=False, stack=st)
+            assert set(d.probs) <= {"fold", "call"} and abs(sum(d.probs.values()) - 1) < 1e-9

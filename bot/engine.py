@@ -266,7 +266,9 @@ class Engine:
         depths = {float(k): v for k, v in self.pre.get("by_depth", {}).items()}
         depth = min([STACK] + list(depths), key=lambda d: abs(math.log(d / max(st.stack, 1.0))))
         deep = depth == STACK
-        n = self.pre["nodes"] if deep else depths[depth]
+        # A node the depth tree doesn't have (the 40 / 60bb trees have no shoves, so no answers to one either)
+        # falls back to the 100bb tree's answer.
+        n = _Fallback(self.pre["nodes"] if deep else depths[depth], self.pre["nodes"])
         f4 = self.pre.get("fourbet_x")
         opts = {}
         raise_ = lambda to: ("raise", min(round(to, 2), st.stack))
@@ -655,6 +657,19 @@ def _opts_from_json(text):
         if k in o:
             o[k] = tuple(o[k])
     return o
+
+
+class _Fallback(dict):
+    """A depth tree's nodes, with the 100bb tree's for any node it lacks."""
+    def __init__(self, nodes, main):
+        super().__init__(nodes)
+        self.main = main
+
+    def __missing__(self, key):
+        return self.main[key]
+
+    def get(self, key, default=None):
+        return dict.get(self, key) or self.main.get(key, default)
 
 
 def _polar_river(probs, notes, shift):
