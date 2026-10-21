@@ -168,6 +168,7 @@ def test_every_depth_can_answer_a_shove():
     for st in (100, 60, 45, 40, 30, 25, 15, 10, 6):
         for hero, hist in (("bb", [[Act("btn", "raise", st)]]),
                            ("btn", [[Act("btn", "raise", 2.25), Act("bb", "raise", st)]]),
-                           ("bb", [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "raise", st)]])):
+                           ("bb", [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "raise", st)]]),
+                           ("bb", [[Act("btn", "raise", 2.25), Act("bb", "raise", 6.75), Act("btn", "raise", st)]])):
             d = eng.decide(hero, "QhQd", "", hist, sample=False, stack=st)
             assert set(d.probs) <= {"fold", "call"} and abs(sum(d.probs.values()) - 1) < 1e-9

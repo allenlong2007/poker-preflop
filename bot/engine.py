@@ -268,7 +268,8 @@ class Engine:
         deep = depth == STACK
         # A node the depth tree doesn't have (the 40 / 60bb trees have no shoves, so no answers to one either)
         # falls back to the 100bb tree's answer.
-        n = _Fallback(self.pre["nodes"] if deep else depths[depth], self.pre["nodes"])
+        n = _Fallback(self.pre["nodes"] if deep else depths[depth], self.pre["nodes"],
+                      *[depths[d] for d in sorted(depths, reverse=True)])
         f4 = self.pre.get("fourbet_x")
         opts = {}
         raise_ = lambda to: ("raise", min(round(to, 2), st.stack))
@@ -660,16 +661,23 @@ def _opts_from_json(text):
 
 
 class _Fallback(dict):
-    """A depth tree's nodes, with the 100bb tree's for any node it lacks."""
-    def __init__(self, nodes, main):
+    """A depth tree's nodes; a node it lacks comes from the 100bb tree, else from the deepest shorter tree that has
+    it (at 100bb there is no 4-bet shove, so no node for facing one; the 25bb tree has it)."""
+    def __init__(self, nodes, *others):
         super().__init__(nodes)
-        self.main = main
+        self.others = others
 
     def __missing__(self, key):
-        return self.main[key]
+        for o in self.others:
+            if key in o:
+                return o[key]
+        raise KeyError(key)
 
     def get(self, key, default=None):
-        return dict.get(self, key) or self.main.get(key, default)
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
 
 def _polar_river(probs, notes, shift):
