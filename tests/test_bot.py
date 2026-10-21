@@ -172,3 +172,17 @@ def test_every_depth_can_answer_a_shove():
                            ("bb", [[Act("btn", "raise", 2.25), Act("bb", "raise", 6.75), Act("btn", "raise", st)]])):
             d = eng.decide(hero, "QhQd", "", hist, sample=False, stack=st)
             assert set(d.probs) <= {"fold", "call"} and abs(sum(d.probs.values()) - 1) < 1e-9
+
+
+def test_never_just_call_with_the_nuts():
+    """Experiments 43-44: straight flush, quads, the nut flush: bet or raise, never call or check."""
+    eng = Engine(seed=0, pot_odds=True)
+    pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
+    riv = [pre, [Act("bb", "check"), Act("btn", "check")], [Act("bb", "check"), Act("btn", "check")], [Act("bb", "bet", 3)]]
+    d = eng.decide("btn", "9h8h", "7h6h5hKc2d", riv, sample=False)
+    assert d.label == "raise all-in"
+    for seat, hole, board, hist in (("btn", "KdKs", "KhKc5h", [pre, [Act("bb", "check")]]),
+                                    ("bb", "KdKs", "KhKc5h", [pre, [Act("bb", "check"), Act("btn", "bet", 1.5)]]),
+                                    ("bb", "AhJh", "Kh8h3h2c", [pre, [Act("bb", "check"), Act("btn", "bet", 1.5), Act("bb", "call")],
+                                                                [Act("bb", "check"), Act("btn", "bet", 5)]])):
+        assert eng.decide(seat, hole, board, hist, sample=False).action in ("bet", "raise")

@@ -2499,7 +2499,7 @@ PokerNow nickname is `bot/version.py` NAME (e.g. "HUBot v5"); each version is a 
 | v3 | 9e8f9e1 | all-in call fix, pot odds on every call, separate player ids, 4.5 s actions (exp 38–39) |
 | v4 | d9606f0 | raise-size-aware river calls, river sizing, short-stack mode, learned bluff model (exp 40–41) |
 | v5 | 31471e1 | strictness against big bets learned per opponent from showdowns (exp 42) |
-| v6 | tag v6 | max-value / trap mode with the absolute nuts (straight flush, quads); several tables at once; fixes for facing shoves (exp 43) |
+| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43) |
 
 ## Next steps
 

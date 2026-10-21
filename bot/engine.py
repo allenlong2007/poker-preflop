@@ -477,27 +477,36 @@ class Engine:
     # -- experiment 40: short stacks postflop -------------------------------------------------------
 
     def _monster(self, d, hero, hole, board, st):
-        """Experiment 43: the absolute nuts (straight flush or quads beyond the board): tilt MONSTER_TILT of the
-        decision toward maximum value: the biggest bet / raise, or a check / call to trap a very aggressive
-        opponent before the river. The rest keeps the normal mix (often already big and polarized)."""
-        made = eval7.evaluate(list(hole) + board) >> 24
-        if made < 7 or (eval7.evaluate(board) >> 24) >= 7:
+        """Experiments 43-44: with the nuts the bot never just calls or checks: facing a bet it raises (all-in on the
+        river or when the stack is short, else its biggest raise), first to act it bets its biggest size (all-in on
+        the river). The nuts: no two cards the opponent can hold beat the hand (straight flush, quads beyond the
+        board, the nut flush on boards with no full house possible), or the best possible flush on any board."""
+        if not _is_nuts(list(hole), list(board)):
             return d
-        aggro = self.exploit["defend"] >= 1.2 and st.street < 3
-        size = lambda k: float(k.split()[-1]) if k.split()[-1].replace(".", "").isdigit() else 99.0
-        big = [k for k in d.probs if k.split()[0] in ("bet", "lead", "raise", "all-in")]
-        if aggro:
-            target = "check" if "check" in d.probs else "call"
-        elif big:
-            target = max(big, key=size)
+        b = st.facing(hero)
+        all_in = st.inp[hero] + st.left(hero)
+        other = "bb" if hero == "btn" else "btn"
+        P = st.pot()
+        jam = st.street == 3 or st.left(hero) <= 2.5 * (P + b)
+        if b > EPS:
+            if st.left(other) <= EPS or st.left(hero) <= b + EPS:
+                target = "call"                              # they are all-in (or we can't raise): calling is max
+            else:
+                raises = [k for k in self._options if k.startswith("raise")]
+                if jam or not raises:
+                    self._options["raise all-in"] = ("raise", all_in)
+                    target = "raise all-in"
+                else:
+                    target = max(raises, key=lambda k: self._options[k][1])
         else:
-            return d
-        if target not in d.probs:
-            return d
-        d.probs = {k: v * (1 - MONSTER_TILT) for k, v in d.probs.items()}
-        d.probs[target] += MONSTER_TILT
-        d.notes.append(f"nuts ({'quads' if made == 7 else 'straight flush'}): {MONSTER_TILT:.0%} to {target}"
-                       + (" (trap: aggressive opponent)" if aggro else ""))
+            bets = [k for k in self._options if self._options[k][0] in ("bet", "raise")]
+            if jam or not bets:
+                self._options["bet all-in"] = ("bet", all_in)
+                target = "bet all-in"
+            else:
+                target = max(bets, key=lambda k: self._options[k][1])
+        d.probs = {target: 1.0}
+        d.notes.append(f"the nuts: {target} (never just call or check)")
         return d
 
     def _bluffs(self):
@@ -684,6 +693,26 @@ def _opts_from_json(text):
         if k in o:
             o[k] = tuple(o[k])
     return o
+
+
+def _is_nuts(hole, board):
+    """No two-card hand the opponent can hold beats ours, or ours is the best possible flush."""
+    if len(board) < 3:
+        return False
+    mine = eval7.evaluate(hole + board)
+    if mine >> 24 < 4:                                       # below a straight: never the nuts here
+        return False
+    dead = set(hole) | set(board)
+    rest = [c for c in _DECK if c not in dead]
+    nuts = all(eval7.evaluate([a, c] + board) <= mine for i, a in enumerate(rest) for c in rest[i + 1:])
+    if nuts or mine >> 24 != 5:
+        return nuts
+    best_flush = max((eval7.evaluate([a, c] + board) for i, a in enumerate(rest) for c in rest[i + 1:]
+                      if eval7.evaluate([a, c] + board) >> 24 == 5), default=0)
+    return mine >= best_flush
+
+
+_DECK = [eval7.Card(r + s) for r in "23456789TJQKA" for s in "cdhs"]
 
 
 class _Fallback(dict):
