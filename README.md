@@ -2486,6 +2486,20 @@ bluffing), adapted after 20 and after 150 deals, 2,000-deal duplicate matches, t
 Loose and evidence-based are within noise of each other; both beat always-strict, by a lot against aggression.
 The evidence-based policy is the live one because it can still turn strict when a real player shows value.
 
+## Versions
+
+One version per round of changes from a live game (v0 = the first version that played a live game). The bot's
+PokerNow nickname is `bot/version.py` NAME (e.g. "HUBot v5"); each version is a git tag.
+
+| version | commit | changes |
+|---|---|---|
+| v0 | 2ef14b3 | first live version: 3x open, 5 s actions |
+| v1 | 10a5257 | 2.25x open, fewer limps, postflop retrained (exp 33–34) |
+| v2 | efe9a0c | real 4-bets, stack-depth preflop, opponent tracking and adaptation (exp 35–37) |
+| v3 | 9e8f9e1 | all-in call fix, pot odds on every call, separate player ids, 4.5 s actions (exp 38–39) |
+| v4 | d9606f0 | raise-size-aware river calls, river sizing, short-stack mode, learned bluff model (exp 40–41) |
+| v5 | 31471e1 | strictness against big bets learned per opponent from showdowns (exp 42) |
+
 ## Next steps
 
 1. **New models use pot-sized raises** (`OPTS_POT`, experiment 22). Ace-high air is available as an option
