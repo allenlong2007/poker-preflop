@@ -91,6 +91,7 @@ class Decision:
     source: str                            # preflop / solver / model / rule
     label: str = ""                        # the chosen option's label in `probs`
     notes: list = field(default_factory=list)
+    shove_read: bool = False               # experiment 46: decided by this opponent's observed shoves
 
 
 # ----------------------------------------------------------------------------- cards
@@ -586,6 +587,7 @@ class Engine:
         need = b / (st.pot() + b)
         call = eq > need + SHOVE_MARGIN
         d.probs = {"call": 1.0} if call else {"fold": 1.0}
+        d.shove_read = True
         d.notes.append(f"vs shove: they shove {f:.0%} here ({seen:.0f}/{n}), range top {f * share:.0%}: "
                        f"equity {eq:.0%} vs price {need:.0%}: {'call' if call else 'fold'}")
         return d
@@ -600,19 +602,24 @@ class Engine:
         raises = sum(a.kind == "raise" for a in st.history[0])
         if raises < 3 or st.facing(hero) <= EPS or "fold" not in self._options or self.strict <= 0:
             return d
-        if any(n.startswith("vs shove") for n in d.notes):
-            return d
+        if d.shove_read:
+            return d                                         # _vs_shove decided it from this opponent's shoves
         share = REWAR_RANGE.get(raises, min(REWAR_RANGE.values()))
         eq = _equity_vs_top(hole, share)
         b = st.facing(hero)
         need = b / (st.pot() + b)
-        w = min(1.0, self.strict / REWAR_FULL_STRICT)
+        opp = "bb" if hero == "btn" else "btn"
+        closes = st.left(hero) <= b + EPS or st.left(opp) <= EPS   # an all-in call: no later streets to realise
+        real = 1.0 if closes else REWAR_REAL
+        # Full weight only with a read on this opponent; the population prior alone keeps the tree in the mix.
+        own = bool(((self.opp_profile or {}).get("nodes") or {}))
+        w = min(1.0 if own else REWAR_PRIOR_CAP, self.strict / REWAR_FULL_STRICT)
         go = [k for k in d.probs if k != "fold" and d.probs[k] > 0]
         cont = sum(d.probs[k] for k in go)
         if cont <= 0:
             return d
         probs = dict(d.probs)
-        if eq * REWAR_REAL <= need:
+        if eq * real <= need:
             for k in go:
                 probs[k] *= 1 - w
             probs["fold"] = probs.get("fold", 0.0) + cont * w
@@ -625,7 +632,7 @@ class Engine:
         else:
             return d
         d.probs = _normalise(probs)
-        d.notes.append(f"re-raise war ({raises} raises): equity {eq:.0%} vs top {share:.0%} (x{REWAR_REAL}) vs price "
+        d.notes.append(f"re-raise war ({raises} raises): equity {eq:.0%} vs top {share:.0%} (x{real}) vs price "
                        f"{need:.0%}: {verdict} ({w:.0%} weight, strictness {self.strict:.2f})")
         return d
 
@@ -916,6 +923,7 @@ SMALL_RAISE_RANGE, SMALL_RAISE_REAL = 0.25, 0.75
 # jam needs, and the strictness at which the check has full weight (the population start is 0.37).
 REWAR_RANGE = {3: 0.06, 4: 0.035}
 REWAR_REAL, REWAR_JAM_EQ, REWAR_FULL_STRICT = 0.55, 0.48, 0.3
+REWAR_PRIOR_CAP = 0.75      # weight of the check on the population read alone (no hands of this opponent yet)
 SMALL_RAISE_MAX_RAISES = 2  # experiment 48: the check applies facing an open / iso or a 3-bet, never a 4-bet+
 SHOVE_MIN_SEEN = 3          # experiment 46: preflop shoves seen at a spot before the read replaces the tree
 SHOVE_PRIOR = (0.03, 5)     # prior shove share and its weight (deals)

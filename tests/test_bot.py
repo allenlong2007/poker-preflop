@@ -312,7 +312,20 @@ def test_reraise_wars_respect_value_ranges():
     eng = Engine(seed=0, pot_odds=True)
     four = [[Act("btn", "raise", 3), Act("bb", "raise", 9), Act("btn", "raise", 15)]]
     eng.strict = 0.37
+    eng.opp_profile = {"nodes": {"btn_first_in": {"n": 20, "raise": 0.8, "fold": 0.2}}}   # a read on this player
     assert eng.decide("bb", "Ts9h", "", four, sample=False).label == "fold"
     assert eng.decide("bb", "3h3s", "", four, sample=False).label == "fold"
     assert eng.decide("bb", "KsKd", "", four, sample=False).label != "fold"
     assert eng.decide("bb", "AsKd", "", four, sample=False).label != "fold"
+
+
+def test_reraise_war_all_in_calls_use_raw_equity():
+    """Review fix: an all-in call closes the action, so no realisation discount; and the population read alone
+    never fully overrides the tree."""
+    eng = Engine(seed=0, pot_odds=True)
+    eng.strict = 0.37
+    jam = [[Act("btn", "raise", 3), Act("bb", "raise", 9), Act("btn", "raise", 100)]]
+    d = eng.decide("bb", "AsQd", "", jam, sample=False)
+    assert not any("x0.55" in n for n in d.notes)
+    four = [[Act("btn", "raise", 3), Act("bb", "raise", 9), Act("btn", "raise", 15)]]
+    assert 0 < eng.decide("bb", "Ts9h", "", four, sample=False).probs.get("fold", 0) <= 1
