@@ -116,11 +116,13 @@ def _strength(rng, board):
     return cum
 
 
-def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None, strict=1.0):
+def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None, strict=1.0, slow=1.0):
     """Reweight the range for one opponent action on this board. p_bluff: the learned bluff share for this bet
     (bot/bluffmodel.py); without it, the break-even share x / (1 + 2x) times their aggression.
     strict (experiment 42, 0..1): how much to trust the value-heavy priors (the learned bluff share, the two-pair
-    floor for value raises) over a loose read (the break-even bluff share scaled by their aggression, no floor)."""
+    floor for value raises) over a loose read (the break-even bluff share scaled by their aggression, no floor).
+    slow (experiment 45): how much more than usual they slow-play strong hands (_slowplay); scales the strong hands
+    a check or a call keeps."""
     if kind not in ("bet", "raise", "call", "check"):
         return rng
     pct = _strength(rng, board)
@@ -163,9 +165,9 @@ def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None, strict=1.0):
         keep = value + bluff
         new = w * np.clip(keep, 0.003, 1)            # a tiny floor: a narrow action (a river raise) must stay narrow
     elif kind == "call":
-        new = w * np.where(pct < 0.3, 0.25, np.where(pct > 0.93, 0.6, 1.0))
+        new = w * np.where(pct < 0.3, 0.25, np.where(pct > 0.93, float(np.clip(0.6 * slow, 0.15, 1.0)), 1.0))
     else:
-        new = w * np.where(pct > 0.9, 0.5, 1.0)
+        new = w * np.where(pct > 0.9, float(np.clip(0.5 * slow, 0.15, 1.0)), 1.0)
     new = new * tot / max(new.sum(), 1e-12)
     return [[c1, c2, float(x)] for (c1, c2, _), x in zip(rng, new) if x > 1e-5]
 
@@ -243,10 +245,24 @@ def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_v
             p = None
             if bluff_model is not None and a.kind in ("bet", "raise"):
                 p = bluff_model.predict(s, frac, a.kind == "raise", barrels, b, opp == "btn")
-            rng = narrow(rng, b, a.kind, frac, f_bet, agg, p, strict)
+            rng = narrow(rng, b, a.kind, frac, f_bet, agg, p, strict, _slowplay(nodes, a.kind))
             if a.kind in ("bet", "raise"):
                 barrels += 1
     return rng
+
+
+SLOW_PRIOR = {"check": 0.4, "call": 0.3}   # experiment 45: share of strong hands played passively, before data
+
+
+def _slowplay(nodes, kind, shrink=5):
+    """How much more (>1) or less than usual the opponent slow-plays strong hands, from their shown hands
+    (bot/opponent.py 'trap'): a check counts check-raises too, a call only pure slowplays."""
+    if kind not in SLOW_PRIOR:
+        return 1.0
+    x = nodes.get("trap", {})
+    n = x.get("n", 0)
+    rate = x.get("slowplay", 0.0) + (x.get("checkraise", 0.0) if kind == "check" else 0.0)
+    return (n * rate + shrink * SLOW_PRIOR[kind]) / (n + shrink) / SLOW_PRIOR[kind]
 
 
 def _raise_rate(nodes, street, default, shrink=10):

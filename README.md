@@ -2486,6 +2486,45 @@ bluffing), adapted after 20 and after 150 deals, 2,000-deal duplicate matches, t
 Loose and evidence-based are within noise of each other; both beat always-strict, by a lot against aggression.
 The evidence-based policy is the live one because it can still turn strict when a real player shows value.
 
+## Experiment 45: Trapping (slow-playing) strong hands, the opponent's traps, hand wins per player
+
+**The bot's own traps** come from TexasSolver: `scripts/trap_study.py` reads the 32 flops solved for experiment 22
+(BTN 2.25bb open vs the BB's calling range, flop bets 33/66/100%, turn strategies saved) and measures how often each
+strong hand class (two pair with both hole cards, set, trips, straight, flush, full house+) slow-plays, weighted by
+how often each combo reaches the spot. Share of strong hands played passively (`output/trap_study/trap_rates.csv`):
+
+| class | flop: BB just calls a c-bet | turn: BB checks (no lead) | turn: BTN checks back |
+|---|---|---|---|
+| set | 4% (dry 8%, wet 2%, monotone 0%) | 12% | 1% |
+| two pair | 55% (dry 50%, monotone 63%) | 45% | 20% |
+| trips (paired board) | 70% | 20% | 0% |
+| straight | 40% (wet 23%, monotone 74%) | 14% | 13% |
+| flush | 3% | 15% | 10% |
+| full house+ | 11% | 44% | 22% |
+
+The flop BTN never checks strong hands back (0% on every texture). Sets get raised or bet almost always (they block
+the hands that would pay and fear nothing); two pair and trips slow-play about half the time.
+
+`Engine._trap` moves the model's bet/raise vs check/call mix to the solver's rate for the texture and class (`TRAP`,
+class averages in `TRAP_CLASS` where the solver had no data), times the opponent's bet rate when checked to on that
+street over 45% and the aggression read (x0 to x2): a player who bets whenever checked to gets trapped more, a
+passive one less (a calling station never: self-play vs a station, trapping at the solver rate cost 15 ± 5 bb/100; vs itself, aggro and value-heavy it was within noise, -0 to +6). Never on the river or at short stacks. With the nuts the bot still never just calls: it only
+checks out of position on the turn against a very aggressive read (aggression ≥ 1.3), and raises their bet.
+Caveat: the solved tree has no turn raises, so turn checks there are check-call or check-fold; real check-raises
+would make the turn trap rates somewhat higher.
+
+**The opponent's traps:** `bot/opponent.py` records, for every street where an opponent's shown hand was strong,
+whether they slow-played (only checked / called), check-raised, or played fast (bet or raised first): profile nodes
+`trap` and `trap_<texture>`. Shown hands only, so it overstates trapping (fast play that won without a showdown is
+missing). The range model uses it: a check or a call keeps strong hands in their range in proportion to their
+slow-play rate (`potodds._slowplay`, shrunk to 40% / 30% with 5 hands of prior), so against a heavy slow-player the
+bot respects passive lines more, and against someone who always bets their strong hands it discounts them.
+
+**Hand wins per player:** `python -m bot.opponent results` prints, per opponent ID, the hands the bot won / lost,
+win rate, net bb, bb/100 and showdowns won; the server logs the same line after every hand. At the start of this
+experiment (258 live hands, 6 IDs): won 52% of hands but -129 bb/100 overall, 13 of 38 showdowns: the bot wins the
+small pots and loses the big ones, so bb/100 (not the share of hands won) is the measure of how well it does.
+
 ## Versions
 
 One version per round of changes from a live game (v0 = the first version that played a live game). The bot's
@@ -2499,7 +2538,7 @@ PokerNow nickname is `bot/version.py` NAME (e.g. "HUBot v5"); each version is a 
 | v3 | 9e8f9e1 | all-in call fix, pot odds on every call, separate player ids, 4.5 s actions (exp 38–39) |
 | v4 | d9606f0 | raise-size-aware river calls, river sizing, short-stack mode, learned bluff model (exp 40–41) |
 | v5 | 31471e1 | strictness against big bets learned per opponent from showdowns (exp 42) |
-| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43) |
+| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43); solver-based trapping, opponent trap tracking, wins per player (exp 45) |
 
 ## Next steps
 

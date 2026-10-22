@@ -186,3 +186,42 @@ def test_never_just_call_with_the_nuts():
                                     ("bb", "AhJh", "Kh8h3h2c", [pre, [Act("bb", "check"), Act("btn", "bet", 1.5), Act("bb", "call")],
                                                                 [Act("bb", "check"), Act("btn", "bet", 5)]])):
         assert eng.decide(seat, hole, board, hist, sample=False).action in ("bet", "raise")
+
+
+def test_traps_follow_the_solver_and_the_opponent():
+    """Experiment 45: strong hands slow-play at the solver's rate for the texture, more against players who bet
+    when checked to; the flop BTN and the river never trap, and the nuts never check in position."""
+    from bot.engine import TRAP, trap_texture, strong_class
+    import eval7
+    cards = lambda s: [eval7.Card(s[i:i + 2]) for i in range(0, len(s), 2)]
+    assert trap_texture(cards("KdKc4s")) == "paired" and trap_texture(cards("As7d2c")) == "dry"
+    assert strong_class(cards("Ks8s"), cards("Kh8d3c")) == "two pair"
+    assert strong_class(cards("AsAd"), cards("KhKd3c")) is None          # the board's pair plays
+    eng = Engine(seed=0, pot_odds=True)
+    pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
+    turn = [pre, [Act("bb", "check"), Act("btn", "check")], [Act("bb", "check")]]
+    check = lambda: eng.decide("btn", "Ks8s", "Kh8d3c2h", turn, sample=False).probs.get("check", 0.0)
+    base = check()
+    assert abs(base - TRAP[("dry", "two pair")][2]) < 0.02
+    eng.opp_profile = {"nodes": {"turn_bet_when_checked_to": {"n": 40, "bet": 0.9}}}
+    assert check() > base + 0.1                                            # a player who bets when checked to
+    eng.opp_profile = None
+    d = eng.decide("btn", "Ks8s", "Kh8d3c", [pre, [Act("bb", "check")]], sample=False)
+    assert not any(n.startswith("trap") for n in d.notes)
+    d = eng.decide("btn", "9h8h", "7h6h5hKc", [pre, [Act("bb", "check"), Act("btn", "check")], [Act("bb", "check")]],
+                   sample=False)
+    assert d.probs.get("check", 0.0) == 0.0                                # the nuts in position: bet
+
+
+def test_opponent_traps_and_results():
+    """Experiment 45: the opponent's play with shown strong hands, and the bot's hand wins per opponent."""
+    from bot.opponent import profile, results
+    r = {"number": 1, "opp_pos": "bb", "stacks": {"hero": 100, "opp": 100}, "board": "Kh8d3c2h5s",
+         "history": [[["btn", "raise", 2.25], ["bb", "call", None]], [["bb", "check", None], ["btn", "bet", 1.5],
+                     ["bb", "call", None]], [["bb", "check", None], ["btn", "bet", 4], ["bb", "raise", 12],
+                     ["btn", "call", None]], [["bb", "bet", 20], ["btn", "call", None]]],
+         "shown": {"opp": "Ks8s"}, "net": {"hero": -36.25}}
+    n = profile([r])["nodes"]
+    assert n["trap"]["n"] == 3 and n["trap"]["slowplay"] == round(1 / 3, 3) and n["trap"]["checkraise"] == round(1 / 3, 3)
+    res = results([r, {**r, "shown": {}, "net": {"hero": 2.25}}])
+    assert (res["hands"], res["won"], res["lost"], res["showdowns"], res["showdowns_won"]) == (2, 1, 1, 1, 0)

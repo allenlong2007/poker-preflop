@@ -55,6 +55,22 @@ STRICT_PRIOR = 0.0                        # experiment 42: strictness before any
 RIVER_SHIFT = (0.6, 0.3)                  # experiment 40: (1/3 -> 3/4, 1/2 -> pot) share of the model's river bets
 SHORT_BB, SHORT_SPR = 12.0, 1.2           # experiment 40: postflop short-stack mode thresholds (behind, at street start)
 SHORT_JAM = 0.55                          # equity vs the opponent's range needed to put the stack in unprompted
+# Experiment 45 (scripts/trap_study.py, TexasSolver on 32 flops): how often strong hands slow-play, by board
+# texture and class: (flop: just call a bet instead of raising, turn: BB checks instead of leading, turn: BTN checks
+# back). None: no solver data there (TRAP_CLASS, the class average, fills in). The flop BTN never checks them back.
+TRAP = {
+    ("dry", "set"): (0.08, 0.13, 0.0), ("dry", "two pair"): (0.5, 0.44, 0.2),
+    ("monotone", "flush"): (0.03, 0.1, 0.1), ("monotone", "full house+"): (None, 0.12, 0.0),
+    ("monotone", "set"): (0.0, 0.04, 0.02), ("monotone", "straight"): (0.74, 0.11, 0.16),
+    ("monotone", "two pair"): (0.63, 0.39, 0.18), ("paired", "flush"): (None, 0.56, 0.0),
+    ("paired", "full house+"): (0.11, 0.45, 0.22), ("paired", "straight"): (None, 0.56, 0.0),
+    ("paired", "trips"): (0.7, 0.2, 0.0), ("wet", "set"): (0.02, 0.19, 0.0),
+    ("wet", "straight"): (0.23, 0.13, 0.12), ("wet", "two pair"): (0.51, 0.49, 0.22),
+}
+TRAP_CLASS = {"flush": (0.03, 0.15, 0.1), "full house+": (0.11, 0.44, 0.22), "set": (0.04, 0.12, 0.01),
+              "straight": (0.4, 0.14, 0.13), "trips": (0.7, 0.2, 0.0), "two pair": (0.55, 0.45, 0.2)}
+TRAP_BET_PRIOR = 0.45      # a typical bet rate when checked to; more than this traps more, less traps less
+TRAP_NUTS_AGGRESSION = 1.3  # the nuts only check (to raise) against an aggression read at least this high
 RIVER_LEAD = 0.5                           # extra share of a model river check turned into a lead (value hands)
 SOLVED_OPEN = 3.0                          # default open of the solved flops (index.json records the real one)
 
@@ -239,6 +255,7 @@ class Engine:
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
             d = self._monster(d, hero, hole, board[:2 + st.street], st)
+            d = self._trap(d, hero, hole, board[:2 + st.street], st)
             if self._short(st, hero):
                 d = self._short_stack(d, hero, hole, board[:2 + st.street], st)
             elif self.pot_odds and st.facing(hero) > EPS:
@@ -509,6 +526,59 @@ class Engine:
         d.notes.append(f"the nuts: {target} (never just call or check)")
         return d
 
+    def _trap(self, d, hero, hole, board, st):
+        """Experiment 45: slow-play strong hands as often as the solver does on this texture (TRAP), more against
+        aggressive opponents and less against passive ones (their bet rate when checked to, and the aggression read).
+        The flop BTN never checks back strong hands, the river is never trapped, and with the nuts the bot only
+        traps out of position on the flop or turn against a very aggressive opponent (and then raises their bet:
+        _monster)."""
+        if st.street == 3 or self._short(st, hero):
+            return d
+        k = strong_class(list(hole), list(board))
+        if k is None:
+            return d
+        flat, bb_check, btn_check = TRAP.get((trap_texture(board), k), TRAP_CLASS.get(k, (None, None, None)))
+        facing = st.facing(hero) > EPS
+        if facing:
+            rate = flat if st.street == 1 else None          # the solver tree had no turn raises
+        else:
+            rate = None if st.street == 1 else bb_check if hero == "bb" else btn_check
+        if rate is None:
+            return d
+        mult = float(np.clip(self.exploit["defend"] * self._checked_to_bet(st.street) / TRAP_BET_PRIOR, 0.0, 2.0))
+        nuts = any(n.startswith("the nuts") for n in d.notes)
+        if nuts:
+            if facing or hero != "bb" or self.exploit["defend"] < TRAP_NUTS_AGGRESSION:
+                return d
+        passive = "call" if facing else "check"
+        aggressive = [x for x in self._options if self._options[x][0] in ("bet", "raise")]
+        if passive not in self._options or not aggressive:
+            return d
+        target = min(0.9, rate * mult)
+        agg = sum(d.probs.get(x, 0.0) for x in aggressive)
+        if agg + d.probs.get(passive, 0.0) <= EPS:
+            return d
+        share = agg + d.probs.get(passive, 0.0)                # the fold share (facing a bet) stays as it is
+        new_agg = share * (1 - target)
+        if nuts or agg <= EPS:
+            probs = {x: p for x, p in d.probs.items() if x not in aggressive}
+            best = max(aggressive, key=lambda x: self._options[x][1]) if agg <= EPS else None
+            for x in aggressive:
+                if d.probs.get(x, 0.0) > 0 or x == best:
+                    probs[x] = new_agg * (d.probs.get(x, 0.0) / agg if agg > EPS else 1.0)
+        else:
+            probs = {x: (p * new_agg / agg if x in aggressive else p) for x, p in d.probs.items()}
+        probs[passive] = share * target
+        d.probs = _normalise(probs)
+        d.notes.append(f"trap: {k} on a {trap_texture(board)} board: {passive} {target:.0%} (solver {rate:.0%} x{mult:.2f})")
+        return d
+
+    def _checked_to_bet(self, street):
+        """The opponent's bet rate when checked to on this street, shrunk to the prior (bot/opponent.py profile)."""
+        x = ((self.opp_profile or {}).get("nodes") or {}).get(f"{['', 'flop', 'turn', 'river'][street]}_bet_when_checked_to", {})
+        n = x.get("n", 0)
+        return (n * x.get("bet", 0.0) + 10 * TRAP_BET_PRIOR) / (n + 10)
+
     def _bluffs(self):
         """The opponent's learned bluff model, or the self-play prior before there is one."""
         if self.bluff_model is None:
@@ -693,6 +763,34 @@ def _opts_from_json(text):
         if k in o:
             o[k] = tuple(o[k])
     return o
+
+
+def trap_texture(board):
+    """Board texture for trapping (experiment 45): paired / monotone / wet (two-tone or straight-possible) / dry."""
+    ranks = [c.rank for c in board]
+    suits = [c.suit for c in board]
+    if len(set(ranks)) < len(ranks):
+        return "paired"
+    if max(suits.count(x) for x in set(suits)) >= 3:
+        return "monotone"
+    r = sorted(set(ranks) | ({-1} if 12 in ranks else set()))        # the ace also plays low
+    straighty = any(sum(a <= x <= a + 4 for x in r) >= 3 for a in r)
+    two_tone = max(suits.count(x) for x in set(suits)) == 2 and len(board) == 3
+    return "wet" if straighty or two_tone else "dry"
+
+
+def strong_class(hole, board):
+    """Strong made-hand class for trapping (experiment 45): two pair (both hole cards), set, trips, straight, flush,
+    full house+ -- None for anything weaker or when the board plays."""
+    t = eval7.evaluate(hole + board) >> 24
+    if t <= 1 or eval7.evaluate(board) >> 24 >= t:
+        return None
+    ranks = [c.rank for c in board]
+    if t == 2:
+        return "two pair" if len(set(ranks)) == len(ranks) and all(c.rank in ranks for c in hole) else None
+    if t == 3:
+        return "set" if hole[0].rank == hole[1].rank else "trips"
+    return {4: "straight", 5: "flush"}.get(t, "full house+")
 
 
 def _is_nuts(hole, board):

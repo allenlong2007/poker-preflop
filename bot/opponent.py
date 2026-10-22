@@ -209,11 +209,57 @@ def profile(hands):
                 else:
                     st[f"{name}_bet_when_checked_to"].add("bet" if k == "bet" else "check")
         if "opp" in r["shown"]:
+            _traps(r, opp, st)
             shows.append({"hand": r["number"], "cards": r["shown"]["opp"], "pos": opp,
                           "line": " / ".join(" ".join(f"{p}:{k}{'' if to is None else f' {to:g}'}"
                                                        for p, k, to in street) for street in r["history"]),
                           "board": r["board"]})
-    return {"hands": len(hands), "nodes": {k: v.as_dict() for k, v in sorted(st.items())}, "shown": shows}
+    return {"hands": len(hands), "nodes": {k: v.as_dict() for k, v in sorted(st.items())}, "shown": shows,
+            "results": results(hands)}
+
+
+def _traps(r, opp, st):
+    """Experiment 45: what the opponent did on each street where their shown hand was strong (two pair or better,
+    bot.engine.strong_class): slowplay (only checked / called), checkraise, or fast (bet or raised first). Only shown
+    hands count, so fast play that won without a showdown is missing: read it as an upper bound on trapping."""
+    import eval7
+    from bot.engine import strong_class, trap_texture
+    hole = [eval7.Card(r["shown"]["opp"][i:i + 2]) for i in (0, 2)]
+    full = [eval7.Card(r["board"][i:i + 2]) for i in range(0, len(r["board"]), 2)]
+    for s, street in enumerate(r["history"][1:], start=1):
+        board = full[:2 + s]
+        mine = [k for p, k, _ in street if p == opp]
+        if len(board) < 3 or not mine or not strong_class(hole, board):
+            continue
+        if mine[0] in ("bet", "raise"):
+            kind = "fast"
+        elif any(k == "raise" for k in mine[1:]):
+            kind = "checkraise"
+        else:
+            kind = "slowplay"
+        st["trap"].add(kind)
+        st[f"trap_{trap_texture(board)}"].add(kind)
+
+
+def results(hands):
+    """How the bot is doing against these hands: hands won / lost / tied (by the bot's net), win rate, net bb and
+    bb/100, and showdowns won."""
+    nets = [r["net"]["hero"] for r in hands]
+    sd = [r for r in hands if "opp" in r["shown"]]
+    n = len(nets)
+    return {"hands": n, "won": sum(x > 0 for x in nets), "lost": sum(x < 0 for x in nets),
+            "tied": sum(x == 0 for x in nets), "win_rate": round(sum(x > 0 for x in nets) / n, 3) if n else None,
+            "net_bb": round(sum(nets), 1), "bb_per_100": round(100 * sum(nets) / n, 1) if n else None,
+            "showdowns": len(sd), "showdowns_won": sum(r["net"]["hero"] > 0 for r in sd)}
+
+
+def scoreboard():
+    """Bot results per opponent ID (and overall), most hands first."""
+    by = defaultdict(list)
+    for r in load():
+        by[r["opp_id"]].append(r)
+    rows = sorted(((canonical(k), v[-1]["opp_name"], results(v)) for k, v in by.items()), key=lambda x: -x[2]["hands"])
+    return rows + [("ALL", "", results([r for _, v in by.items() for r in v]))]
 
 
 def compare(a, b, nodes=("btn_first_in", "bb_vs_open", "bb_vs_limp", "btn_vs_3bet", "flop_vs_bet", "flop_cbet",
@@ -301,6 +347,13 @@ def main():
     if cmd == "link":
         link(*sys.argv[2:])
         print(f"linked {sys.argv[3:]} -> {sys.argv[2]}")
+        return
+    if cmd == "results":
+        print(f"{'opponent':24} {'hands':>5} {'won':>4} {'lost':>4} {'win%':>5} {'net bb':>7} {'bb/100':>7} {'SD won':>7}")
+        for pid, name, x in scoreboard():
+            wr = "-" if x["win_rate"] is None else f"{100 * x['win_rate']:.0f}"
+            print(f"{(name + ' ' + pid)[:24]:24} {x['hands']:5} {x['won']:4} {x['lost']:4} {wr:>5} {x['net_bb']:7} "
+                  f"{x['bb_per_100'] or 0:7} {x['showdowns_won']:3}/{x['showdowns']:<3}")
         return
     if cmd == "import":
         log = json.load(open(sys.argv[2]))
