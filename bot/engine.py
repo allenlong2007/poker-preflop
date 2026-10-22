@@ -221,6 +221,7 @@ class Engine:
         self.bluff_model = None               # experiment 41: learned P(bluff) for the opponent's bets
         self.strict = STRICT_PRIOR            # experiment 42: trust in value-heavy priors, set from opponent data
         self.river_lead = RIVER_LEAD if river_lead is None else river_lead
+        self.river_jam = True                 # experiment 47 (switchable for comparisons)
         if policy_dir is None:
             policy_dir = POLICY_FINE if all((POLICY_FINE / f"{p}.npz").exists() for p in POTS) else POLICY
         self.pre = json.load(open(POLICY / "preflop.json"))
@@ -258,6 +259,8 @@ class Engine:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
             d = self._monster(d, hero, hole, board[:2 + st.street], st)
             d = self._trap(d, hero, hole, board[:2 + st.street], st)
+            if self.river_jam:
+                d = self._river_jam(d, hero, hole, board[:2 + st.street], st)
             if self._short(st, hero):
                 d = self._short_stack(d, hero, hole, board[:2 + st.street], st)
             elif self.pot_odds and st.facing(hero) > EPS:
@@ -526,6 +529,33 @@ class Engine:
                 target = max(bets, key=lambda k: self._options[k][1])
         d.probs = {target: 1.0}
         d.notes.append(f"the nuts: {target} (never just call or check)")
+        return d
+
+    def _river_jam(self, d, hero, hole, board, st):
+        """Experiment 47 (Polk vs Negreanu: 'too conservative with putting in all the money'; Polk's river shoves of
+        3x pot): first to bet the river with at most RIVER_JAM_SPR pots behind, a strong hand (two pair+, see
+        strong_class) moves RIVER_JAM_SHARE of its pot-or-bigger bets to all-in, and air (no pair beyond the board)
+        the same share of its overbets, so the jam stays polar. Medium hands never jam."""
+        if st.street != 3 or st.facing(hero) > EPS or self._short(st, hero):
+            return d
+        P, left = st.pot(), st.left(hero)
+        if left <= EPS or left > RIVER_JAM_SPR * P:
+            return d
+        strong = strong_class(list(hole), list(board)) is not None
+        air = (eval7.evaluate(list(hole) + list(board)) >> 24) <= (eval7.evaluate(list(board)) >> 24)
+        if not (strong or air):
+            return d
+        floor = 1.0 if strong else 1.5
+        big = [k for k in d.probs if self._options.get(k, ("",))[0] in ("bet", "raise")
+               and (self._options[k][1] - max(st.inp.values())) >= floor * P - EPS]
+        moved = sum(d.probs[k] for k in big) * RIVER_JAM_SHARE
+        if moved <= 1e-6:
+            return d
+        probs = {k: (p * (1 - RIVER_JAM_SHARE) if k in big else p) for k, p in d.probs.items()}
+        self._options["bet all-in"] = ("bet", st.inp[hero] + left)
+        probs["bet all-in"] = probs.get("bet all-in", 0.0) + moved
+        d.probs = _normalise(probs)
+        d.notes.append(f"river jam ({'value' if strong else 'bluff'}): {moved:.0%} of big bets -> all-in")
         return d
 
     def _vs_shove(self, d, hero, hole, st):
@@ -829,6 +859,10 @@ def trap_texture(board):
     straighty = any(sum(a <= x <= a + 4 for x in r) >= 3 for a in r)
     two_tone = max(suits.count(x) for x in set(suits)) == 2 and len(board) == 3
     return "wet" if straighty or two_tone else "dry"
+
+
+# Experiment 47 (Polk vs Negreanu): jam the river with polar hands when the stack is at most RIVER_JAM_SPR pots.
+RIVER_JAM_SPR, RIVER_JAM_SHARE = 3.0, 0.5
 
 
 SMALL_RAISE_PRICE = 0.2     # experiment 46: preflop raises priced at most this get the equity check

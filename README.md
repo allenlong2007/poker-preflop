@@ -2577,6 +2577,35 @@ signs.
 10x overbets, instant shoves at any street) and checks every answer is legal (no crash, no fold when checking is
 free, sizes within the stack).
 
+## Experiment 47: Review of every live hand; lessons from top heads-up pros
+
+**Live review** (`scripts/live_review.py`, 294 hands, 7 opponents, versions v0-v6): -127 bb/100 overall, 53% of hands
+won. The money went on the river: the bot **called river bets or raises 19 times and won 5 (26%), -318bb**, most
+of the total loss; river bets it made that got called broke even, checked-down rivers won. The pooled human
+opponents showed down 7 bluffs in 34 bets and raises (3 in 18 big ones): far fewer than the 35% bluff share each
+new opponent was assumed to have.
+
+*Fix:* each new opponent starts from the population's shown bluff share (`adapt.population_bluff`: every other
+opponent's shown-down bets, shrunk to 35% with 20 bets of weight; 22% now, so strictness 0.37 instead of 0 from the
+first hand). Their own showdowns and the aggression cap (experiment 42) take over as they play, so an aggressive
+bot is still read as loose quickly.
+
+**Pros:** I can't watch video, so this is from published breakdowns of Polk vs Negreanu (25,000 hands, Polk +$1.2M,
+12 bb/100) and solver articles, not hand-by-hand footage. The lessons and what the bot already does:
+- *Overbet polar ranges on the turn and river* (Polk's main weapon; Negreanu used no overbets): the bot already
+  overbets the turn 1.5x with sets (77%) and some air, medium hands check. Kept.
+- *Too conservative with putting in all the money* (Polk on Negreanu; his river shoves of 3x pot):
+  **new**, `Engine._river_jam`: first to bet the river with at most 3 pots behind, strong hands (two pair+) move
+  half of their pot-or-bigger bets to all-in and air half of its overbets; medium hands never jam. Self-play,
+  1500 deals each: +8.7 ± 5 bb/100 vs a calling station, the rest within noise (average +1).
+- *Two sizes only (20% / 75%)* was Negreanu's leak: the bot uses 5-6 sizes per street. Kept.
+- *Small, frequent c-bets on paired / dry high boards:* the bot's flops come straight from the 32-flop TexasSolver
+  solve (33/66/100%), which already checks K-K-x about 38%; an older coarser solve (33/75%) bet 96% there, so no
+  change (I tried a range-bet rule and removed it).
+- *Wider BB defence:* the bot folds 31% vs a 2x open, 38% vs 2.25x, 46% vs 2.5x, 53% vs 3x (from the calibrated
+  preflop solve, experiments 33-34). Commonly quoted heads-up numbers are wider vs 2.5x+; not changed without a
+  solve at those sizes -- next step.
+
 ## Versions
 
 One version per round of changes from a live game (v0 = the first version that played a live game). The bot's
@@ -2590,7 +2619,7 @@ PokerNow nickname is `bot/version.py` NAME (e.g. "HUBot v5"); each version is a 
 | v3 | 9e8f9e1 | all-in call fix, pot odds on every call, separate player ids, 4.5 s actions (exp 38–39) |
 | v4 | d9606f0 | raise-size-aware river calls, river sizing, short-stack mode, learned bluff model (exp 40–41) |
 | v5 | 31471e1 | strictness against big bets learned per opponent from showdowns (exp 42) |
-| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43); solver-based trapping, opponent trap tracking, wins per player (exp 45); rival bots: shove reads, min-raise defence, slower early adaptation, style read (exp 46) |
+| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43); solver-based trapping, opponent trap tracking, wins per player (exp 45); rival bots: shove reads, min-raise defence, slower early adaptation, style read (exp 46); population bluff prior from all live hands, polar river jams (exp 47) |
 
 ## Next steps
 

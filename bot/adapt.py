@@ -112,14 +112,28 @@ def strictness(prof, base, s0=None, k=None):
 LOOSE_BLUFF, PRIOR_WEIGHT = 0.35, 5.0   # experiment 42: prior bluff share of an opponent's bets, worth 5 shown bets
 
 
-def evidence_strictness(hands, prof=None, base=None):
+POP_WEIGHT = 20     # experiment 47: the population's shown bluff share is worth this many shown bets of evidence
+
+
+def population_bluff(exclude=None):
+    """Experiment 47: the bluff share of every other opponent's shown-down bets and raises (bot/opponent.py
+    store), shrunk to LOOSE_BLUFF with POP_WEIGHT bets: the starting read on a new opponent. Live humans showed
+    7 bluffs in 34 (big bets 3 in 18), well under the 35% prior; a population of bots would show its own."""
+    from bot import bluffmodel
+    from bot.opponent import canonical, load
+    labels = [y for r in load() if canonical(r["opp_id"]) != exclude
+              for _, y in bluffmodel.examples_from_record(r, "opp")]
+    return (sum(labels) + LOOSE_BLUFF * POP_WEIGHT) / (len(labels) + POP_WEIGHT)
+
+
+def evidence_strictness(hands, prof=None, base=None, prior=LOOSE_BLUFF):
     """Experiment 42: trust in the value-heavy reading of this opponent's bets and raises, from what they showed
     down. Their bluff share among shown bets / raises is estimated with a prior of LOOSE_BLUFF worth PRIOR_WEIGHT
     bets; strictness = how far it sits below LOOSE_BLUFF (0 with no showdowns or when they show bluffs; 0.5 after
     five value showdowns; ~0.7 after ten)."""
     from bot import bluffmodel
     labels = [y for r in hands for _, y in bluffmodel.examples_from_record(r, "opp")]
-    est = (sum(labels) + LOOSE_BLUFF * PRIOR_WEIGHT) / (len(labels) + PRIOR_WEIGHT)
+    est = (sum(labels) + prior * PRIOR_WEIGHT) / (len(labels) + PRIOR_WEIGHT)
     s = float(np.clip(1 - est / LOOSE_BLUFF, 0.0, 1.0))
     if prof is not None and base is not None:
         # Capped by their measured aggression: a player betting / raising far above normal can't be read as
@@ -239,6 +253,10 @@ class Adapter:
         self.lock = threading.Lock()
         self.state = {}
         self.states = {}                      # opponent id -> what the engine should use against them
+        try:
+            self.pop = population_bluff()     # experiment 47: the starting read on a new opponent
+        except Exception:                     # noqa: BLE001 - no stored hands yet
+            self.pop = None
 
     def apply(self, opp_id):
         """Load this opponent's adaptation into the engine (defaults if there is none yet). The caller holds the
@@ -249,7 +267,8 @@ class Adapter:
         e = self.engine
         if st is None:
             e.set_adaptation({}, 0.0, {"bluff": 1.0, "defend": 1.0})
-            e.opp_profile, e.size_value, e.bluff_model, e.strict = None, None, None, STRICT_PRIOR
+            e.opp_profile, e.size_value, e.bluff_model = None, None, None
+            e.strict = STRICT_PRIOR if self.pop is None else float(np.clip(1 - self.pop / LOOSE_BLUFF, 0.0, 1.0))
             return
         e.set_adaptation(st["nodes"], st["lam"], st["post"])
         e.opp_profile, e.size_value, e.strict = st["profile"], st["size_value"], st["strict"]
@@ -281,7 +300,8 @@ class Adapter:
             self.states[opp_id] = {
                 "nodes": pre["nodes"] if pre else {}, "lam": pre["lam"] if pre else 0.0, "post": post,
                 "profile": prof, "size_value": fn, "bluff_model": bm,
-                "strict": evidence_strictness(hands, prof, self.base) if self.base else 0.0}
+                "strict": evidence_strictness(hands, prof, self.base, population_bluff(opp_id)) if self.base else 0.0}
+            self.pop = population_bluff()
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
                           "postflop": dict(post, sizes=scale), "locked": pre["locked"] if pre else {}}
         finally:

@@ -294,3 +294,13 @@ def test_survives_any_rival_bot():
         play_hand({"btn": me, "bb": Chaos()}, {"btn": c[:2], "bb": c[2:4]}, c[4:])
         play_hand({"btn": Chaos(), "bb": me}, {"btn": c[:2], "bb": c[2:4]}, c[4:])
     assert len(set(seen)) >= 4
+
+
+def test_river_jam_is_polar():
+    """Experiment 47: at a low stack-to-pot, sets jam the river some of the time, top pair never does."""
+    eng = Engine(seed=0, pot_odds=True)
+    pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
+    h = [pre, [Act("bb", "check"), Act("btn", "bet", 3), Act("bb", "call")],
+         [Act("bb", "check"), Act("btn", "bet", 10), Act("bb", "call")], [Act("bb", "check")]]
+    assert eng.decide("btn", "8s8c", "Kh8d3c2s9d", h, sample=False, stack=60).probs.get("bet all-in", 0) > 0.2
+    assert eng.decide("btn", "AhKc", "Kh8d3c2s9d", h, sample=False, stack=60).probs.get("bet all-in", 0) == 0
