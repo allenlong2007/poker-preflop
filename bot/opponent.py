@@ -49,8 +49,10 @@ def record(msgs, hero_name=HERO):
         return None
     hero = h.seats[h.hero_seat]
     opp = next(s for s in h.seats.values() if s.seat != h.hero_seat)
-    if opp.name.startswith(HERO):
-        return None                      # the bot seen from another seat's page: not an opponent
+    if hero.name == _bot_name() and hero.pid:
+        _remember_bot(hero.pid)
+    if opp.pid in _bot_ids():
+        return None                      # the bot's own account seen from another seat: not an opponent
     shown = {}
     for m in msgs:
         if (sm := RE_SHOW.search(m)):
@@ -62,6 +64,30 @@ def record(msgs, hero_name=HERO):
             "history": [[[a.player, a.kind, a.to] for a in street] for street in h.history],
             "board": "".join(h.board), "hero_hole": "".join(h.hole), "shown": shown,
             "net": {"hero": round((hero_net(msgs, hero.name) - hero.put_in) / h.bb, 2)}}
+
+
+BOT_IDS = ROOT / "output" / "pokernow" / "bot_ids.json"
+
+
+def _bot_name():
+    from bot.version import NAME
+    return NAME
+
+
+def _bot_ids():
+    """PokerNow player ids the bot itself has played under (learned when it is the hero under its exact nickname;
+    an opponent can choose a name but not an id)."""
+    try:
+        return set(json.loads(BOT_IDS.read_text()))
+    except (OSError, ValueError):
+        return set()
+
+
+def _remember_bot(pid):
+    ids = _bot_ids()
+    if pid not in ids and SAFE_ID.fullmatch(pid):
+        BOT_IDS.parent.mkdir(parents=True, exist_ok=True)
+        BOT_IDS.write_text(json.dumps(sorted(ids | {pid})))
 
 
 def hero_net(msgs, name):
