@@ -182,8 +182,12 @@ def _track(msgs, h):
             hid = hand[0]
             if hid in SEEN_HANDS:
                 continue
-            rec = record(hand, hero.name, hero.pid)
-            SEEN_HANDS.add(hid)                              # after parsing: a failure here retries next time
+            SEEN_HANDS.add(hid)                              # once only, even if this hand can't be parsed
+            try:
+                rec = record(hand, hero.name, hero.pid)
+            except Exception as e:                           # noqa: BLE001 - one bad hand never stops the others
+                STATS["track_error"] = repr(e)[:200]
+                continue
             if rec and store([rec]):
                 STATS["stored"] = STATS.get("stored", 0) + 1
             if rec:
