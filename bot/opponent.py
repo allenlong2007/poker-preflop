@@ -42,9 +42,10 @@ def split_hands(messages):
     return out
 
 
-def record(msgs, hero_name=HERO):
-    """One finished hand -> a stored record (None if the bot wasn't in it or it isn't heads-up)."""
-    h = parse_hand(msgs, hero_name=hero_name)
+def record(msgs, hero_name=HERO, hero_seat=None):
+    """One finished hand -> a stored record (None if the bot wasn't in it or it isn't heads-up). hero_seat (the
+    live page's locked seat) identifies the bot over its name."""
+    h = parse_hand(msgs, hero_seat=hero_seat, hero_name=hero_name)
     if h.hero_seat is None or len(h.seats) != 2:
         return None
     hero = h.seats[h.hero_seat]
@@ -54,14 +55,14 @@ def record(msgs, hero_name=HERO):
     shown = {}
     for m in msgs:
         if (sm := RE_SHOW.search(m)):
-            shown["hero" if sm.group("name") == hero.name else "opp"] = "".join(cards(sm.group("cards")))
+            shown["hero" if sm.group("pid") == hero.pid else "opp"] = "".join(cards(sm.group("cards")))
     hid = RE_ID.search(msgs[0])
     return {"id": hid.group("id") if hid else str(h.number), "number": h.number,
             "opp_name": opp.name, "opp_id": opp.pid, "hero_pos": h.position(hero), "opp_pos": h.position(opp),
             "bb": h.bb, "stacks": {"hero": round(hero.start / h.bb, 2), "opp": round(opp.start / h.bb, 2)},
             "history": [[[a.player, a.kind, a.to] for a in street] for street in h.history],
             "board": "".join(h.board), "hero_hole": "".join(h.hole), "shown": shown,
-            "net": {"hero": round((hero_net(msgs, hero.name) - hero.put_in) / h.bb, 2)}}
+            "net": {"hero": round((hero_net(msgs, hero.name, hero.pid) - hero.put_in) / h.bb, 2)}}
 
 
 BOT_IDS = ROOT / "output" / "pokernow" / "bot_ids.json"
@@ -77,13 +78,14 @@ def _bot_ids():
     return {x for x in ids if isinstance(x, str) and SAFE_ID.fullmatch(x)} if isinstance(ids, list) else set()
 
 
-def hero_net(msgs, name):
+def hero_net(msgs, name, pid=None):
     """Chips the player collected in the hand (pot won plus uncalled bets returned)."""
     got = 0.0
+    who = f'"{name} @ {pid}"' if pid else f'"{name} @'        # by id when known: a name can be shared
     for m in msgs:
-        if m.startswith(f'"{name} @') and " collected " in m:
+        if m.startswith(who) and " collected " in m:
             got += float(re.search(r"collected ([\d.]+)", m).group(1))
-        if m.startswith("Uncalled bet of") and f'"{name} @' in m:
+        if m.startswith("Uncalled bet of") and who in m:
             got += float(re.search(r"Uncalled bet of ([\d.]+)", m).group(1))
     return got
 
