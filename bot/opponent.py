@@ -49,6 +49,8 @@ def record(msgs, hero_name=HERO):
         return None
     hero = h.seats[h.hero_seat]
     opp = next(s for s in h.seats.values() if s.seat != h.hero_seat)
+    if opp.name.startswith(HERO):
+        return None                      # the bot seen from another seat's page: not an opponent
     shown = {}
     for m in msgs:
         if (sm := RE_SHOW.search(m)):
