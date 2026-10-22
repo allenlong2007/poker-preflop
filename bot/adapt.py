@@ -29,8 +29,8 @@ from bot.opponent import load, profile
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "output" / "match" / "baseline_profile.json"
-SHRINK = 10            # postflop: pseudo-hands of baseline behaviour added to each observed rate
-N_CONF, P_MAX = 15, 0.85   # preflop: confidence in the read at a node after n observations, and its cap
+SHRINK = 20            # postflop: pseudo-hands of baseline behaviour added to each observed rate
+N_CONF, P_MAX = 40, 0.85   # preflop: confidence in the read at a node after n observations, and its cap
 PRIOR = 2              # preflop: pseudo-observations of equilibrium play smoothing each observed node
 MIN_NEW = 3            # re-solve preflop after this many new hands
 
@@ -73,7 +73,7 @@ def postflop_exploit(prof, base):
 
 LOOSE_SHARE = 0.5      # of an action's excess over equilibrium, the share played by any hand alike
 BAND_BLUFF = {"small": 0.20, "medium": 0.28, "big": 0.36}   # bluff share at showdown we'd expect by default
-SIZE_SHRINK = 6
+SIZE_SHRINK = 20
 
 
 def size_value(prof):

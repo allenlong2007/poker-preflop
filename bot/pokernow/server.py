@@ -28,7 +28,7 @@ from pathlib import Path
 
 from bot.adapt import Adapter
 from bot.engine import Engine
-from bot.opponent import load, record, results, split_hands, store
+from bot.opponent import load, profile, read_style, record, results, split_hands, store
 from bot.pokernow.parse import describe, parse_hand, read_log
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -192,6 +192,11 @@ def _track(msgs, h):
                 print(f"[results] vs {rec['opp_name']} ({rec['opp_id']}): won {x['won']}/{x['hands']} hands "
                       f"({x['win_rate']:.0%}), net {x['net_bb']:+} bb ({x['bb_per_100']:+} bb/100), "
                       f"showdowns {x['showdowns_won']}/{x['showdowns']}", flush=True)
+                if x["hands"] % 25 == 0:
+                    rd = read_style(profile(load(rec["opp_id"])))
+                    print(f"[read] {rec['opp_name']}: {', '.join(rd['style'])}"
+                          f"{'; plays like a bot: ' + ', '.join(rd['bot_like']) if rd['bot_like'] else ''}; {rd['stats']}",
+                          flush=True)
     except Exception as e:                                   # noqa: BLE001 - tracking is best effort
         STATS["track_error"] = repr(e)[:200]
 

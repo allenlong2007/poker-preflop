@@ -2525,6 +2525,58 @@ win rate, net bb, bb/100 and showdowns won; the server logs the same line after 
 experiment (258 live hands, 6 IDs): won 52% of hands but -129 bb/100 overall, 13 of 38 showdowns: the bot wins the
 small pots and loses the big ones, so bb/100 (not the share of hands won) is the measure of how well it does.
 
+## Experiment 46: Rival bots -- countering the bots people write with Codex / Claude
+
+`bot/rivals.py` has the kinds of heads-up bots people typically write with an AI assistant: an **equity bot**
+(Monte Carlo equity vs a random hand, pot-odds calls, fixed 2/3-pot bets), a **chart bot** (TAG preflop chart,
+rules by made-hand category), a **push/fold bot**, a **min-raiser** (probes with minimum sizes), an
+**overbettor** (polar 2x pot), a **nit** (the cautious LLM-style bot) and an **exploiter** (the engine, but stabs
+whenever checked to and raises small bets). `scripts/rival_train.py` plays each (plus the aggressive, value-heavy
+and maniac players of experiment 42) in duplicate matches, with no read and after reading 30 / 200 of its deals.
+
+**Leaks found and fixed**
+- *Shoves:* the tree calls a 100bb shove only with an equilibrium range (AK, 88+), so a bot shoving 35% printed
+  money. Now, after 3 shoves at a spot, the bot calls exactly when its equity against that player's shove range
+  (the top share of hands, from how often they shove there) beats the price (`Engine._vs_shove`): A9o calls a 35%
+  shover, K9o folds.
+- *Min-raises:* the tree read any re-raise as its own big size and folded Q6o to a 1bb min-reraise (a 9% price).
+  A preflop raise priced at 20% or less is now only folded when the hand's realised equity against a top-25% range
+  can't beat the price (`Engine._small_raise`).
+- *Over-adapting to a short read:* after 30 deals the preflop best response, the per-opponent bluff model and the
+  postflop exploit ratios each overfit (vs the overbettor: -179 bb/100 read vs +3 unread). Slower confidence fixed
+  it: preflop `N_CONF` 15 -> 40, size reads `SIZE_SHRINK` 6 -> 20, postflop `SHRINK` 10 -> 20 (chosen by worst case
+  over the population; sweeps in the commit message).
+
+**Result** (bb/100, 1000 deals each, duplicate, ± one standard error):
+
+| rival | no read | 30-deal read | 200-deal read |
+|---|---|---|---|
+| equity bot | +65 ± 44 | +94 ± 42 | +58 ± 41 |
+| chart bot | +15 ± 20 | +29 ± 25 | +51 ± 22 |
+| push/fold | +106 ± 35 | +107 ± 36 | +135 ± 37 |
+| min-raiser | +22 ± 39 | +132 ± 42 | +151 ± 43 |
+| overbettor | -21 ± 39 | -11 ± 39 | +5 ± 30 |
+| nit | -35 ± 23 | -3 ± 24 | +34 ± 21 |
+| exploiter | -8 ± 34 | +11 ± 41 | +63 ± 46 |
+| aggressive 0.4 | +38 ± 34 | +10 ± 42 | +58 ± 53 |
+| value-heavy | +4 ± 21 | +87 ± 20 | +70 ± 22 |
+| maniac | +76 ± 87 | +739 ± 104 | +972 ± 101 |
+| **average** | +26 | +120 | +160 |
+
+Before (no read, old code): push/fold +142 only because it rarely shoved into the bot's calls; the overbettor at a
+30-deal read was -164 to -219, the aggressive player -146.
+
+**The read** (`bot/opponent.py read_style`, `python -m bot.opponent read <id>`, logged by the server every 25
+hands): style labels (push/fold, nit, tight, limper, aggressive, maniac, calling station, folds too much,
+overbettor, min-bettor, balanced) from 20 hands on, the key frequencies, and signs of a simple bot (fixed bet
+sizes: 75%+ of bets at one size; pure push/fold; min-bets). On self-play it names every rival correctly (the
+equity bot: fixed 0.65 / 1.00 pot sizes, limps 97%; the overbettor: 2x pot 81%); the three live humans show no bot
+signs.
+
+**Robustness:** `test_survives_any_rival_bot` plays 300 hands against a chaos bot (min-bets of 1% pot, odd sizes,
+10x overbets, instant shoves at any street) and checks every answer is legal (no crash, no fold when checking is
+free, sizes within the stack).
+
 ## Versions
 
 One version per round of changes from a live game (v0 = the first version that played a live game). The bot's
@@ -2538,7 +2590,7 @@ PokerNow nickname is `bot/version.py` NAME (e.g. "HUBot v5"); each version is a 
 | v3 | 9e8f9e1 | all-in call fix, pot odds on every call, separate player ids, 4.5 s actions (exp 38–39) |
 | v4 | d9606f0 | raise-size-aware river calls, river sizing, short-stack mode, learned bluff model (exp 40–41) |
 | v5 | 31471e1 | strictness against big bets learned per opponent from showdowns (exp 42) |
-| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43); solver-based trapping, opponent trap tracking, wins per player (exp 45) |
+| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43); solver-based trapping, opponent trap tracking, wins per player (exp 45); rival bots: shove reads, min-raise defence, slower early adaptation, style read (exp 46) |
 
 ## Next steps
 

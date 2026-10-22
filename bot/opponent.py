@@ -241,11 +241,82 @@ def _traps(r, opp, st):
         st[f"trap_{trap_texture(board)}"].add(kind)
 
 
+def read_style(prof):
+    """Experiment 46: a plain-language read of the opponent: style, key frequencies, and whether they play like a
+    simple bot (few distinct bet sizes, pure push/fold, min-raises). Labels need MIN_READ hands; it reports what it
+    has either way."""
+    n = prof.get("nodes", {})
+    f = lambda node, k: n.get(node, {}).get(k)
+    cnt = lambda node: n.get(node, {}).get("n", 0)
+    hands = prof.get("hands", 0)
+
+    def pooled(nodes, kinds):
+        tot = sum(cnt(x) for x in nodes)
+        return (sum(cnt(x) * sum(n[x].get(k, 0.0) for k in kinds) for x in nodes if x in n) / tot) if tot else None
+
+    vpip_btn = None if not cnt("btn_first_in") else 1 - f("btn_first_in", "fold") if f("btn_first_in", "fold") is not None else 1.0
+    defend = None if not cnt("bb_vs_open") else 1 - (f("bb_vs_open", "fold") or 0.0)
+    shove = pooled(["btn_first_in", "bb_vs_open", "bb_vs_limp", "btn_vs_3bet"], ["all-in"])
+    limp = f("btn_first_in", "limp") if cnt("btn_first_in") else None
+    post = ["flop", "turn", "river"]
+    bet = pooled([f"{s}_{k}" for s in post for k in ("cbet", "lead", "bet_when_checked_to")], ["bet"])
+    fold = pooled([f"{s}_vs_bet" for s in post], ["fold"])
+    raise_ = pooled([f"{s}_vs_bet" for s in post], ["raise"])
+    sizes = n.get("bet_size", {})
+    nb = sizes.get("n", 0)
+    top_sizes = sorted(((k, v) for k, v in sizes.items() if k != "n"), key=lambda x: -x[1])[:3]
+    fixed = nb >= 10 and (top_sizes[0][1] >= 0.75 or sum(v for _, v in top_sizes[:2]) >= 0.9)
+    big = sum(v for k, v in sizes.items() if k != "n" and float(k) >= 1.5) if nb else 0.0
+    tiny = sum(v for k, v in sizes.items() if k != "n" and float(k) <= 0.2) if nb else 0.0
+    post_n = sum(cnt(f"{s}_vs_bet") for s in post)
+    labels = []
+    if hands >= MIN_READ:
+        if shove is not None and shove > 0.25 and (bet or 0) < 0.15:
+            labels.append("push/fold")
+        if (vpip_btn or 0) < 0.4 and (defend or 1) < 0.5:
+            labels.append("nit")
+        elif (vpip_btn or 0) < 0.55 and (defend or 1) < 0.45:
+            labels.append("tight")
+        if (limp or 0) > 0.5:
+            labels.append("limper")
+        if (bet or 0) > 0.7 and (raise_ or 0) > 0.3 and (fold or 0) < 0.2:
+            labels.append("maniac")
+        elif (bet or 0) > 0.55 or (raise_ or 0) > 0.2:
+            labels.append("aggressive")
+        if fold is not None and post_n >= 10 and fold < 0.15:
+            labels.append("calling station")
+        elif fold is not None and post_n >= 10 and fold > 0.6:
+            labels.append("folds too much")
+        if nb >= 8 and big > 0.4:
+            labels.append("overbettor")
+        if nb >= 8 and tiny > 0.4:
+            labels.append("min-bettor")
+        if not labels:
+            labels.append("balanced")
+    bot_like = []
+    if fixed:
+        bot_like.append(f"fixed bet sizes ({', '.join(k for k, v in top_sizes[:2] if v >= 0.1)} pot)")
+    if "push/fold" in labels:
+        bot_like.append("pure push/fold")
+    if nb >= 8 and tiny > 0.4:
+        bot_like.append("min-bets")
+    if limp == 0 and cnt("btn_first_in") >= 20 and (vpip_btn or 0) > 0 and len(n.get("open_size", {})) == 2:
+        bot_like.append("one open size, never limps")
+    r = lambda x: None if x is None else round(x, 2)
+    return {"hands": hands, "style": labels or ["not enough hands"], "bot_like": bot_like,
+            "stats": {"btn_plays": r(vpip_btn), "bb_defends": r(defend), "shoves": r(shove), "limps": r(limp),
+                      "postflop_bets": r(bet), "folds_to_bets": r(fold), "raises_bets": r(raise_),
+                      "top_bet_sizes": [(k, round(v, 2)) for k, v in top_sizes]}}
+
+
+MIN_READ = 20
+
+
 def results(hands):
     """How the bot is doing against these hands: hands won / lost / tied (by the bot's net), win rate, net bb and
     bb/100, and showdowns won."""
-    nets = [r["net"]["hero"] for r in hands]
-    sd = [r for r in hands if "opp" in r["shown"]]
+    nets = [r["net"]["hero"] for r in hands if "net" in r]
+    sd = [r for r in hands if "opp" in r["shown"] and "net" in r]
     n = len(nets)
     return {"hands": n, "won": sum(x > 0 for x in nets), "lost": sum(x < 0 for x in nets),
             "tied": sum(x == 0 for x in nets), "win_rate": round(sum(x > 0 for x in nets) / n, 3) if n else None,
@@ -313,6 +384,7 @@ def _size_bands(r, opp, st):
                 frac = (to - put[opp]) / max(pot + sum(put.values()), 1e-9) if k == "raise" else to / pot
                 band = size_band(frac)
                 st[f"size_{band}"].add(["", "flop", "turn", "river"][s])
+                st["bet_size"].add(f"{round(frac * 20) / 20:.2f}")        # 5%-of-pot buckets (experiment 46)
                 if hole and len(cards) == 5:
                     b = cards[:2 + s]
                     made = eval7.evaluate(hole + b) >> 24
@@ -347,6 +419,9 @@ def main():
     if cmd == "link":
         link(*sys.argv[2:])
         print(f"linked {sys.argv[3:]} -> {sys.argv[2]}")
+        return
+    if cmd == "read":
+        print(json.dumps(read_style(profile(load(sys.argv[2] if len(sys.argv) > 2 else None))), indent=1))
         return
     if cmd == "results":
         print(f"{'opponent':24} {'hands':>5} {'won':>4} {'lost':>4} {'win%':>5} {'net bb':>7} {'bb/100':>7} {'SD won':>7}")

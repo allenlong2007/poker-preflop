@@ -225,3 +225,72 @@ def test_opponent_traps_and_results():
     assert n["trap"]["n"] == 3 and n["trap"]["slowplay"] == round(1 / 3, 3) and n["trap"]["checkraise"] == round(1 / 3, 3)
     res = results([r, {**r, "shown": {}, "net": {"hero": 2.25}}])
     assert (res["hands"], res["won"], res["lost"], res["showdowns"], res["showdowns_won"]) == (2, 1, 1, 1, 0)
+
+
+def test_reads_a_push_fold_bot():
+    """Experiment 46: after a few shoves the bot calls with equity against the shover's real range, not the
+    equilibrium one; a tiny re-raise is never folded with a playable hand."""
+    eng = Engine(seed=0, pot_odds=True)
+    shove = [[Act("btn", "raise", 100)]]
+    assert eng.decide("bb", "Ah9c", "", shove, sample=False).label == "fold"          # no read: equilibrium
+    eng.opp_profile = {"nodes": {"btn_first_in": {"n": 30, "all-in": 0.35, "fold": 0.65}}}
+    assert eng.decide("bb", "Ah9c", "", shove, sample=False).label == "call"
+    assert eng.decide("bb", "Kh9c", "", shove, sample=False).label == "fold"
+    eng.opp_profile = None
+    d = eng.decide("bb", "Qs6d", "", [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "raise", 6)]], sample=False)
+    assert d.probs.get("fold", 0.0) == 0.0
+
+
+def test_style_read():
+    from bot.opponent import read_style
+    prof = {"hands": 50, "nodes": {"btn_first_in": {"n": 25, "all-in": 0.4, "fold": 0.6},
+                                   "bb_vs_open": {"n": 25, "all-in": 0.3, "fold": 0.7},
+                                   "bet_size": {"n": 12, "0.65": 0.9, "1.00": 0.1}}}
+    r = read_style(prof)
+    assert "push/fold" in r["style"] and any("fixed bet sizes" in x for x in r["bot_like"])
+    assert read_style({"hands": 5, "nodes": {}})["style"] == ["not enough hands"]
+
+
+def test_survives_any_rival_bot():
+    """Experiment 46: a random bot (min-bets, odd sizes, 10x overbets, shoves, limps, min-raises at every street)
+    never crashes the engine or gets an illegal answer from it."""
+    import numpy as np
+    from bot.engine import State
+    from bot.selfplay import EngineAgent, play_hand, DECK
+
+    class Chaos:
+        def __init__(self):
+            self.rng = np.random.default_rng(4)
+
+        def act(self, seat, hole, board, history, facing):
+            st = State(history)
+            top, pot = max(st.inp.values()), st.pot()
+            k = self.rng.integers(6)
+            if k == 0:
+                return ("fold", 0) if facing > 1e-6 else ("check", 0)
+            if k == 1:
+                return ("call", 0)
+            size = [0.01, 0.13, 1.0, 3.7, 10.0][self.rng.integers(5)]
+            return ("raise", top + max(facing, 0.01) + pot * size if k < 5 else 100.0)
+
+    eng = EngineAgent(Engine(seed=0, pot_odds=True))
+    seen = []
+
+    class Check(EngineAgent):
+        def act(self, seat, hole, board, history, facing):
+            kind, to = eng.act(seat, hole, board, history, facing)
+            assert kind in ("fold", "check", "call", "bet", "raise")
+            assert kind != "fold" or facing > 1e-6
+            st = State(history)
+            if kind in ("bet", "raise"):
+                assert to > max(st.inp.values()) - 1e-6 and to <= 100.0 + 1e-6
+            seen.append(kind)
+            return kind, to
+
+    rng = np.random.default_rng(1)
+    me = Check(eng.engine)
+    for _ in range(150):
+        c = [DECK[i] for i in rng.choice(52, size=9, replace=False)]
+        play_hand({"btn": me, "bb": Chaos()}, {"btn": c[:2], "bb": c[2:4]}, c[4:])
+        play_hand({"btn": Chaos(), "bb": me}, {"btn": c[:2], "bb": c[2:4]}, c[4:])
+    assert len(set(seen)) >= 4

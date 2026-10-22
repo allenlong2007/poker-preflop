@@ -252,6 +252,8 @@ class Engine:
         st = State([[a if isinstance(a, Act) else Act(*a) for a in h] for h in history], stack=stack)
         if st.street == 0:
             d = self._preflop(hero, hole, st)
+            d = self._vs_shove(d, hero, hole, st)
+            d = self._small_raise(d, hero, hole, st)
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
             d = self._monster(d, hero, hole, board[:2 + st.street], st)
@@ -526,6 +528,56 @@ class Engine:
         d.notes.append(f"the nuts: {target} (never just call or check)")
         return d
 
+    def _vs_shove(self, d, hero, hole, st):
+        """Experiment 46: facing a preflop all-in, once the opponent has shoved at this spot SHOVE_MIN_SEEN times,
+        call exactly when our equity against their shove range beats the price. Their range is the top share of
+        hands (by equity vs random) given how often they shove there, shrunk to a tight prior (SHOVE_PRIOR). The
+        tree assumes an equilibrium shove range, far too tight against a push/fold bot."""
+        if "call" not in self._options or "fold" not in self._options:
+            return d
+        opp = "bb" if hero == "btn" else "btn"
+        b = st.facing(hero)
+        if st.left(opp) > EPS and st.left(hero) > b + EPS:
+            return d                                         # not an all-in (theirs or ours by calling)
+        node, reach = _shove_node(st.history[0], opp)
+        x = ((self.opp_profile or {}).get("nodes") or {}).get(node, {}) if node else {}
+        n = x.get("n", 0)
+        seen = n * x.get("all-in", 0.0)
+        if seen < SHOVE_MIN_SEEN - 1e-9:
+            return d
+        if reach is not None:
+            r = ((self.opp_profile or {}).get("nodes") or {}).get(reach[0], {})
+            share = sum(r.get(k, 0.0) for k in reach[1]) if r.get("n", 0) >= 5 else 0.5
+        else:
+            share = 1.0
+        f = (seen + SHOVE_PRIOR[1] * SHOVE_PRIOR[0]) / (n + SHOVE_PRIOR[1])
+        eq = _equity_vs_top(hole, max(0.01, min(1.0, f * share)))
+        need = b / (st.pot() + b)
+        call = eq > need + SHOVE_MARGIN
+        d.probs = {"call": 1.0} if call else {"fold": 1.0}
+        d.notes.append(f"vs shove: they shove {f:.0%} here ({seen:.0f}/{n}), range top {f * share:.0%}: "
+                       f"equity {eq:.0%} vs price {need:.0%}: {'call' if call else 'fold'}")
+        return d
+
+    def _small_raise(self, d, hero, hole, st):
+        """Experiment 46: the tree reads any preflop raise as its own (big) size; a min-raise priced at
+        SMALL_RAISE_PRICE or less is only folded when the hand's equity against a strong range (top
+        SMALL_RAISE_RANGE), discounted for realisation, can't beat the price. Min-raising bots exploited the folds."""
+        b = st.facing(hero)
+        if b <= EPS or d.probs.get("fold", 0.0) <= 0 or "call" not in self._options:
+            return d
+        need = b / (st.pot() + b)
+        if need > SMALL_RAISE_PRICE:
+            return d
+        eq = _equity_vs_top(hole, SMALL_RAISE_RANGE) * SMALL_RAISE_REAL
+        if eq <= need:
+            return d
+        probs = dict(d.probs)
+        probs["call"] = probs.get("call", 0.0) + probs.pop("fold")
+        d.probs = probs
+        d.notes.append(f"small raise: price {need:.0%} vs equity {eq:.0%} (top {SMALL_RAISE_RANGE:.0%}, realised): call")
+        return d
+
     def _trap(self, d, hero, hole, board, st):
         """Experiment 45: slow-play strong hands as often as the solver does on this texture (TRAP), more against
         aggressive opponents and less against passive ones (their bet rate when checked to, and the aggression read).
@@ -777,6 +829,59 @@ def trap_texture(board):
     straighty = any(sum(a <= x <= a + 4 for x in r) >= 3 for a in r)
     two_tone = max(suits.count(x) for x in set(suits)) == 2 and len(board) == 3
     return "wet" if straighty or two_tone else "dry"
+
+
+SMALL_RAISE_PRICE = 0.2     # experiment 46: preflop raises priced at most this get the equity check
+SMALL_RAISE_RANGE, SMALL_RAISE_REAL = 0.25, 0.75
+SHOVE_MIN_SEEN = 3          # experiment 46: preflop shoves seen at a spot before the read replaces the tree
+SHOVE_PRIOR = (0.03, 5)     # prior shove share and its weight (deals)
+SHOVE_MARGIN = 0.01         # equity needed above the price to call
+
+
+def _shove_node(pre, opp):
+    """The opponent's profile node for their latest preflop action, and the node + kinds that got their hand
+    there (None: every hand)."""
+    acts = [(a.player, a.kind) for a in pre]
+    i = max(k for k, (p, _) in enumerate(acts) if p == opp)
+    prev = [(p, "call" if k == "call" else "raise") for p, k in acts[:i]]
+    if opp == "btn" and not prev:
+        return "btn_first_in", None
+    if opp == "bb" and prev == [("btn", "call")]:
+        return "bb_vs_limp", None
+    if opp == "bb" and prev == [("btn", "raise")]:
+        return "bb_vs_open", None
+    if opp == "btn" and prev == [("btn", "call"), ("bb", "raise")]:
+        return "btn_vs_iso", ("btn_first_in", ("limp",))
+    if opp == "btn" and prev == [("btn", "raise"), ("bb", "raise")]:
+        return "btn_vs_3bet", ("btn_first_in", ("raise",))
+    if opp == "bb" and prev == [("btn", "raise"), ("bb", "raise"), ("btn", "raise")]:
+        return "bb_vs_4bet", ("bb_vs_open", ("raise",))
+    return None, None
+
+
+_EQ = None
+
+
+def _equity_vs_top(hole, share):
+    """Preflop all-in equity of this hand against the top `share` of hands (by equity vs random, by combos)."""
+    global _EQ
+    if _EQ is None:
+        d = np.load(Path(__file__).resolve().parents[1] / "data" / "equity_matrix.npz")
+        idx = [INDEX[h] for h in d["hands"]]
+        E, W = np.zeros((169, 169)), np.zeros((169, 169))
+        E[np.ix_(idx, idx)], W[np.ix_(idx, idx)] = d["E"], d["W"]
+        vr = (E * W).sum(1) / W.sum(1)
+        order = np.argsort(-vr)
+        combos = np.array([6 if h[0] == h[1] else 4 if h.endswith("s") else 12 for h in HANDS], float)
+        _EQ = (E, W, order, combos)
+    E, W, order, combos = _EQ
+    cum = np.cumsum(combos[order]) / combos.sum()
+    w = np.zeros(169)
+    k = int(np.searchsorted(cum, share))
+    w[order[:k + 1]] = 1.0
+    i = INDEX[hand_class(hole)]
+    ww = W[i] * w
+    return float((E[i] * ww).sum() / max(ww.sum(), 1e-9))
 
 
 def strong_class(hole, board):
