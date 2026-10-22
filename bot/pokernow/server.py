@@ -171,6 +171,11 @@ def decide(payload):
     return {"table": table, "decision": CACHE[key], "wait": None}
 
 
+TRACK_RETRIES = 3                  # a hand that fails to parse this many times is given up on (and logged)
+FAILED_HANDS = {}
+TRACK_ERRORS = LOG_DIR / "track_errors.jsonl"
+
+
 def _track(msgs, h):
     """Store every finished hand in the log page (bot/opponent.py) and refresh the adaptation. Never lets a
     tracking problem get in the way of a decision."""
@@ -180,14 +185,18 @@ def _track(msgs, h):
             return
         for hand in split_hands(msgs):
             hid = hand[0]
-            if hid in SEEN_HANDS:
+            if hid in SEEN_HANDS or FAILED_HANDS.get(hid, 0) >= TRACK_RETRIES:
                 continue
-            SEEN_HANDS.add(hid)                              # once only, even if this hand can't be parsed
             try:
                 rec = record(hand, hero.name, hero.pid)
             except Exception as e:                           # noqa: BLE001 - one bad hand never stops the others
-                STATS["track_error"] = repr(e)[:200]
+                FAILED_HANDS[hid] = FAILED_HANDS.get(hid, 0) + 1
+                STATS["track_error"] = _clean(f"{type(e).__name__}: {e}", 200)
+                with open(TRACK_ERRORS, "a") as f:           # durable: a dropped hand is never silent
+                    f.write(json.dumps({"t": time.time(), "hand": _clean(hid, 120), "try": FAILED_HANDS[hid],
+                                        "error": STATS["track_error"]}) + "\n")
                 continue
+            SEEN_HANDS.add(hid)                              # only once it has been parsed
             if rec and store([rec]):
                 STATS["stored"] = STATS.get("stored", 0) + 1
             if rec:
@@ -257,7 +266,8 @@ def _adapt_line():
                                                               if STATS.get("track_error") else "")
     p = a["postflop"]
     return (f" | opponent {a['hands']} hands, preflop adapted {a['lam']:.0%}, bluff x{p['bluff']:.2f}, "
-            f"defend x{p['defend']:.2f}")
+            f"defend x{p['defend']:.2f}") + (f" (tracking error {STATS['track_error']})"
+                                             if STATS.get("track_error") else "")
 
 
 def monitor(every=30):

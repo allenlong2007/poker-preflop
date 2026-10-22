@@ -27,7 +27,7 @@ from bot.engine import Act, State
 
 SUITS = {"♠": "s", "♥": "h", "♦": "d", "♣": "c", "s": "s", "h": "h", "d": "d", "c": "c"}
 PLAYER = r'"(?P<name>.+?) @ (?P<pid>[^"]+)"'
-RE_START = re.compile(r"-- starting hand #(?P<no>\d+).*?(?:\(dealer: " + PLAYER + r"\))?\s*--")
+RE_START = re.compile(r"^-- starting hand #(?P<no>\d+).*?(?:\(dealer: " + PLAYER + r"\))?\s*--")
 RE_END = re.compile(r"-- ending hand #(?P<no>\d+)")
 RE_STACKS = re.compile(r'#(?P<seat>\d+) "(?P<name>.+?) @ (?P<pid>[^"]+)" \((?P<stack>[\d.]+)\)')
 RE_ACTION = re.compile(PLAYER + r" (?P<verb>posts an? (?:missing |missed |dead )?(?:small|big) blind of|posts a straddle of|"
