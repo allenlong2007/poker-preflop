@@ -176,7 +176,15 @@ FAILED_HANDS = {}
 TRACK_ERRORS = LOG_DIR / "track_errors.jsonl"
 
 
+TRACK_LOCK = threading.Lock()       # two tables can post at once: one tracking pass at a time, no double counts
+
+
 def _track(msgs, h):
+    with TRACK_LOCK:
+        _track_locked(msgs, h)
+
+
+def _track_locked(msgs, h):
     """Store every finished hand in the log page (bot/opponent.py) and refresh the adaptation. Never lets a
     tracking problem get in the way of a decision."""
     try:
