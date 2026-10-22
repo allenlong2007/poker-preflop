@@ -28,29 +28,45 @@
   const state = { seat: store.get("seat", null), auto: store.get("auto", true), busy: false, logUrl: null,
                   acted: {}, lastRefresh: 0, turnSince: 0, gen: 0, nextFetchAt: 0 };
 
+  // ------------------------------------------------------------------ no fullscreen
+  // The table tab must never take over the screen (several tables at once): page requests for fullscreen are
+  // ignored, and if the page gets into fullscreen anyway it is left at once.
+  for (const proto of [Element.prototype, HTMLElement.prototype]) {
+    for (const k of ["requestFullscreen", "webkitRequestFullscreen", "webkitRequestFullScreen", "mozRequestFullScreen"]) {
+      if (proto[k]) proto[k] = function () { return Promise.resolve(); };
+    }
+  }
+  const leaveFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    else if (document.webkitFullscreenElement) document.webkitExitFullscreen?.();
+  };
+  document.addEventListener("fullscreenchange", leaveFullscreen);
+  document.addEventListener("webkitfullscreenchange", leaveFullscreen);
+  leaveFullscreen();
+
   // ------------------------------------------------------------------ overlay
   const root = document.createElement("div");
   root.id = "pnbot";
   root.innerHTML = `
     <style>
-      #pnbot{position:fixed;top:12px;right:12px;width:310px;z-index:2147483647;background:#14171c;color:#e8e8e8;
-        font:12px/1.45 -apple-system,system-ui,sans-serif;border:1px solid #2c323b;border-radius:10px;
+      #pnbot{position:fixed;top:8px;right:8px;width:220px;opacity:.92;z-index:2147483647;background:#14171c;color:#e8e8e8;
+        font:10px/1.3 -apple-system,system-ui,sans-serif;border:1px solid #2c323b;border-radius:10px;
         box-shadow:0 8px 24px rgba(0,0,0,.45);overflow:hidden}
-      #pnbot .hd{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#1c2027;cursor:move}
-      #pnbot .hd b{flex:1;font-size:12px;letter-spacing:.02em}
+      #pnbot .hd{display:flex;align-items:center;gap:6px;padding:4px 8px;background:#1c2027;cursor:move}
+      #pnbot .hd b{flex:1;font-size:10px;letter-spacing:.02em}
       #pnbot .dot{width:8px;height:8px;border-radius:50%;background:#777}
-      #pnbot .sec{padding:7px 10px;border-top:1px solid #262b33}
-      #pnbot .t{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#8b95a3;margin-bottom:3px}
+      #pnbot .sec{padding:3px 8px;border-top:1px solid #262b33}
+      #pnbot .t{font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:#8b95a3;margin-bottom:3px}
       #pnbot .row{display:flex;justify-content:space-between;gap:8px}
       #pnbot .row > span:first-child{color:#9aa4b2}
       #pnbot .v{font-variant-numeric:tabular-nums;text-align:right}
       #pnbot .bb{color:#8b95a3}
-      #pnbot .cards{font-size:15px;letter-spacing:.04em}
+      #pnbot .cards{font-size:12px;letter-spacing:.04em}
       #pnbot .red{color:#ff6b6b}
-      #pnbot .rec{font-size:15px;font-weight:600;margin:2px 0 4px}
-      #pnbot .mix{color:#aab3bf;font-size:11px}
+      #pnbot .rec{font-size:12px;font-weight:600;margin:1px 0 2px}
+      #pnbot .mix{color:#aab3bf;font-size:9px}
       #pnbot button.tg{font:inherit;background:#262c35;color:#e8e8e8;border:1px solid #39414c;border-radius:6px;
-        padding:3px 8px;cursor:pointer}
+        padding:1px 6px;cursor:pointer}
       #pnbot button.tg.on{background:#1f6f43;border-color:#2b9a5d}
       #pnbot select{font:inherit;background:#262c35;color:#e8e8e8;border:1px solid #39414c;border-radius:6px;padding:2px 6px}
       #pnbot .min{border:none;background:none;padding:0 2px;color:#9aa4b2;font:inherit;cursor:pointer}
