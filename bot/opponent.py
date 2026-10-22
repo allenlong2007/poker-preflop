@@ -49,10 +49,8 @@ def record(msgs, hero_name=HERO):
         return None
     hero = h.seats[h.hero_seat]
     opp = next(s for s in h.seats.values() if s.seat != h.hero_seat)
-    if hero.name == _bot_name() and hero.pid:
-        _remember_bot(hero.pid)
-    if opp.pid in _bot_ids():
-        return None                      # the bot's own account seen from another seat: not an opponent
+    if opp.pid in _bot_ids() or opp.name == hero.name:
+        return None                      # the bot's own account, or two seats with one name: not a clean record
     shown = {}
     for m in msgs:
         if (sm := RE_SHOW.search(m)):
@@ -69,25 +67,14 @@ def record(msgs, hero_name=HERO):
 BOT_IDS = ROOT / "output" / "pokernow" / "bot_ids.json"
 
 
-def _bot_name():
-    from bot.version import NAME
-    return NAME
-
-
 def _bot_ids():
-    """PokerNow player ids the bot itself has played under (learned when it is the hero under its exact nickname;
-    an opponent can choose a name but not an id)."""
+    """The PokerNow player ids of the bot's own accounts (a hand-maintained list: nothing seen at the table adds
+    to it, so an opponent can't get themselves left out of tracking). Malformed entries are ignored."""
     try:
-        return set(json.loads(BOT_IDS.read_text()))
+        ids = json.loads(BOT_IDS.read_text())
     except (OSError, ValueError):
         return set()
-
-
-def _remember_bot(pid):
-    ids = _bot_ids()
-    if pid not in ids and SAFE_ID.fullmatch(pid):
-        BOT_IDS.parent.mkdir(parents=True, exist_ok=True)
-        BOT_IDS.write_text(json.dumps(sorted(ids | {pid})))
+    return {x for x in ids if isinstance(x, str) and SAFE_ID.fullmatch(x)} if isinstance(ids, list) else set()
 
 
 def hero_net(msgs, name):
