@@ -42,13 +42,15 @@ def split_hands(messages):
     return out
 
 
-def record(msgs, hero_name=HERO, hero_seat=None):
-    """One finished hand -> a stored record (None if the bot wasn't in it or it isn't heads-up). hero_seat (the
-    live page's locked seat) identifies the bot over its name."""
-    h = parse_hand(msgs, hero_seat=hero_seat, hero_name=hero_name)
-    if h.hero_seat is None or len(h.seats) != 2:
+def record(msgs, hero_name=HERO, hero_pid=None):
+    """One finished hand -> a stored record (None if the bot wasn't in it or it isn't heads-up). hero_pid (the
+    live page's player id) finds the bot in this hand's own seat list, whatever seat or name it had then."""
+    h = parse_hand(msgs, hero_name=hero_name)
+    if hero_pid:
+        h.hero_seat = next((k for k, s in h.seats.items() if s.pid == hero_pid), None)
+    hero = h.seats.get(h.hero_seat) if h.hero_seat is not None else None
+    if hero is None or len(h.seats) != 2:
         return None
-    hero = h.seats[h.hero_seat]
     opp = next(s for s in h.seats.values() if s.seat != h.hero_seat)
     if opp.pid in _bot_ids():
         return None                      # the bot's own account (by id: a name is the opponent's to choose)

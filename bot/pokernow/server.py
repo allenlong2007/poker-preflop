@@ -182,8 +182,8 @@ def _track(msgs, h):
             hid = hand[0]
             if hid in SEEN_HANDS:
                 continue
-            SEEN_HANDS.add(hid)
-            rec = record(hand, hero.name, hero.seat)
+            rec = record(hand, hero.name, hero.pid)
+            SEEN_HANDS.add(hid)                              # after parsing: a failure here retries next time
             if rec and store([rec]):
                 STATS["stored"] = STATS.get("stored", 0) + 1
             if rec:
