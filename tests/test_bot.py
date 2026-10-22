@@ -304,3 +304,15 @@ def test_river_jam_is_polar():
          [Act("bb", "check"), Act("btn", "bet", 10), Act("bb", "call")], [Act("bb", "check")]]
     assert eng.decide("btn", "8s8c", "Kh8d3c2s9d", h, sample=False, stack=60).probs.get("bet all-in", 0) > 0.2
     assert eng.decide("btn", "AhKc", "Kh8d3c2s9d", h, sample=False, stack=60).probs.get("bet all-in", 0) == 0
+
+
+def test_reraise_wars_respect_value_ranges():
+    """Experiment 48: with a value-heavy read, weak hands fold to small 4-bets (live: 33 and T9o called and lost
+    101bb); premium hands continue; with no value read (strictness 0) the tree decides."""
+    eng = Engine(seed=0, pot_odds=True)
+    four = [[Act("btn", "raise", 3), Act("bb", "raise", 9), Act("btn", "raise", 15)]]
+    eng.strict = 0.37
+    assert eng.decide("bb", "Ts9h", "", four, sample=False).label == "fold"
+    assert eng.decide("bb", "3h3s", "", four, sample=False).label == "fold"
+    assert eng.decide("bb", "KsKd", "", four, sample=False).label != "fold"
+    assert eng.decide("bb", "AsKd", "", four, sample=False).label != "fold"

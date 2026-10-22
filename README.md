@@ -2606,6 +2606,20 @@ bot is still read as loose quickly.
   preflop solve, experiments 33-34). Commonly quoted heads-up numbers are wider vs 2.5x+; not changed without a
   solve at those sizes -- next step.
 
+## Experiment 48: Re-raise wars (4-bets and 5-bets)
+
+Live, pots with 3+ preflop raises lost -123bb in 10 hands. The worst three were experiment 46's min-raise check
+firing where it shouldn't: it assumed a top-25% range for any cheap raise, so the bot called 1.7x 4-bets with 33
+(-66bb) and T9o (-35bb) and a 5-bet with TT at 50bb (-50bb; the flop and turn calls after it were right at an SPR of
+1: 35% vs 25% and 26% vs 19%). Fixes:
+- the min-raise check only applies facing an open / iso or a 3-bet (`SMALL_RAISE_MAX_RAISES`);
+- `Engine._vs_reraise_war`: facing a 4-bet or 5-bet, as far as the read is value-heavy (strictness; the population
+  start is 0.37), continue only when equity against a value range (top 6% for a 4-bet, 3.5% for a 5-bet) x 0.55
+  realisation beats the price, and jam only with 48%+ raw equity. Against a 3-to-9-to-15 4-bet: 33, 77, T9o fold;
+  99, AQ, AK, KQs call; JJ+ jam. With no value read (strictness 0, e.g. a bluffy opponent) the tree decides.
+
+Rival population (800 deals, duplicate): no read +23 bb/100 (was +26), 30-deal read +129 (was +120): within noise.
+
 ## Versions
 
 One version per round of changes from a live game (v0 = the first version that played a live game). The bot's
@@ -2619,7 +2633,7 @@ PokerNow nickname is `bot/version.py` NAME (e.g. "HUBot v5"); each version is a 
 | v3 | 9e8f9e1 | all-in call fix, pot odds on every call, separate player ids, 4.5 s actions (exp 38–39) |
 | v4 | d9606f0 | raise-size-aware river calls, river sizing, short-stack mode, learned bluff model (exp 40–41) |
 | v5 | 31471e1 | strictness against big bets learned per opponent from showdowns (exp 42) |
-| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43); solver-based trapping, opponent trap tracking, wins per player (exp 45); rival bots: shove reads, min-raise defence, slower early adaptation, style read (exp 46); population bluff prior from all live hands, polar river jams (exp 47) |
+| v6 | tag v6 | with the nuts (straight flush, quads, the nut flush) always bet or raise, all-in by the river; several tables at once; fixes for facing shoves (exp 43); solver-based trapping, opponent trap tracking, wins per player (exp 45); rival bots: shove reads, min-raise defence, slower early adaptation, style read (exp 46); population bluff prior from all live hands, polar river jams (exp 47); 4-bet / 5-bet discipline (exp 48) |
 
 ## Next steps
 

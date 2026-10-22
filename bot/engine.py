@@ -255,6 +255,7 @@ class Engine:
             d = self._preflop(hero, hole, st)
             d = self._vs_shove(d, hero, hole, st)
             d = self._small_raise(d, hero, hole, st)
+            d = self._vs_reraise_war(d, hero, hole, st)
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
             d = self._monster(d, hero, hole, board[:2 + st.street], st)
@@ -589,12 +590,56 @@ class Engine:
                        f"equity {eq:.0%} vs price {need:.0%}: {'call' if call else 'fold'}")
         return d
 
+    def _vs_reraise_war(self, d, hero, hole, st):
+        """Experiment 48: facing a 4-bet or 5-bet, the tree assumes equilibrium ranges full of bluffs; live players
+        showed value (3+ raise pots: -123bb in 10 hands; 33 and T9o called 4-bets, TT a 5-bet). As far as the read
+        is value-heavy (strictness, from the population and their showdowns), continue only when the hand's
+        equity against a value range (top REWAR_RANGE of hands for that many raises), discounted for realisation
+        out of a bloated, low-SPR pot, beats the price; jams need REWAR_JAM_EQ raw equity. A shove read
+        (_vs_shove) decides all-ins it has evidence for."""
+        raises = sum(a.kind == "raise" for a in st.history[0])
+        if raises < 3 or st.facing(hero) <= EPS or "fold" not in self._options or self.strict <= 0:
+            return d
+        if any(n.startswith("vs shove") for n in d.notes):
+            return d
+        share = REWAR_RANGE.get(raises, min(REWAR_RANGE.values()))
+        eq = _equity_vs_top(hole, share)
+        b = st.facing(hero)
+        need = b / (st.pot() + b)
+        w = min(1.0, self.strict / REWAR_FULL_STRICT)
+        go = [k for k in d.probs if k != "fold" and d.probs[k] > 0]
+        cont = sum(d.probs[k] for k in go)
+        if cont <= 0:
+            return d
+        probs = dict(d.probs)
+        if eq * REWAR_REAL <= need:
+            for k in go:
+                probs[k] *= 1 - w
+            probs["fold"] = probs.get("fold", 0.0) + cont * w
+            verdict = "fold"
+        elif eq < REWAR_JAM_EQ and probs.get("all-in", 0) > 0 and "call" in self._options:
+            x = probs.pop("all-in") * w
+            probs["all-in"] = d.probs["all-in"] - x
+            probs["call"] = probs.get("call", 0.0) + x
+            verdict = "call, not jam"
+        else:
+            return d
+        d.probs = _normalise(probs)
+        d.notes.append(f"re-raise war ({raises} raises): equity {eq:.0%} vs top {share:.0%} (x{REWAR_REAL}) vs price "
+                       f"{need:.0%}: {verdict} ({w:.0%} weight, strictness {self.strict:.2f})")
+        return d
+
     def _small_raise(self, d, hero, hole, st):
         """Experiment 46: the tree reads any preflop raise as its own (big) size; a min-raise priced at
         SMALL_RAISE_PRICE or less is only folded when the hand's equity against a strong range (top
         SMALL_RAISE_RANGE), discounted for realisation, can't beat the price. Min-raising bots exploited the folds."""
         b = st.facing(hero)
         if b <= EPS or d.probs.get("fold", 0.0) <= 0 or "call" not in self._options:
+            return d
+        # Experiment 48: only against an open or a 3-bet. A 4-bet or 5-bet range is far stronger than any top-25%
+        # read, and a cheap-looking call there commits the stack at a tiny SPR: live, it called 1.7x 4-bets with 33 and
+        # T9o and a 5-bet with TT (-151bb in 3 hands); the tree's own 4-bet / 5-bet answers decide those.
+        if sum(a.kind == "raise" for a in st.history[0]) > SMALL_RAISE_MAX_RAISES:
             return d
         need = b / (st.pot() + b)
         if need > SMALL_RAISE_PRICE:
@@ -867,6 +912,11 @@ RIVER_JAM_SPR, RIVER_JAM_SHARE = 3.0, 0.5
 
 SMALL_RAISE_PRICE = 0.2     # experiment 46: preflop raises priced at most this get the equity check
 SMALL_RAISE_RANGE, SMALL_RAISE_REAL = 0.25, 0.75
+# Experiment 48: value ranges against a 4-bet (3 raises) and a 5-bet+ (4+), realisation in those pots, the raw equity a
+# jam needs, and the strictness at which the check has full weight (the population start is 0.37).
+REWAR_RANGE = {3: 0.06, 4: 0.035}
+REWAR_REAL, REWAR_JAM_EQ, REWAR_FULL_STRICT = 0.55, 0.48, 0.3
+SMALL_RAISE_MAX_RAISES = 2  # experiment 48: the check applies facing an open / iso or a 3-bet, never a 4-bet+
 SHOVE_MIN_SEEN = 3          # experiment 46: preflop shoves seen at a spot before the read replaces the tree
 SHOVE_PRIOR = (0.03, 5)     # prior shove share and its weight (deals)
 SHOVE_MARGIN = 0.01         # equity needed above the price to call
