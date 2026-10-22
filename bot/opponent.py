@@ -49,8 +49,8 @@ def record(msgs, hero_name=HERO):
         return None
     hero = h.seats[h.hero_seat]
     opp = next(s for s in h.seats.values() if s.seat != h.hero_seat)
-    if opp.pid in _bot_ids() or opp.name == hero.name:
-        return None                      # the bot's own account, or two seats with one name: not a clean record
+    if opp.pid in _bot_ids():
+        return None                      # the bot's own account (by id: a name is the opponent's to choose)
     shown = {}
     for m in msgs:
         if (sm := RE_SHOW.search(m)):
