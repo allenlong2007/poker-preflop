@@ -99,3 +99,16 @@ def test_promotion_rejects_sparse_small_or_losing_evaluations():
     assert promotion_errors(good) == []
     for bad in ({"deals": 10}, {"coverage": 0.01}, {"bb100": -20}, {"illegal": 1}):
         assert promotion_errors({**good, **bad})
+
+
+def test_promoted_reader_honors_the_evaluated_visit_threshold(tmp_path):
+    source, frozen = tmp_path / "model.sqlite", tmp_path / "snapshot.sqlite"
+    with Trainer(source, Config(chip_bb=0.5, stacks_bb=(3,))) as trainer:
+        trainer.train(1)
+        trainer.checkpoint(frozen)
+    report = {"deals": 2000, "coverage": 0.5, "bb100": 10, "se_bb100": 2, "illegal": 0,
+              "min_updates": 5000}
+    with sqlite3.connect(frozen) as db:
+        db.execute("INSERT INTO metadata VALUES ('promotion',?)", (json.dumps(report),))
+    with ExactPolicy(frozen, min_updates=1000) as policy:
+        assert policy.minimum == 5000
