@@ -28,3 +28,5 @@ Step 2 GREEN: `.venv/bin/python -m pytest -q tests/test_audit.py tests/test_deci
 Step 2 full validation: `.venv/bin/python -m pytest -q` → 57 passed (outside sandbox for localhost).
 
 Step 3 RED: expanded concurrent-poll test passes; 3 new regression cases fail as expected: missing bluff-prior fingerprint, absent version/run report filters, and optional bluff prior represented by False breaking diagnostics. Fixing these before final validation. Source fingerprints include bot/, preflop/, scripts/ Python files; policy fingerprints will also include adaptation baselines/priors and equity data.
+
+Step 3 intermediate GREEN: 60 full tests passed under coverage; measured modules total 87%, new bot/audit.py 100%. The optional-prior bug is fixed; version/run filters and concurrent poll checks pass. A final additional regression is RED: preflop adaptation currently overwrites its original lookup baseline. Preserve/trace that blend before final rerun.

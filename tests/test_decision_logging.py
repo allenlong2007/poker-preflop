@@ -54,3 +54,13 @@ def test_logging_works_without_an_optional_bluff_prior(monkeypatch):
     history = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "bet", 1)]]
     d = eng.decide("btn", "AsKd", "Kh8d3c", history)
     assert d.diagnostics["adaptation"]["bluff_model"] is None
+
+
+def test_preflop_adaptation_preserves_the_lookup_baseline():
+    eng = Engine(seed=1)
+    eng.lam = 0.5
+    eng.adapted = {"btn_root": {a: [float(a == "fold")] * 169 for a in eng.pre["nodes"]["btn_root"]}}
+    d = eng.decide("btn", "AsAh", "", [[]], sample=False)
+    trace = next(x for x in d.diagnostics["adjustments"] if x["stage"] == "preflop_adaptation")
+    assert trace["before"] == d.diagnostics["base"]["probs"]
+    assert trace["after"]["fold"] > trace["before"]["fold"]
