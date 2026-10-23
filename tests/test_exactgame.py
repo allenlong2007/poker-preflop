@@ -9,15 +9,15 @@ from preflop.exactgame import Config, State, from_context
 
 def test_information_set_keeps_suits_kickers_history_but_not_hidden_cards():
     cfg = Config(chip_bb=0.5)
-    a = State.deal(cfg, np.random.default_rng(1), hole=("As", "Kd"), board=("Kh", "8d", "3c", "2s", "9h"))
-    b = State.deal(cfg, np.random.default_rng(2), hole=("As", "Kd"), board=("Kh", "8d", "3c", "4s", "Th"))
+    a = State.deal(cfg, np.random.default_rng(1), stack_bb=100, hole=("As", "Kd"), board=("Kh", "8d", "3c", "2s", "9h"))
+    b = State.deal(cfg, np.random.default_rng(2), stack_bb=100, hole=("As", "Kd"), board=("Kh", "8d", "3c", "4s", "Th"))
     assert a.key() == b.key()  # no opponent cards or future board before it is revealed
     a = a.step("call").step("check")
     b = b.step("call").step("check")
     assert a.actor == 1 and a.street == 1
     # BB private cards differ; ask for the BTN's observation explicitly.
     assert a.key(player=0) == b.key(player=0)
-    c = State.deal(cfg, np.random.default_rng(1), hole=("Ah", "Kd"), board=("Ks", "8d", "3c", "2s", "9h"))
+    c = State.deal(cfg, np.random.default_rng(1), stack_bb=100, hole=("Ah", "Kd"), board=("Ks", "8d", "3c", "2s", "9h"))
     c = c.step("call").step("check")
     assert c.key(player=0) != a.key(player=0)
     assert "9h" not in json.loads(a.key(player=0))["board"]

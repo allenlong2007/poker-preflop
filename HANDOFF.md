@@ -17,3 +17,5 @@ Research: OpenSpiel (sampling reference) https://github.com/google-deepmind/open
 Unacceptable errors: opponent/future cards in live keys; retrospectively using revealed cards for earlier decisions; illegal sizes/minraises; partial resume/RNG checkpoints; deploying sparse/unvalidated policies. Revealed-showdown samples remain selection biased.
 
 Unrelated untracked outputs from before this task remain untouched: output/match/equity_vs_random.json, output/match/rival_train.json, output/trap_study.log, output/trap_study/.
+
+Step 1 GREEN: 350187f RED (missing exactgame API); 5 tests now pass. preflop/exactgame.py implements exact private/public cards, full history keys, integer chips, no-limit minimum/full/short all-in raises, zero-sum payouts, configurable sizing and exhaustive chip-size mode. Focus reconstruction retains off-menu observed sizes without rounding to a trained action. Training focus samples both private hands, never imports shown opponent cards into a past decision.
