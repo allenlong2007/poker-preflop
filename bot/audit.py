@@ -51,6 +51,9 @@ class AuditLog:
                                     root / "data" / "equity_matrix.npz") if p.exists())
         if engine.use_solver_flops:
             policies.extend(engine.flops_dir.glob("*.json"))
+        exact_path = getattr(engine, "exact_path", None)
+        if exact_path is not None and exact_path.exists():
+            policies.append(exact_path)
         self.run = {
             "schema_version": SCHEMA_VERSION, "run_id": uuid.uuid4().hex,
             "started_at": time.time(), "bot_version": VERSION, "bot_name": NAME,

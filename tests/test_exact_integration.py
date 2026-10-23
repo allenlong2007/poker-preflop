@@ -72,6 +72,6 @@ def test_raw_parser_attaches_revealed_analysis():
 
     demo = Path(__file__).resolve().parents[1] / "bot" / "pokernow" / "demo_log.csv"
     hand = split_hands(read_log(demo.read_text()))[-1]
-    hand.insert(-1, '"Friend @ fR7" shows a A♠, Q♠.')
+    hand.insert(-1, '"Friend @ fR7" shows a A♠, Q♥.')
     result = record(hand, hero_name="Allen")
-    assert result["revealed_analysis"]["opponent_hole"] == ["As", "Qs"]
+    assert result["revealed_analysis"]["opponent_hole"] == ["As", "Qh"]

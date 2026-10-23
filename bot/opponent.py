@@ -59,13 +59,21 @@ def record(msgs, hero_name=HERO, hero_pid=None):
         if (sm := RE_SHOW.search(m)):
             shown["hero" if sm.group("pid") == hero.pid else "opp"] = "".join(cards(sm.group("cards")))
     hid = RE_ID.search(msgs[0])
-    return {"id": hid.group("id") if hid else str(h.number), "number": h.number,
+    result = {"id": hid.group("id") if hid else str(h.number), "number": h.number,
             "hero_id": hero.pid, "hero_name": hero.name, "bot_version": None,
             "opp_name": opp.name, "opp_id": opp.pid, "hero_pos": h.position(hero), "opp_pos": h.position(opp),
             "bb": h.bb, "stacks": {"hero": round(hero.start / h.bb, 2), "opp": round(opp.start / h.bb, 2)},
             "history": [[[a.player, a.kind, a.to] for a in street] for street in h.history],
             "board": "".join(h.board), "hero_hole": "".join(h.hole), "shown": shown,
             "net": {"hero": round((hero_net(msgs, hero.name, hero.pid) - hero.put_in) / h.bb, 2)}}
+    from bot.exact_opponent import analyze_revealed
+    try:
+        evidence = analyze_revealed(result)
+        if evidence is not None:
+            result["revealed_analysis"] = evidence
+    except ValueError as error:
+        result["revealed_analysis"] = {"schema_version": 1, "error": str(error)}
+    return result
 
 
 BOT_IDS = ROOT / "output" / "pokernow" / "bot_ids.json"
@@ -100,6 +108,10 @@ def store(records):
     by_opp = defaultdict(list)
     for r in records:
         if r:
+            if r.get("shown", {}).get("opp") and not r.get("revealed_analysis", {}).get("error"):
+                from bot.exact_opponent import EvidenceIndex
+                with EvidenceIndex(HANDS.parent / "exact_evidence.sqlite") as index:
+                    index.add(r)
             by_opp[r["opp_id"]].append(r)
     for opp, rs in by_opp.items():
         path = _path(opp)

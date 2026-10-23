@@ -20,6 +20,7 @@ All amounts are in big blinds; `to` is the player's total chips put in on the cu
 """
 import json
 import math
+import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -210,7 +211,8 @@ def size_weights(x, sizes, translate=True):
 
 class Engine:
     def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
-                 defend_keep=None, river_lead=None, pot_odds=False):
+                 defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
+                 exact_candidate=False, exact_min_updates=1000):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -235,6 +237,18 @@ class Engine:
         self.translate = translate
         self._pots, self._flops, self._opts = {}, {}, {}
         self.rng = np.random.default_rng(seed)
+        self.exact_policy = None
+        self.exact_status = {"status": "disabled"}
+        self.exact_path = None
+        if exact_policy_path is not False:
+            self.exact_path = Path(exact_policy_path) if exact_policy_path is not None else ROOT / "output/exact/active.sqlite"
+            if self.exact_path.exists():
+                from preflop.exacttrain import ExactPolicy
+                try:
+                    self.exact_policy = ExactPolicy(self.exact_path, min_updates=exact_min_updates,
+                                                   candidate=exact_candidate)
+                except (OSError, ValueError, sqlite3.DatabaseError) as error:
+                    self.exact_status = {"status": "load_error", "reason": str(error)}
 
     # -- public ------------------------------------------------------------------------------
 
@@ -253,7 +267,20 @@ class Engine:
         use the real stack)."""
         hole, board = parse_cards(hole), parse_cards(board) if board else []
         st = State([[a if isinstance(a, Act) else Act(*a) for a in h] for h in history], stack=stack)
-        if st.street == 0:
+        exact = dict(self.exact_status)
+        if self.exact_policy is not None:
+            exact = self.exact_policy.lookup({
+                "hero_position": hero, "hero_hole": "".join(map(card_str, hole)),
+                "board": "".join(map(card_str, board[:2 + st.street])) if st.street else "",
+                "effective_stack_bb": stack,
+                "history": [[[a.player, a.kind, a.to] for a in street] for street in st.history]})
+        if exact["status"] == "ready":
+            self._options = exact.pop("options")
+            probs = exact.pop("probs")
+            d = Decision("", 0, probs, f"exact street {st.street}", "exact",
+                         notes=[f"exact-card average policy: {exact['updates']} updates"],
+                         diagnostics={"base": {"source": "exact", "probs": dict(probs)}})
+        elif st.street == 0:
             d = self._preflop(hero, hole, st)
             d.diagnostics.setdefault("base", {"source": d.source, "node": d.node, "probs": dict(d.probs)})
             d = _adjust(d, "vs_shove", self._vs_shove, hero, hole, st)
@@ -280,6 +307,7 @@ class Engine:
                     d.diagnostics["pot_odds"] = evidence
                     _trace(d.diagnostics, "pot_odds", before, d.probs)
         d.diagnostics.update({
+            "exact": exact,
             "context": {"hero_position": hero, "hero_hole": "".join(map(card_str, hole)),
                         "board": "".join(map(card_str, board[:2 + st.street])) if st.street else "",
                         "history": [[[a.player, a.kind, a.to] for a in street] for street in st.history],
