@@ -1,45 +1,43 @@
 # Exact-card training — Claude handoff
 
-Status: implementing (2026-10-23). User approved local CPU overnight training. No paid/cloud compute. Previous logging work is complete at df7c26e; see docs/decision-logging.md.
+**Status: implemented, reviewed, tested; local 8-hour candidate run ACTIVE (2026-10-23).** Read this first. User approved local CPU with overnight runs; no cloud spend or automatic promotion. Detailed design/commands/limits: `docs/exact-card-training.md`. Prior logging work: `docs/decision-logging.md`.
 
-Goal: exact private cards/suits + visible board + full monetary history/stack in policy inputs; resumable long-running training; legal targeted sizing; exact revealed-opponent evidence; measured checkpoint promotion.
+## Running job — verify status, do not start a second writer
 
-Plan/checkpoints:
-1. Exact heads-up chip-accounting game and information-state keys; tests before implementation.
-2. Durable outcome-sampling MCCFR, deterministic resume, configurable sizing (including exhaustive legal chip totals), frozen evaluation/promotion, live exact-policy lookup with explicit coverage fallback.
-3. Revealed-hand action-by-action exact-card analysis and idempotent indexed storage; public-state focus curriculum without hidden-card leakage.
-4. Full tests/reviews; bounded training/evaluation; launch an 8-hour single-CPU candidate run and record PID/status/commands here.
+- Actual PID **68736**, managed exec session **32039**. Two detached launch attempts exited before starting; `training.pid` now contains the verified real PID.
+- Candidate: `output/exact/overnight/candidate.sqlite`; status: `candidate.status.json`; log: `training.log`; PID: `training.pid` in the same directory. Generated files are Git-ignored.
+- One worker, numerical threads limited to one, nice priority +10. Budget: 8 hours, **16 GiB candidate+WAL cap**, free-disk guard; it can stop earlier on storage/numeric limits. Latest frozen snapshot every 900s and at clean exit. Keep Codex/Mac running for the managed process.
+- Last verified progress: **42,200 iterations, 215,164 exact infosets, 165,611 regret updates**, ~212MB at 33s; advancing normally. This snapshot will become stale: query the status file.
+- Config: 0.01bb chips; stack pool 6/10/15/25/40/60/100bb; minimum/all-in plus 25/50/75/100/150/200%-pot increments. No focus dataset in this run.
 
-Design: use eval7 already installed; algorithm follows established outcome-sampling MCCFR mathematics (OpenSpiel reference). Exact tables do not generalize to unseen states. Default finite sizing menus are still action abstraction; exhaustive mode enumerates legal chip increments and costs much more. Checkpoints remain candidates until held-out evaluation gates pass. Live fallback remains explicit while coverage is insufficient. Do not claim a fully trained full-game Nash solution.
+```sh
+.venv/bin/python scripts/train_exact.py status --path output/exact/overnight/candidate.sqlite
+# Resume only after previous process stops; saved RNG/config are reused:
+.venv/bin/python scripts/train_exact.py train --path output/exact/overnight/candidate.sqlite --hours 8 --batch 200 --max-gb 16
+# Immutable evaluation snapshot while writer runs:
+.venv/bin/python scripts/train_exact.py snapshot --path output/exact/overnight/candidate.sqlite --output output/exact/overnight/frozen-evaluation.sqlite
+```
 
-Research: OpenSpiel (sampling reference) https://github.com/google-deepmind/open_spiel/blob/master/open_spiel/python/algorithms/outcome_sampling_mccfr.py ; Deep CFR https://proceedings.mlr.press/v97/brown19b.html . TexasSolver exists locally but is an exact-board subgame solver, not durable whole-game self-play training; no source copied.
+SIGTERM to the verified PID stops after the current batch. Do not trust an old PID without checking. Source/config/dependency drift rejects resume: do not edit training code during this run. Last implementation commit: **84c01c4**; final handoff commit follows it and changes no Python.
 
-Unacceptable errors: opponent/future cards in live keys; retrospectively using revealed cards for earlier decisions; illegal sizes/minraises; partial resume/RNG checkpoints; deploying sparse/unvalidated policies. Revealed-showdown samples remain selection biased.
+## Shipped
 
-Unrelated untracked outputs from before this task remain untouched: output/match/equity_vs_random.json, output/match/rival_train.json, output/trap_study.log, output/trap_study/.
+- `preflop/exactgame.py`: exact private cards/suits, visible board, stack/chips, full betting recall, legal repeated raises/all-ins. Only hole order and simultaneous flop order canonicalized; no textures or strength buckets.
+- `preflop/exacttrain.py`: signed outcome-sampling MCCFR, reach-weighted average strategy, SQLite/WAL + RNG-atomic checkpoints, single-writer lease, runtime/code/config guards, cheap aggregate counters, online frozen backup, read-only serving and minimum-update gates.
+- `scripts/train_exact.py`: finite CPU/storage budgets, status/resume/snapshot, frozen duplicate held-out evaluation and promotion. Evaluation requires immutable standalone snapshots, not WAL candidates. Promotion binds bytes/source/baseline/runtime and evaluated serving threshold; destination replacement is leased/atomic.
+- `bot/engine.py`: covered exact policies bypass legacy bucket/rule overrides. Unpromoted/unseen/undertrained/unsupported lookups explicitly log fallback. `bot/audit.py` fingerprints the exact artifact.
+- `bot/exact_opponent.py` + `bot/opponent.py`: exact per-action after-reveal evidence (cards, evaluator/kickers, suits/draw completions, amounts, price, earlier history), validated and indexed idempotently. Raw JSONL is archived first; index failures cannot lose hands. Historical rebuild indexed **58 revealed hands from 429 stored hands, zero invalid records**. Raw history files untouched.
 
-Step 1 GREEN: 350187f RED (missing exactgame API); 5 tests now pass. preflop/exactgame.py implements exact private/public cards, full history keys, integer chips, no-limit minimum/full/short all-in raises, zero-sum payouts, configurable sizing and exhaustive chip-size mode. Focus reconstruction retains off-menu observed sizes without rounding to a trained action. Training focus samples both private hands, never imports shown opponent cards into a past decision.
+## Evidence and remaining limits
 
-Step 2 RED: tests/test_exacttrain.py fails on missing exacttrain API. Tests specify importance weighting, deterministic interrupted/resumed training, atomic rollback including RNG, private-label-free focus roots, immutable candidate lookup with coverage gates, and rejecting sparse/losing promotion reports.
+- **88 tests passed**, measured modules **89% coverage**; new exactgame 93%, exacttrain 91%, revealed analysis 80%, CLI 84%. `compileall` and `git diff --check` passed. Coverage file: `/private/tmp/poker-exact.coverage`.
+- Same sampler passes a Kuhn imperfect-information regression: exact best-response exploitability <0.12 after 10k iterations. This is not an NLHE exploitability certificate.
+- Bounded NLHE validation: 10k iterations → 56,592 infosets/44,387 regret updates. Artifacts in `output/exact/validation/`. Frozen 100-deal duplicate tests: 1000-update gate serves 0% (too sparse); exploratory min=1 serves 113/389 decisions (29.0%), zero illegal actions. **Neither passes promotion; no new playing-strength claim.** Synthetic passing metrics exist only in temporary unit tests to verify promotion plumbing.
+- Python and MLE reviewers approve; all material findings fixed (raw capture ordering, card/metadata validation, dependency drift, focus isolation, artifact immutability, evaluated threshold, provenance, destination races, status-scan scaling).
+- Exact tables cannot generalize to unseen states. Default size menus remain an action abstraction; `--exhaustive` enumerates every configured legal chip total at much higher cost. No neural approximation or full-game Nash guarantee.
+- Focus roots use uniform compatible private ranges, separate namespaces, and candidate-only lookup; reports serving focus policies cannot promote without future posterior validation. Shown-hand samples remain selection biased and are not silently converted into confident live exploits.
+- **Live policy remains legacy fallback until a real checkpoint passes evaluation/promotion.** No active exact model was installed. Restart server to load new logging/evidence code; promoted models also need restart.
 
-Step 2 core GREEN: 49740ea RED (missing exacttrain API); 11 exactgame/exacttrain tests pass. preflop/exacttrain.py adds single-writer SQLite/WAL transactions, signed outcome-sampling importance weights, reach-weighted average policy, code/config/focus fingerprints, RNG-atomic resume, immutable snapshots, read-only lookup with update thresholds, and declared evaluation gates. Default focus-root ranges are uniform compatible combinations (explicit approximation, not a solved betting-line posterior). Live lookup/CLI/evaluation wiring follow.
+All steps have RED/GREEN Git checkpoints (start 350187f, game 7abceec, trainer d24ad51, integration ca24252, lifecycle 57869f3; final reviewed implementation 84c01c4). Use `git log` for integrity-fix checkpoints. Next: let the candidate run, freeze it, evaluate at ≥2000 duplicate deals/min_updates≥1000, inspect coverage/error slices before promotion. No recurring scheduler installed.
 
-Integration RED: four tests fail as intended: Engine lacks exact-policy routing, revealed analysis/index APIs absent, parser lacks after-reveal analysis. Tests require covered candidates to bypass legacy bucket overrides, unpromoted fallback, exact suit/draw labels per action without later runout, and idempotent reveal storage.
-
-Integration GREEN: 15 exact-game/training/integration tests pass. Engine can read a frozen exact-policy snapshot (covered states bypass bucket/heuristic overrides; unpromoted/unseen/insufficient states explicitly fall back). Audit model hashes include the exact snapshot. Raw opponent records now retain exact per-action cards/suits, evaluator score/kickers, draws/blockers, price and prior action history only at that street; an idempotent SQLite index stores revealed evidence separately. Unknown cards never enter this index until shown. CLI rebuild is available. Full legacy regression run is in progress.
-
-Full regression: 76 tests passed. Review follow-up RED: focus subgames must have separate public-root namespaces (uniform subgame priors must not mix with whole-game posterior reach). CLI RED: missing scripts.train_exact API; tests require bounded budget, resumable run/status/snapshot/frozen evaluation, and failed promotion leaving no active artifact.
-
-Operational GREEN: 17 exact-path tests pass with bounded CLI, status, snapshots, duplicate held-out evaluation and rejected promotion. Focus namespaces isolated; candidate-only focus lookup, no automatic live promotion of uniform-prior focus results. Runtime versions now guarded on resume; flop order losslessly canonicalized while preserving every card/suit and turn/river order. Reviewer fixes RED: invalid known cards, broken derived index losing raw archives, malformed policy metadata bypassing fallback.
-
-Reviewer fixes GREEN: 20 exact-path tests pass. Raw hand JSONL is archived before best-effort derived indexing, with observable warnings; invalid/conflicting known cards are rejected; malformed metadata/strategy vectors fall back instead of crashing. Rebuilt historical reveal index: 58 revealed hands from 429 stored live hands, zero invalid records. No raw histories rewritten. Python and MLE reviews found no demonstrated betting-accounting or importance-weighting bug; all actionable findings are being addressed.
-
-Operational follow-up RED: snapshot CLI currently attempts a writer lease and cannot freeze while overnight training is running. New regression requires consistent read-only backup while writer stays open, then independently resuming the frozen snapshot.
-
-Review follow-ups: online snapshot fix passes. New Kuhn imperfect-information regression passes after 10k training iterations (exact best-response exploitability <0.12). Two deployment contracts are RED: promotion must preserve evaluated update threshold, and evaluation must reject a mutable WAL candidate. Also binding current code/baseline/runtime provenance at promotion and replacing per-batch whole-table scans with transactional counters before the overnight run.
-
-Deployment fixes GREEN: evaluation/promotion hold a shared artifact lease, require standalone DELETE-journal snapshots (not writable WAL candidates), and stream hashes before/after. Snapshot replacement holds an exclusive destination lease. Promotion binds candidate bytes plus current source/baseline/runtime fingerprints; copied bytes are checked before activation. Live minimum visits cannot be lower than the evaluated threshold. Metadata aggregate counters remove per-batch full-table scans. Added tests cover stale provenance, successful promotion plumbing with explicitly synthetic metrics, runtime drift, and disk-budget stop. Final reviewer pass and full coverage underway.
-
-Full coverage run before final lease follow-up: 88 tests passed. Final Python review found promotion destination replacement lacked the exclusive lease used by snapshots; regression now RED when attempting to promote over an actively trained output. Fix will share one leased/unique-temp destination helper. MLE final review otherwise approves current training/evaluation foundation; no remaining algorithm/leakage blockers reported.
-
-Final validation GREEN: 88 full tests passed, measured coverage 89% (exactgame 93%, exacttrain 91%, exact-opponent 80%, training CLI 84%); compileall/diff checks pass. Both Python and MLE reviewers confirm no remaining blockers. Bounded whole-game run: 10,000 iterations, 56,592 exact infosets, 44,387 regret updates, ~61MB candidate. Frozen 100-deal duplicate evaluations: normal 1000-update gate serves 0% (correctly too sparse); exploratory min=1 serves 113/389 decisions (29.0%) with no illegal actions. Neither report passes promotion; no playing-strength claim. Reports and snapshot: output/exact/validation/. Overnight launch and concise final handoff follow.
+Unrelated pre-existing untracked outputs left alone: output/match/equity_vs_random.json, output/match/rival_train.json, output/trap_study.log, output/trap_study/.
