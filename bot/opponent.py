@@ -14,7 +14,9 @@ Usage:
                                                              evidence, confirmed by the user)
 """
 import json
+import logging
 import re
+import sqlite3
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -108,10 +110,6 @@ def store(records):
     by_opp = defaultdict(list)
     for r in records:
         if r:
-            if r.get("shown", {}).get("opp") and not r.get("revealed_analysis", {}).get("error"):
-                from bot.exact_opponent import EvidenceIndex
-                with EvidenceIndex(HANDS.parent / "exact_evidence.sqlite") as index:
-                    index.add(r)
             by_opp[r["opp_id"]].append(r)
     for opp, rs in by_opp.items():
         path = _path(opp)
@@ -122,6 +120,17 @@ def store(records):
                     f.write(json.dumps(r) + "\n")
                     seen.add(r["id"])
                     new += 1
+    # The JSONL archive is authoritative. Derived analytics must never prevent its capture.
+    for rs in by_opp.values():
+        for r in rs:
+            if r.get("shown", {}).get("opp") and not r.get("revealed_analysis", {}).get("error"):
+                from bot.exact_opponent import EvidenceIndex
+                try:
+                    with EvidenceIndex(HANDS.parent / "exact_evidence.sqlite") as index:
+                        index.add(r)
+                except (OSError, sqlite3.DatabaseError, ValueError, KeyError) as error:
+                    logging.getLogger(__name__).warning("Exact reveal index failed for hand %s; raw archived: %s",
+                                                         r.get("id"), error)
     return new
 
 

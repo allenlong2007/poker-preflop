@@ -220,9 +220,21 @@ class ExactPolicy:
         self.db = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, check_same_thread=False)
         try:
             self.meta = _metadata(self.db)
-            if self.meta.get("schema") != SCHEMA:
+            if self.meta.get("schema") != SCHEMA or self.meta.get("algorithm") != "outcome_sampling_mccfr":
                 raise ValueError("incompatible exact policy schema")
-            self.config = Config(**self.meta["config"])
+            try:
+                self.config = Config(**self.meta["config"])
+                if self.meta["config_sha256"] != self.config.fingerprint() or \
+                        not isinstance(self.meta["iterations"], int) or self.meta["iterations"] < 0:
+                    raise ValueError("invalid exact policy metadata")
+                if not isinstance(self.meta.get("focus", []), list):
+                    raise ValueError("invalid focus manifest")
+                promotion = self.meta.get("promotion")
+                if promotion is not None and (not isinstance(promotion, dict) or promotion_errors(promotion)):
+                    raise ValueError("invalid promotion metadata")
+                self.db.execute("SELECT key,actions,total,visits,updates FROM nodes LIMIT 0")
+            except (KeyError, TypeError) as error:
+                raise ValueError("invalid exact policy metadata") from error
             self.minimum, self.candidate = min_updates, candidate
             self.focus_states = [from_context(self.config, root, np.random.default_rng(0))
                                  for root in self.meta.get("focus", [])] if candidate else []
@@ -265,9 +277,13 @@ class ExactPolicy:
                     break
         if row is None:
             return {**info, "status": "insufficient" if undertrained else "unseen"}
-        actions, sums = tuple(json.loads(row[0])), np.array(json.loads(row[1]))
+        try:
+            actions, sums = tuple(json.loads(row[0])), np.array(json.loads(row[1]), dtype=float)
+        except (ValueError, TypeError):
+            return {**info, "status": "invalid"}
         info.update({"visits": row[2], "updates": row[3]})
-        if actions != state.actions() or not np.isfinite(sums).all() or (sums < 0).any():
+        if actions != state.actions() or sums.shape != (len(actions),) or not np.isfinite(sums).all() or \
+                not math.isfinite(float(sums.sum())) or (sums < 0).any():
             return {**info, "status": "invalid"}
         if row[3] < self.minimum or sums.sum() <= 0:
             return {**info, "status": "insufficient"}

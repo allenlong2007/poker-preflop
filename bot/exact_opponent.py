@@ -37,8 +37,11 @@ def analyze_revealed(record):
         return None
     hole, full_board = cards(revealed), cards(record.get("board", ""))
     hero = cards(record.get("hero_hole", ""))
-    if len(hole) != 2 or set(hole) & (set(full_board) | set(hero)):
+    if len(hole) != 2 or len(hero) not in (0, 2) or len(full_board) not in (0, 3, 4, 5) or \
+            set(hole) & (set(full_board) | set(hero)) or set(hero) & set(full_board):
         raise ValueError("revealed cards conflict with known cards")
+    if len(record["history"]) > 4:
+        raise ValueError("invalid street count")
     actions, total = [], {"btn": 0.0, "bb": 0.0}
     prefix = []
     for street, history in enumerate(record["history"]):
