@@ -1,6 +1,7 @@
 """Exact policy routing and after-reveal evidence never leak into past decisions."""
 import json
 import sqlite3
+from unittest.mock import patch
 from pathlib import Path
 
 import pytest
@@ -75,3 +76,35 @@ def test_raw_parser_attaches_revealed_analysis():
     hand.insert(-1, '"Friend @ fR7" shows a A♠, Q♥.')
     result = record(hand, hero_name="Allen")
     assert result["revealed_analysis"]["opponent_hole"] == ["As", "Qh"]
+
+
+def test_invalid_known_cards_are_rejected():
+    from bot.exact_opponent import analyze_revealed
+
+    base = {"shown": {"opp": "AsQs"}, "hero_hole": "Ks8s", "board": "Ks8s3d", "history": []}
+    with pytest.raises(ValueError):
+        analyze_revealed(base)
+    with pytest.raises(ValueError):
+        analyze_revealed({**base, "hero_hole": "2c", "board": ""})
+    with pytest.raises(ValueError):
+        analyze_revealed({**base, "hero_hole": "2c3c", "board": "Kd8h"})
+
+
+def test_bad_derived_index_cannot_lose_raw_hand_archive(tmp_path, caplog):
+    from bot import opponent
+
+    record = {"id": "durable", "hero_id": "hero", "opp_id": "opp", "shown": {"opp": "AsQs"}}
+    with patch("bot.exact_opponent.EvidenceIndex", side_effect=sqlite3.DatabaseError("broken index")):
+        assert opponent.store([record]) == 1
+    assert opponent.load("opp")[0]["id"] == "durable"
+    assert "index" in caplog.text
+
+
+def test_malformed_exact_artifact_falls_back_instead_of_crashing(tmp_path):
+    path = tmp_path / "bad.sqlite"
+    with sqlite3.connect(path) as db:
+        db.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)")
+        db.execute("INSERT INTO metadata VALUES ('schema','1')")
+    engine = Engine(exact_policy_path=path)
+    d = engine.decide("btn", "AsKh", "", [[]])
+    assert d.source != "exact" and d.diagnostics["exact"]["status"] == "load_error"
