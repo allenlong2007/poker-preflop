@@ -148,4 +148,4 @@ def test_live_review_filters_versions_and_keeps_legacy_unknown(capsys, monkeypat
     assert "unknown" in output and "-12.0" in output and "v6" in output
     live_review.main(["--version", "6", "--run", "run1", "--versions-only"])
     output = capsys.readouterr().out
-    assert "unknown" not in output and "+3.0" in output
+    assert "\n  unknown" not in output and "+3.0" in output

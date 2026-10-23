@@ -6,6 +6,9 @@ should it open to, and what should the Big Blind 3-bet?**
 
 ## Quick start
 
+Decision/version audit logs and version-filtered live review: [logging reference](docs/decision-logging.md).
+Current cross-agent implementation status: [HANDOFF.md](HANDOFF.md).
+
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest -q                 # equity engine vs known reference numbers

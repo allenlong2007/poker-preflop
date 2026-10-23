@@ -46,6 +46,9 @@ class AuditLog:
         preflop = root / "output" / "match" / "policy" / "preflop.json"
         if preflop.exists():
             policies.append(preflop)
+        policies.extend(p for p in (root / "output" / "match" / "bluff_prior.json",
+                                    root / "output" / "match" / "baseline_profile.json",
+                                    root / "data" / "equity_matrix.npz") if p.exists())
         if engine.use_solver_flops:
             policies.extend(engine.flops_dir.glob("*.json"))
         self.run = {
@@ -55,7 +58,9 @@ class AuditLog:
             "policy_sha256": _fingerprint(policies, root),
             "config": {"policy_dir": str(engine.policy_dir), "flops_dir": str(engine.flops_dir),
                        "solver_flops": engine.use_solver_flops, "translate": engine.translate,
-                       "pot_odds": engine.pot_odds},
+                       "pot_odds": engine.pot_odds,
+                       **{key: getattr(engine, key, None) for key in
+                          ("defend_keep", "river_shift", "river_lead", "river_jam")}},
         }
         self._links = {}
         self._lock = threading.Lock()

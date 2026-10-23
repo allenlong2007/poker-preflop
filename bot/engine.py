@@ -255,7 +255,7 @@ class Engine:
         st = State([[a if isinstance(a, Act) else Act(*a) for a in h] for h in history], stack=stack)
         if st.street == 0:
             d = self._preflop(hero, hole, st)
-            d.diagnostics["base"] = {"source": d.source, "node": d.node, "probs": dict(d.probs)}
+            d.diagnostics.setdefault("base", {"source": d.source, "node": d.node, "probs": dict(d.probs)})
             d = _adjust(d, "vs_shove", self._vs_shove, hero, hole, st)
             d = _adjust(d, "small_raise", self._small_raise, hero, hole, st)
             d = _adjust(d, "reraise_war", self._vs_reraise_war, hero, hole, st)
@@ -287,7 +287,8 @@ class Engine:
             "adaptation": {"strictness": self.strict, "preflop_weight": self.lam,
                            "bluff_scale": self.exploit["bluff"], "defend_scale": self.exploit["defend"],
                            "opponent_hands": (self.opp_profile or {}).get("hands", 0),
-                           "bluff_model": self.bluff_model.w.tolist() if self.bluff_model is not None else None},
+                           "opponent_profile": self.opp_profile,
+                           "bluff_model": self.bluff_model.w.tolist() if self.bluff_model else None},
             "legal_options": {k: {"action": a, "to_bb": to} for k, (a, to) in self._options.items()},
         })
         d.diagnostics.setdefault("adjustments", [])
@@ -380,16 +381,19 @@ class Engine:
             pol = n.get(name) or self.pre["nodes"].get(name) or n["bb_vs_4bet" if hero == "bb" else "btn_vs_3bet"]
             opts = {"fold": ("fold", 0), "call": ("call", min(last.to, st.stack))}
         probs = {a: float(v[i]) for a, v in pol.items() if a in opts}
+        diagnostics = {"base": {"source": "preflop", "node": node, "probs": dict(probs)},
+                       "lookup": {"depth_bb": depth}}
         base = node.split(" ")[0]
         if deep and self.lam > 0 and base in self.adapted:
             ad = self.adapted[base]
             probs = {a: (1 - self.lam) * p + self.lam * float(ad[a][i]) if a in ad else (1 - self.lam) * p
                      for a, p in probs.items()}
+            _trace(diagnostics, "preflop_adaptation", diagnostics["base"]["probs"], probs)
             node += f" (adapted {self.lam:.0%})"
         if not deep:
             node += f" ({depth:g}bb tree)"
         self._options = opts
-        return Decision("", 0, _normalise(probs), node, "preflop")
+        return Decision("", 0, _normalise(probs), node, "preflop", diagnostics=diagnostics)
 
     # -- postflop ----------------------------------------------------------------------------
 

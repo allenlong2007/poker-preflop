@@ -3,6 +3,7 @@
 Prints the bot's own frequencies (as 'opp' from the profile's point of view, by flipping seats), net by how the
 hand ended, and the biggest losses with the line. Usage: python scripts/live_review.py
 """
+import argparse
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -19,8 +20,27 @@ def flip(r):
             "net": {"hero": -r["net"]["hero"]}}
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", type=int, help="only hands attributed to this bot version")
+    parser.add_argument("--run", help="only hands with logged decisions from this exact run id")
+    parser.add_argument("--versions-only", action="store_true", help="print a compact version summary")
+    args = parser.parse_args(argv)
     hands = load()
+    if args.version is not None:
+        hands = [r for r in hands if r.get("bot_version") == args.version]
+    if args.run:
+        hands = [r for r in hands if args.run in (r.get("audit") or {}).get("run_ids", [])]
+    groups = defaultdict(list)
+    for r in hands:
+        version = r.get("bot_version")
+        groups[f"v{version}" if version is not None else "unknown"].append(r)
+    print("Results by recorded bot version (unknown includes legacy/unobserved hands):")
+    for version, rows in sorted(groups.items()):
+        net = sum(r["net"]["hero"] for r in rows)
+        print(f"  {version:10} hands={len(rows):4} net={net:+8.1f}bb  bb/100={100 * net / len(rows):+.1f}")
+    if args.versions_only or not hands:
+        return
     me = profile([flip(r) for r in hands])["nodes"]
     keys = ["btn_first_in", "bb_vs_open", "bb_vs_limp", "btn_vs_3bet", "flop_cbet", "flop_vs_bet", "turn_vs_bet",
             "river_vs_bet", "flop_lead", "turn_lead", "river_lead", "flop_bet_when_checked_to",

@@ -1,32 +1,35 @@
-# Decision/version logging — current handoff
+# Decision/version logging — Claude handoff
 
-Status: steps 1–2 GREEN; final verification/docs in progress (2026-10-23). No strategy changes intended.
+**Status: complete, 2026-10-23. Restart the PokerNow server to activate.** Strategy remains v6; run UUID + source/model hashes distinguish builds. No policies were retrained or historical logs rewritten.
 
-Goal: attribute new decisions and completed hands to an exact server run/build; preserve structured decision evidence for later river/big-pot reviews.
+Read this file first; `CLAUDE.md` points here. Exact schema/commands: `docs/decision-logging.md`. All task changes are checkpointed in Git; unrelated untracked output files were left alone.
 
-Steps:
-1. Add regression tests, run them RED, then implement run provenance and durable hand/decision links.
-2. Add structured inputs, equity/price/range diagnostics, and before/after adjustment probabilities.
-3. Verify compatibility and full tests; document the log schema and review command.
+## Shipped
 
-Historical records must remain unknown unless actual logged decisions establish provenance. Recommendations are not proof that an action was played.
+- `bot/audit.py`: one run manifest; source/model SHA-256 fingerprints; versioned decisions; hand links recovered across restarts; legacy/truncated JSONL recovery.
+- `bot/engine.py`, `bot/potodds.py`: numeric equity/price/range evidence, input state, opponent-read snapshot, original lookup probabilities, adjustment traces, legal options. Uses already computed equity; no extra simulation.
+- `bot/pokernow/server.py`: logs hand/player/run IDs, exact history and size conversion; atomic cached polling; completed hands link to observed decisions.
+- `bot/opponent.py`: hero identity; raw imports explicitly have unknown version.
+- `scripts/live_review.py`: `--version N`, `--run ID`, `--versions-only`. Default report groups recorded versions and unknown historical hands.
+- `tests/test_audit.py`, `tests/test_decision_logging.py`: 12 new regression cases.
 
-Existing unrelated untracked files: output/match/equity_vs_random.json, output/match/rival_train.json, output/trap_study.log, output/trap_study/. Leave these alone.
+Logs: `output/pokernow/{runs,decisions,actions}.jsonl`, completed hands in `output/pokernow/hands/` (all Git-ignored). Recommendations are not proof of played actions; join click reports by decision ID. Old/unobserved hands remain unknown. A hand spanning runs retains all observed run IDs. Hashes describe files at initialization; restart after code/model changes. Review evidence is not bit-for-bit replay.
 
-Baseline: 49 tests pass (localhost test needs socket access outside sandbox). No CLAUDE.md or AGENTS.md existed in this repository.
+## Validation
 
-Step 1 RED: `tests/test_audit.py` specifies run/build fingerprints, single run manifest, restart recovery, unknown historical attribution, cached-decision deduplication, and hand links. `.venv/bin/python -m pytest -q tests/test_audit.py` fails because `bot.audit` does not exist yet (the intended missing API). CLAUDE.md now points here.
+- Full suite: **61 passed**, `.venv/bin/python -m pytest -q` via coverage (localhost test needs socket access outside sandbox).
+- Coverage command: `.venv/bin/python -m coverage run --data-file=/private/tmp/poker-preflop-logging.coverage --source=bot.audit,bot.engine,bot.potodds,bot.pokernow.server,scripts.live_review -m pytest -q`.
+- Coverage: **87% total**, audit 100%, engine 93%, potodds 97%, server 63%, live_review 55%. Existing server/UI and detailed report paths remain partly uncovered. Coverage installed only in ignored .venv; no runtime dependency added.
+- 100 seeded decisions across preflop, 4-bet, flop, river, and short-stack spots match pre-change engine at `2afe595` exactly: action, size, label, probabilities.
+- `compileall` and `git diff --check` passed. Version summary smoke test: 429 old hands correctly remain unknown (−579.6bb), not attributed to v6.
 
-Step 1 implementation: `bot/audit.py` adds run manifests, source/policy SHA-256 fingerprints, per-hand decision links recovered after restart, and tolerant recovery of legacy/truncated JSONL. `bot/opponent.py` records hero identity and explicitly unknown version on raw hand imports. Server integration/diagnostics follow in step 2. RED checkpoint: 2afe595.
+## TDD checkpoint evidence
 
-Step 1 GREEN: `.venv/bin/python -m pytest -q tests/test_audit.py -k 'not server'` → 4 passed. Full server integration test is intentionally pending step 2.
+| RED checkpoint | Observed failure | GREEN evidence |
+| --- | --- | --- |
+| 2afe595 | missing bot.audit API | 296fa25: 4 provenance tests passed |
+| 7e98959 | missing hand_id / Decision.diagnostics | da1955d: 8 new tests; 57 full tests passed |
+| d7708f3 | missing review filters/prior fingerprint; absent-prior logging bug | fixed; 60 full tests passed |
+| 5b74a02 | missing preflop adaptation baseline trace | fixed; final 61 full tests passed |
 
-Step 2 RED: server integration test fails on missing `hand_id`; all 3 `tests/test_decision_logging.py` cases fail on missing `Decision.diagnostics`. These cover reusing computed equity (no extra Monte Carlo pass), short-stack evidence, preflop re-raise evidence, and JSON serialization.
-
-Step 2 GREEN: `.venv/bin/python -m pytest -q tests/test_audit.py tests/test_decision_logging.py` → 8 passed. Engine now carries numeric equity/price/range evidence, adaptation snapshot, policy baseline, adjustment distributions, and legal options. Server logs exact input history, identities, run/version, recommended engine size and legal table size; completed hands link only to observed decisions (including after restart). Cache lookup, adaptation, decision, and logging share one lock to prevent duplicate concurrent polling. Tests isolate logs and tracking. Files: bot/engine.py, bot/potodds.py, bot/pokernow/server.py, tests/test_audit.py. RED checkpoint: 7e98959.
-
-Step 2 full validation: `.venv/bin/python -m pytest -q` → 57 passed (outside sandbox for localhost).
-
-Step 3 RED: expanded concurrent-poll test passes; 3 new regression cases fail as expected: missing bluff-prior fingerprint, absent version/run report filters, and optional bluff prior represented by False breaking diagnostics. Fixing these before final validation. Source fingerprints include bot/, preflop/, scripts/ Python files; policy fingerprints will also include adaptation baselines/priors and equity data.
-
-Step 3 intermediate GREEN: 60 full tests passed under coverage; measured modules total 87%, new bot/audit.py 100%. The optional-prior bug is fixed; version/run filters and concurrent poll checks pass. A final additional regression is RED: preflop adaptation currently overwrites its original lookup baseline. Preserve/trace that blend before final rerun.
+No pending implementation. Next useful work: collect logs from a restarted server, then audit river calls/big pots by exact run. Existing unrelated files: output/match/equity_vs_random.json, output/match/rival_train.json, output/trap_study.log, output/trap_study/.
