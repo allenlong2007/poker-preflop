@@ -10,6 +10,7 @@ import math
 import os
 import sqlite3
 import sys
+import uuid
 from contextlib import closing
 from dataclasses import asdict, replace
 from importlib.metadata import version
@@ -57,6 +58,27 @@ def _public_focus(focus):
         if root not in roots:
             roots.append(root)
     return roots
+
+
+def _backup(connection, destination):
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(destination.name + "." + uuid.uuid4().hex + ".tmp")
+    try:
+        with closing(sqlite3.connect(temporary)) as target:
+            connection.backup(target)
+            target.execute("PRAGMA journal_mode=DELETE")
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def freeze(source, destination):
+    """Read-only online backup: observes an atomic committed batch without taking the writer lease."""
+    if Path(source).resolve() == Path(destination).resolve():
+        raise ValueError("snapshot destination must differ from candidate")
+    with closing(sqlite3.connect(Path(source).resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+        _backup(connection, destination)
 
 
 class Trainer:
@@ -202,12 +224,7 @@ class Trainer:
         destination = Path(path)
         if destination.resolve() == self.path.resolve():
             raise ValueError("checkpoint must differ from the writable candidate")
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination.with_suffix(destination.suffix + ".tmp")
-        with closing(sqlite3.connect(temporary)) as target:
-            self.db.backup(target)
-            target.execute("PRAGMA journal_mode=DELETE")
-        os.replace(temporary, destination)
+        _backup(self.db, destination)
 
 
 class ExactPolicy:

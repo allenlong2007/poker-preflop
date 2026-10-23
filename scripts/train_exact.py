@@ -22,7 +22,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from preflop.exactgame import Config, SEATS, State
-from preflop.exacttrain import Trainer, _metadata, promotion_errors
+from preflop.exacttrain import Trainer, _metadata, freeze, promotion_errors
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "output/exact/candidate.sqlite"
@@ -255,8 +255,7 @@ def main(argv=None):
         status_path = args.path.with_suffix(".status.json")
         print(status_path.read_text() if status_path.exists() else json.dumps(_read_meta(args.path), indent=2))
     elif args.command == "snapshot":
-        with Trainer(args.path) as trainer:
-            trainer.checkpoint(args.output)
+        freeze(args.path, args.output)
     elif args.command == "evaluate":
         report = evaluate(args.path, args.deals, args.seed, args.min_updates)
         _write_json(args.output, report)
