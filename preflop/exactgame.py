@@ -72,6 +72,7 @@ class State:
     history: tuple = ((), (), (), ())
     last_raise: int = 0
     folded: int | None = None
+    root_id: str = "whole_game"
 
     @classmethod
     def deal(cls, config, rng, stack_bb=None, hole=None, board=()):
@@ -98,7 +99,8 @@ class State:
 
     @property
     def board(self):
-        return self.runout[:(0, 3, 4, 5, 5)[self.street]]
+        visible = self.runout[:(0, 3, 4, 5, 5)[self.street]]
+        return tuple(sorted(visible[:3], key=DECK.index)) + visible[3:]
 
     @property
     def pot(self):
@@ -136,13 +138,19 @@ class State:
 
     def observation(self, player=None):
         player = self.actor if player is None else player
-        return {"schema": 1, "hole": sorted(self.holes[player]), "board": list(self.board),
+        return {"schema": 1, "root_id": self.root_id, "hole": sorted(self.holes[player]), "board": list(self.board),
                 "player": player, "actor": self.actor, "street": self.street, "stack": self.stack,
                 "spent": self.spent, "put": self.put, "last_raise": self.last_raise,
                 "chip_bb": self.config.chip_bb, "history": self.history}
 
     def key(self, player=None):
         return json.dumps(self.observation(player), sort_keys=True, separators=(",", ":"))
+
+    def public_root_id(self):
+        public = self.observation()
+        public.pop("hole")
+        public.pop("root_id")
+        return hashlib.sha256(json.dumps(public, sort_keys=True).encode()).hexdigest()
 
     def step(self, action, observed=False):
         if self.terminal:

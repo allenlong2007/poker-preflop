@@ -35,5 +35,6 @@ output/cbet_sizes_quick/
 output/match/cache/
 output/match_quick/
 output/pokernow/
+output/exact/
 output/match/backup_*/
 output/turn_river_check/raw/

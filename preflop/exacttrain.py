@@ -9,7 +9,10 @@ import json
 import math
 import os
 import sqlite3
-from dataclasses import asdict
+import sys
+from contextlib import closing
+from dataclasses import asdict, replace
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
@@ -36,6 +39,11 @@ def outcome_update(policy, chosen, probability, child, own, opponent, sampled):
 def _code_hash():
     paths = (Path(__file__), Path(__file__).with_name("exactgame.py"))
     return hashlib.sha256(b"".join(p.read_bytes() for p in paths)).hexdigest()
+
+
+def _runtime():
+    return {"python": sys.version, "numpy": version("numpy"), "eval7": version("eval7"),
+            "sqlite": sqlite3.sqlite_version}
 
 
 def _metadata(db):
@@ -80,6 +88,7 @@ class Trainer:
                 self._set("config", asdict(self.config))
                 self._set("config_sha256", self.config.fingerprint())
                 self._set("training_code_sha256", _code_hash())
+                self._set("runtime", _runtime())
                 self._set("focus", self.focus)
                 self._set("focus_prior", "uniform_compatible_private_combos")
                 self._set("seed", seed)
@@ -94,6 +103,8 @@ class Trainer:
                     raise ValueError("resume configuration mismatch")
                 if meta.get("training_code_sha256") != _code_hash():
                     raise ValueError("training code changed; start a new candidate rather than mixing algorithms")
+                if meta.get("runtime") != _runtime():
+                    raise ValueError("training runtime/dependency versions changed")
                 self.focus = meta["focus"]
                 if focus is not None and _public_focus(focus) != self.focus:
                     raise ValueError("resume focus dataset mismatch")
@@ -125,7 +136,8 @@ class Trainer:
     def _root(self):
         if self.focus and self.rng.random() < 0.8:
             context = self.focus[int(self.rng.integers(len(self.focus)))]
-            return from_context(self.config, context, self.rng)
+            root = from_context(self.config, context, self.rng)
+            return replace(root, root_id=root.public_root_id())
         return State.deal(self.config, self.rng)
 
     def _walk(self, state, updater, own=1.0, opponent=1.0, sampled=1.0):
@@ -192,7 +204,7 @@ class Trainer:
             raise ValueError("checkpoint must differ from the writable candidate")
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_suffix(destination.suffix + ".tmp")
-        with sqlite3.connect(temporary) as target:
+        with closing(sqlite3.connect(temporary)) as target:
             self.db.backup(target)
             target.execute("PRAGMA journal_mode=DELETE")
         os.replace(temporary, destination)
@@ -212,6 +224,8 @@ class ExactPolicy:
                 raise ValueError("incompatible exact policy schema")
             self.config = Config(**self.meta["config"])
             self.minimum, self.candidate = min_updates, candidate
+            self.focus_states = [from_context(self.config, root, np.random.default_rng(0))
+                                 for root in self.meta.get("focus", [])] if candidate else []
         except BaseException:
             self.db.close()
             raise
@@ -233,9 +247,24 @@ class ExactPolicy:
             state = from_context(self.config, context, np.random.default_rng(0), known_hole=True)
         except (ValueError, KeyError, TypeError) as error:
             return {**info, "status": "unsupported", "reason": str(error)}
-        row = self.db.execute("SELECT actions,total,visits,updates FROM nodes WHERE key=?", (state.key(),)).fetchone()
-        if not row:
-            return {**info, "status": "unseen"}
+        keys = []
+        # Uniform-prior focus subgames are separate games and candidate-only, never automatic live overrides.
+        for root in self.focus_states:
+            if root.stack == state.stack and root.street <= state.street and state.board[:len(root.board)] == root.board \
+                    and all(h == actual[:len(h)] for h, actual in zip(root.history, state.history)):
+                keys.append((replace(state, root_id=root.public_root_id()).key(), root.public_root_id()))
+        keys.append((state.key(), "whole_game"))
+        row, undertrained = None, None
+        for key, namespace in keys:
+            found = self.db.execute("SELECT actions,total,visits,updates FROM nodes WHERE key=?", (key,)).fetchone()
+            if found:
+                undertrained = found
+                if found[3] >= self.minimum:
+                    row = found
+                    info["root_id"] = namespace
+                    break
+        if row is None:
+            return {**info, "status": "insufficient" if undertrained else "unseen"}
         actions, sums = tuple(json.loads(row[0])), np.array(json.loads(row[1]))
         info.update({"visits": row[2], "updates": row[3]})
         if actions != state.actions() or not np.isfinite(sums).all() or (sums < 0).any():
@@ -260,4 +289,8 @@ def promotion_errors(report):
         errors.append("95% lower bound must exceed -5 bb/100 against baseline")
     if report["illegal"] != 0:
         errors.append("illegal actions observed")
+    if report.get("focus_used", 0):
+        errors.append("uniform-prior focus policies are shadow-only; posterior validation required")
+    if report.get("min_updates", 1000) < 1000:
+        errors.append("promotion requires at least 1000 updates per served state")
     return errors
