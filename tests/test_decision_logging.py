@@ -44,3 +44,13 @@ def test_preflop_reraise_logs_range_price_and_realization():
     assert evidence["realization"] == 0.55
     assert evidence["price"] == pytest.approx(6 / 30)
     assert any(x["stage"] == "reraise_war" for x in d.diagnostics["adjustments"])
+
+
+def test_logging_works_without_an_optional_bluff_prior(monkeypatch):
+    from bot import bluffmodel
+
+    monkeypatch.setattr(bluffmodel, "prior", lambda: None)
+    eng = Engine(pot_odds=True, seed=1)
+    history = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "bet", 1)]]
+    d = eng.decide("btn", "AsKd", "Kh8d3c", history)
+    assert d.diagnostics["adaptation"]["bluff_model"] is None

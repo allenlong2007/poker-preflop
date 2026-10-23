@@ -24,3 +24,7 @@ Step 1 GREEN: `.venv/bin/python -m pytest -q tests/test_audit.py -k 'not server'
 Step 2 RED: server integration test fails on missing `hand_id`; all 3 `tests/test_decision_logging.py` cases fail on missing `Decision.diagnostics`. These cover reusing computed equity (no extra Monte Carlo pass), short-stack evidence, preflop re-raise evidence, and JSON serialization.
 
 Step 2 GREEN: `.venv/bin/python -m pytest -q tests/test_audit.py tests/test_decision_logging.py` → 8 passed. Engine now carries numeric equity/price/range evidence, adaptation snapshot, policy baseline, adjustment distributions, and legal options. Server logs exact input history, identities, run/version, recommended engine size and legal table size; completed hands link only to observed decisions (including after restart). Cache lookup, adaptation, decision, and logging share one lock to prevent duplicate concurrent polling. Tests isolate logs and tracking. Files: bot/engine.py, bot/potodds.py, bot/pokernow/server.py, tests/test_audit.py. RED checkpoint: 7e98959.
+
+Step 2 full validation: `.venv/bin/python -m pytest -q` → 57 passed (outside sandbox for localhost).
+
+Step 3 RED: expanded concurrent-poll test passes; 3 new regression cases fail as expected: missing bluff-prior fingerprint, absent version/run report filters, and optional bluff prior represented by False breaking diagnostics. Fixing these before final validation. Source fingerprints include bot/, preflop/, scripts/ Python files; policy fingerprints will also include adaptation baselines/priors and equity data.

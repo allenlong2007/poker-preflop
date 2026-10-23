@@ -1,5 +1,6 @@
 """Durable decision provenance, including restart and old-history attribution."""
 import json
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -96,7 +97,10 @@ def test_server_persists_context_and_links_only_observed_hands(tmp_path, monkeyp
     monkeypatch.setattr(server, "_track", lambda *args: None)
     monkeypatch.setattr(server.ADAPT, "apply", lambda *args: None)
     payload = {"log": json.dumps(msgs[:end + 1]), "seat": 3}
-    first = server.decide(payload)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        responses = list(pool.map(server.decide, [payload] * 4))
+    first = responses[0]
+    assert all(response == first for response in responses)
     assert first == server.decide(payload)
     rows = [json.loads(line) for line in (tmp_path / "decisions.jsonl").read_text().splitlines()]
     assert len(rows) == 1
@@ -119,3 +123,29 @@ def test_server_persists_context_and_links_only_observed_hands(tmp_path, monkeyp
     assert stored[0]["bot_version"] is None
     assert stored[1]["bot_version"] == 6
     assert stored[1]["audit"]["decision_ids"] == [row["decision"]["id"]]
+
+
+def test_bluff_prior_is_part_of_the_model_fingerprint(tmp_path, audit_engine):
+    root, engine = audit_engine
+    prior = root / "output" / "match" / "bluff_prior.json"
+    prior.write_text('{"w": [0]}')
+    first = AuditLog(tmp_path / "logs", engine, root=root)
+    prior.write_text('{"w": [1]}')
+    second = AuditLog(tmp_path / "logs", engine, root=root)
+    assert first.run["policy_sha256"] != second.run["policy_sha256"]
+
+
+def test_live_review_filters_versions_and_keeps_legacy_unknown(capsys, monkeypatch):
+    from scripts import live_review
+
+    monkeypatch.setattr(live_review, "load", lambda: [
+        {"net": {"hero": -12}},
+        {"bot_version": 6, "audit": {"run_ids": ["run1"]}, "net": {"hero": 3}},
+        {"bot_version": 6, "audit": {"run_ids": ["run2"]}, "net": {"hero": -1}},
+    ])
+    live_review.main(["--versions-only"])
+    output = capsys.readouterr().out
+    assert "unknown" in output and "-12.0" in output and "v6" in output
+    live_review.main(["--version", "6", "--run", "run1", "--versions-only"])
+    output = capsys.readouterr().out
+    assert "unknown" not in output and "+3.0" in output
