@@ -60,6 +60,7 @@ def record(msgs, hero_name=HERO, hero_pid=None):
             shown["hero" if sm.group("pid") == hero.pid else "opp"] = "".join(cards(sm.group("cards")))
     hid = RE_ID.search(msgs[0])
     return {"id": hid.group("id") if hid else str(h.number), "number": h.number,
+            "hero_id": hero.pid, "hero_name": hero.name, "bot_version": None,
             "opp_name": opp.name, "opp_id": opp.pid, "hero_pos": h.position(hero), "opp_pos": h.position(opp),
             "bb": h.bb, "stacks": {"hero": round(hero.start / h.bb, 2), "opp": round(opp.start / h.bb, 2)},
             "history": [[[a.player, a.kind, a.to] for a in street] for street in h.history],

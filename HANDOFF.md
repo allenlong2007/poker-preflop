@@ -1,6 +1,6 @@
 # Decision/version logging — current handoff
 
-Status: regression tests written; RED confirmed (2026-10-23). No strategy changes intended.
+Status: step 1 GREEN; step 2 in progress (2026-10-23). No strategy changes intended.
 
 Goal: attribute new decisions and completed hands to an exact server run/build; preserve structured decision evidence for later river/big-pot reviews.
 
@@ -16,3 +16,7 @@ Existing unrelated untracked files: output/match/equity_vs_random.json, output/m
 Baseline: 49 tests pass (localhost test needs socket access outside sandbox). No CLAUDE.md or AGENTS.md existed in this repository.
 
 Step 1 RED: `tests/test_audit.py` specifies run/build fingerprints, single run manifest, restart recovery, unknown historical attribution, cached-decision deduplication, and hand links. `.venv/bin/python -m pytest -q tests/test_audit.py` fails because `bot.audit` does not exist yet (the intended missing API). CLAUDE.md now points here.
+
+Step 1 implementation: `bot/audit.py` adds run manifests, source/policy SHA-256 fingerprints, per-hand decision links recovered after restart, and tolerant recovery of legacy/truncated JSONL. `bot/opponent.py` records hero identity and explicitly unknown version on raw hand imports. Server integration/diagnostics follow in step 2. RED checkpoint: 2afe595.
+
+Step 1 GREEN: `.venv/bin/python -m pytest -q tests/test_audit.py -k 'not server'` → 4 passed. Full server integration test is intentionally pending step 2.
