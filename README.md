@@ -8,6 +8,8 @@ should it open to, and what should the Big Blind 3-bet?**
 
 Decision/version audit logs and version-filtered live review: [logging reference](docs/decision-logging.md).
 Current cross-agent implementation status: [HANDOFF.md](HANDOFF.md).
+Exact-card CPU training, chip-level sizing, evaluation/promotion, and revealed-hand evidence:
+[exact training guide](docs/exact-card-training.md).
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt

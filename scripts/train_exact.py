@@ -21,7 +21,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from preflop.exactgame import Config, SEATS, State
-from preflop.exacttrain import Trainer, _metadata, _runtime, file_hash, freeze, frozen_artifact, promotion_errors
+from preflop.exacttrain import (Trainer, _metadata, _runtime, artifact_destination, file_hash,
+                               freeze, frozen_artifact, promotion_errors)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "output/exact/candidate.sqlite"
@@ -226,16 +227,14 @@ def _promote_frozen(args, fingerprint):
     if report.get("evaluation_source_sha256") != provenance["source_sha256"] or \
             report.get("baseline_policy_sha256") != provenance["policy_sha256"] or report.get("runtime") != _runtime():
         raise ValueError("promotion provenance changed; rerun frozen evaluation")
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = args.output.with_suffix(".tmp")
-    shutil.copyfile(args.path, temporary)
-    if file_hash(temporary) != fingerprint:
-        temporary.unlink(missing_ok=True)
-        raise ValueError("promotion source changed while copying")
-    with closing(sqlite3.connect(temporary)) as db:
-        db.execute("INSERT OR REPLACE INTO metadata VALUES (?,?)", ("promotion", json.dumps(report)))
-        db.commit()
-    os.replace(temporary, args.output)
+    with artifact_destination(args.output) as temporary:
+        shutil.copyfile(args.path, temporary)
+        if file_hash(temporary) != fingerprint:
+            raise ValueError("promotion source changed while copying")
+        with closing(sqlite3.connect(temporary)) as db:
+            db.execute("INSERT OR REPLACE INTO metadata VALUES (?,?)", ("promotion", json.dumps(report)))
+            db.commit()
+        os.replace(temporary, args.output)
     print(f"Promoted {args.output}; restart the server to load it.")
 
 

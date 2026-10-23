@@ -60,19 +60,25 @@ def _public_focus(focus):
     return roots
 
 
-def _backup(connection, destination):
+@contextmanager
+def artifact_destination(destination):
     destination = Path(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + "." + uuid.uuid4().hex + ".tmp")
     try:
         with destination.with_suffix(destination.suffix + ".lock").open("a") as lease:
             fcntl.flock(lease.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with closing(sqlite3.connect(temporary)) as target:
-                connection.backup(target)
-                target.execute("PRAGMA journal_mode=DELETE")
-            os.replace(temporary, destination)
+            yield temporary
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _backup(connection, destination):
+    with artifact_destination(destination) as temporary:
+        with closing(sqlite3.connect(temporary)) as target:
+            connection.backup(target)
+            target.execute("PRAGMA journal_mode=DELETE")
+        os.replace(temporary, destination)
 
 
 def freeze(source, destination):
