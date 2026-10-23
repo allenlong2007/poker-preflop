@@ -63,6 +63,8 @@ def test_focus_roots_ignore_private_labels_and_reject_changed_dataset(tmp_path):
     with Trainer(tmp_path / "b.sqlite", cfg, seed=7, focus=[{**public, "hero_hole": "2s2d"}]) as b:
         b.train(10)
     assert rows(tmp_path / "a.sqlite") == rows(tmp_path / "b.sqlite")
+    assert any(json.loads(row[0]).get("root_id", "whole_game") != "whole_game"
+               for row in rows(tmp_path / "a.sqlite"))
     with pytest.raises(ValueError, match="focus"):
         Trainer(tmp_path / "a.sqlite", focus=[{**public, "board": "Ks8d3c"}])
 
