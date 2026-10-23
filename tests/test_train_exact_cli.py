@@ -4,6 +4,8 @@ import json
 import pytest
 
 from scripts.train_exact import main
+from preflop.exactgame import Config
+from preflop.exacttrain import Trainer
 
 
 def test_training_status_snapshot_and_rejected_promotion(tmp_path, capsys):
@@ -28,3 +30,13 @@ def test_training_status_snapshot_and_rejected_promotion(tmp_path, capsys):
 def test_training_requires_a_finite_budget(tmp_path):
     with pytest.raises(ValueError, match="budget"):
         main(["train", "--path", str(tmp_path / "never_created.sqlite")])
+
+
+def test_snapshot_reads_a_consistent_checkpoint_while_writer_is_open(tmp_path):
+    path, output = tmp_path / "writer.sqlite", tmp_path / "snapshot.sqlite"
+    with Trainer(path, Config(chip_bb=0.5, stacks_bb=(3,))) as trainer:
+        trainer.train(3)
+        main(["snapshot", "--path", str(path), "--output", str(output)])
+        trainer.train(2)
+    with Trainer(output) as snapshot:
+        assert snapshot.status()["iterations"] == 3
