@@ -69,6 +69,11 @@ def test_promotion_binds_provenance_and_copies_only_matching_snapshot(tmp_path):
     assert not active.exists()
     report["evaluation_source_sha256"] = correct_source
     report_path.write_text(json.dumps(report))
+    with Trainer(active, Config(chip_bb=0.5, stacks_bb=(3,))) as writer:
+        writer.train(1)
+        with pytest.raises(BlockingIOError):
+            main(command)
+        assert writer.status()["iterations"] == 1
     main(command)
     with ExactPolicy(active) as policy:
         assert policy.minimum == 5000
