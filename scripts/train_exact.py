@@ -4,7 +4,6 @@ Examples: train --hours 8; status; snapshot --output output/exact/frozen.sqlite;
 evaluate --path output/exact/frozen.sqlite --output output/exact/evaluation.json.
 """
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -22,7 +21,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from preflop.exactgame import Config, SEATS, State
-from preflop.exacttrain import Trainer, _metadata, freeze, promotion_errors
+from preflop.exacttrain import Trainer, _metadata, _runtime, file_hash, freeze, frozen_artifact, promotion_errors
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "output/exact/candidate.sqlite"
@@ -114,11 +113,17 @@ def _train(args):
                         print(json.dumps(state), flush=True)
                         last_print = time.monotonic()
                     if args.snapshot_every > 0 and time.monotonic() - last_snapshot >= args.snapshot_every:
-                        trainer.checkpoint(args.path.with_name("latest.sqlite"))
+                        try:
+                            trainer.checkpoint(args.path.with_name("latest.sqlite"))
+                        except BlockingIOError:
+                            state["snapshot_note"] = "latest snapshot leased by an evaluator; skipped"
                         last_snapshot = time.monotonic()
                 if stop:
                     reason = "signal_stopped"
-                trainer.checkpoint(args.path.with_name("latest.sqlite"))
+                try:
+                    trainer.checkpoint(args.path.with_name("latest.sqlite"))
+                except BlockingIOError:
+                    state["snapshot_note"] = "latest snapshot leased; candidate remains committed"
             except BaseException as error:
                 state.update(state="failed", error=f"{type(error).__name__}: {error}", **trainer.status())
                 _write_json(status_path, state)
@@ -158,6 +163,11 @@ def _play(state, engines, candidate):
 
 
 def evaluate(path, deals, seed, minimum):
+    with frozen_artifact(path) as fingerprint:
+        return _evaluate_frozen(path, deals, seed, minimum, fingerprint)
+
+
+def _evaluate_frozen(path, deals, seed, minimum, fingerprint):
     from bot.audit import AuditLog
     from bot.engine import Engine
     if deals < 2 or minimum < 1:
@@ -184,7 +194,7 @@ def evaluate(path, deals, seed, minimum):
         if candidate.exact_policy is not None:
             candidate.exact_policy.close()
     values = np.asarray(results)
-    report = {"evaluation_schema": 1, "candidate_sha256": hashlib.sha256(Path(path).read_bytes()).hexdigest(),
+    report = {"evaluation_schema": 1, "candidate_sha256": fingerprint, "runtime": _runtime(),
               "config_sha256": meta["config_sha256"], "iterations": meta["iterations"],
               "baseline_policy_sha256": provenance["policy_sha256"],
               "evaluation_source_sha256": provenance["source_sha256"], "seed": seed, "deals": deals,
@@ -197,18 +207,31 @@ def evaluate(path, deals, seed, minimum):
 
 
 def _promote(args):
+    with frozen_artifact(args.path) as fingerprint:
+        _promote_frozen(args, fingerprint)
+
+
+def _promote_frozen(args, fingerprint):
+    from bot.audit import AuditLog
+    from bot.engine import Engine
     report = json.loads(args.report.read_text())
     if args.path.resolve() == args.output.resolve():
         raise ValueError("promotion destination must differ from evaluation artifact")
-    fingerprint = hashlib.sha256(args.path.read_bytes()).hexdigest()
     if report.get("candidate_sha256") != fingerprint or report.get("evaluation_schema") != 1:
         raise ValueError("promotion report does not match the frozen artifact")
     errors = promotion_errors(report)
     if errors:
         raise ValueError("promotion rejected: " + "; ".join(errors))
+    provenance = AuditLog(args.path.parent / "_promotion_provenance", Engine(exact_policy_path=False)).run
+    if report.get("evaluation_source_sha256") != provenance["source_sha256"] or \
+            report.get("baseline_policy_sha256") != provenance["policy_sha256"] or report.get("runtime") != _runtime():
+        raise ValueError("promotion provenance changed; rerun frozen evaluation")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     temporary = args.output.with_suffix(".tmp")
     shutil.copyfile(args.path, temporary)
+    if file_hash(temporary) != fingerprint:
+        temporary.unlink(missing_ok=True)
+        raise ValueError("promotion source changed while copying")
     with closing(sqlite3.connect(temporary)) as db:
         db.execute("INSERT OR REPLACE INTO metadata VALUES (?,?)", ("promotion", json.dumps(report)))
         db.commit()

@@ -11,7 +11,7 @@ import os
 import sqlite3
 import sys
 import uuid
-from contextlib import closing
+from contextlib import closing, contextmanager
 from dataclasses import asdict, replace
 from importlib.metadata import version
 from pathlib import Path
@@ -65,10 +65,12 @@ def _backup(connection, destination):
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary = destination.with_name(destination.name + "." + uuid.uuid4().hex + ".tmp")
     try:
-        with closing(sqlite3.connect(temporary)) as target:
-            connection.backup(target)
-            target.execute("PRAGMA journal_mode=DELETE")
-        os.replace(temporary, destination)
+        with destination.with_suffix(destination.suffix + ".lock").open("a") as lease:
+            fcntl.flock(lease.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            with closing(sqlite3.connect(temporary)) as target:
+                connection.backup(target)
+                target.execute("PRAGMA journal_mode=DELETE")
+            os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -79,6 +81,32 @@ def freeze(source, destination):
         raise ValueError("snapshot destination must differ from candidate")
     with closing(sqlite3.connect(Path(source).resolve().as_uri() + "?mode=ro", uri=True)) as connection:
         _backup(connection, destination)
+
+
+def file_hash(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+@contextmanager
+def frozen_artifact(path):
+    """Hold a shared lease for the entire evaluation/promotion of a standalone snapshot."""
+    path = Path(path)
+    with path.with_suffix(path.suffix + ".lock").open("a") as lease:
+        try:
+            fcntl.flock(lease.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise ValueError("evaluation requires a frozen snapshot, not an active writer") from error
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+            if db.execute("PRAGMA journal_mode").fetchone()[0].lower() != "delete":
+                raise ValueError("evaluation requires a frozen standalone snapshot (use snapshot command)")
+        before = file_hash(path)
+        yield before
+        if file_hash(path) != before:
+            raise ValueError("frozen artifact changed during evaluation/promotion")
 
 
 class Trainer:
@@ -115,6 +143,7 @@ class Trainer:
                 self._set("focus_prior", "uniform_compatible_private_combos")
                 self._set("seed", seed)
                 self._set("iterations", 0)
+                self._set("aggregates", {"infosets": 0, "updates": 0, "streets": {}})
                 self._set("rng", self.rng.bit_generator.state)
                 self.db.commit()
             else:
@@ -134,6 +163,7 @@ class Trainer:
                     raise ValueError("cannot train a promoted serving artifact")
                 self.rng = np.random.default_rng()
                 self.rng.bit_generator.state = meta["rng"]
+            self.aggregates = _metadata(self.db)["aggregates"]
         except BaseException:
             self.close()
             raise
@@ -191,12 +221,20 @@ class Trainer:
         self.db.execute("INSERT OR REPLACE INTO nodes VALUES (?,?,?,?,?,?,?)",
                         (key, json.dumps(actions), json.dumps(regrets.tolist(), allow_nan=False),
                          json.dumps(total.tolist(), allow_nan=False), visits + 1, updates, state.street))
+        group = self.aggregates["streets"].setdefault(str(state.street), {"infosets": 0, "updates": 0})
+        if row is None:
+            self.aggregates["infosets"] += 1
+            group["infosets"] += 1
+        if updating:
+            self.aggregates["updates"] += 1
+            group["updates"] += 1
         return value
 
     def train(self, iterations):
         if iterations <= 0:
             raise ValueError("positive iteration count required")
         original = json.dumps(self.rng.bit_generator.state)
+        original_counts = json.dumps(self.aggregates)
         try:
             self.db.execute("BEGIN IMMEDIATE")
             for _ in range(iterations):
@@ -205,19 +243,18 @@ class Trainer:
             completed = _metadata(self.db)["iterations"] + iterations
             self._set("iterations", completed)
             self._set("rng", self.rng.bit_generator.state)
+            self._set("aggregates", self.aggregates)
             self.db.commit()
         except BaseException:
             self.db.rollback()
             self.rng.bit_generator.state = json.loads(original)
+            self.aggregates = json.loads(original_counts)
             raise
 
     def status(self):
         meta = _metadata(self.db)
-        count, updates = self.db.execute("SELECT count(*),coalesce(sum(updates),0) FROM nodes").fetchone()
-        streets = {str(s): {"infosets": n, "updates": u}
-                   for s, n, u in self.db.execute("SELECT street,count(*),sum(updates) FROM nodes GROUP BY street")}
-        return {"iterations": meta["iterations"], "infosets": count, "updates": updates,
-                "streets": streets, "config_sha256": meta["config_sha256"], "focus_roots": len(self.focus)}
+        return {"iterations": meta["iterations"], **meta["aggregates"],
+                "config_sha256": meta["config_sha256"], "focus_roots": len(self.focus)}
 
     def checkpoint(self, path):
         """SQLite backup produces a self-contained immutable evaluation snapshot (includes WAL)."""
@@ -253,6 +290,8 @@ class ExactPolicy:
             except (KeyError, TypeError) as error:
                 raise ValueError("invalid exact policy metadata") from error
             self.minimum, self.candidate = min_updates, candidate
+            if promotion and not candidate:
+                self.minimum = max(min_updates, promotion.get("min_updates", 1000))
             self.focus_states = [from_context(self.config, root, np.random.default_rng(0))
                                  for root in self.meta.get("focus", [])] if candidate else []
         except BaseException:

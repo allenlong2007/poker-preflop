@@ -32,6 +32,7 @@ def test_resume_is_identical_to_uninterrupted_training(tmp_path):
         resumed.train(12)
         assert resumed.status()["iterations"] == 20
         assert resumed.status()["infosets"] > 0
+        assert resumed.status()["infosets"] == resumed.db.execute("SELECT count(*) FROM nodes").fetchone()[0]
     assert rows(a) == rows(b)
     with pytest.raises(ValueError, match="configuration"):
         Trainer(b, Config(chip_bb=0.5, stacks_bb=(4,)))
@@ -112,3 +113,14 @@ def test_promoted_reader_honors_the_evaluated_visit_threshold(tmp_path):
         db.execute("INSERT INTO metadata VALUES ('promotion',?)", (json.dumps(report),))
     with ExactPolicy(frozen, min_updates=1000) as policy:
         assert policy.minimum == 5000
+
+
+def test_resume_rejects_changed_dependency_runtime(tmp_path, monkeypatch):
+    import preflop.exacttrain as training
+
+    path = tmp_path / "runtime.sqlite"
+    with Trainer(path, Config(chip_bb=0.5, stacks_bb=(3,))):
+        pass
+    monkeypatch.setattr(training, "_runtime", lambda: {"python": "different"})
+    with pytest.raises(ValueError, match="runtime"):
+        Trainer(path)
