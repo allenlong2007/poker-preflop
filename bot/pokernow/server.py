@@ -27,8 +27,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from bot.adapt import Adapter
+from bot.audit import AuditLog
 from bot.engine import Engine
-from bot.opponent import load, profile, read_style, record, results, split_hands, store
+from bot.opponent import RE_ID, load, profile, read_style, record, results, split_hands, store
 from bot.pokernow.parse import describe, parse_hand, read_log
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -39,6 +40,19 @@ ADAPT = Adapter(ENGINE)            # experiment 37: re-fits the bot to the oppon
 DECIDE_LOCK = threading.Lock()
 SEEN_HANDS = set()                 # hand ids already stored this run
 CACHE = {}                         # (hand, hash of its log, actions so far) -> decision, so polling doesn't resample
+AUDIT = None
+AUDIT_LOCK = threading.Lock()
+
+
+def _audit_log():
+    """Lazy startup also lets tests redirect all session files into their temporary directory."""
+    global AUDIT
+    with AUDIT_LOCK:
+        if AUDIT is None or AUDIT.directory != LOG_DIR:
+            AUDIT = AuditLog(LOG_DIR, ENGINE)
+        return AUDIT
+
+
 # Only the PokerNow tab may use the server: every request must come from an allowed origin and carry this
 # per-run token (it is written into client.js when the page loads it). Other sites open in the same browser
 # can reach 127.0.0.1 too, and must not be able to feed logs in or read decisions out.
@@ -138,36 +152,47 @@ def decide(payload):
     # Identify the decision point by what happened in the hand (its id line, the actions and cards), not by
     # the raw log text: chat or join lines must never make the same decision look new (a double action).
     start = max(k for k, m in enumerate(msgs) if m.startswith("-- starting hand"))
-    point = repr((msgs[start], [[(a.player, a.kind, a.to) for a in st] for st in h.history], h.board, h.hole,
+    point = repr((msgs[start], h.hero().pid, [[(a.player, a.kind, a.to) for a in st] for st in h.history], h.board, h.hole,
                   h.bb, h.sb, h.street, h.street_high, h.street_inc,
                   sorted((x.seat, x.start, round(x.put_in, 2), round(x.street_bet, 2), x.folded, x.all_in)
                          for x in h.seats.values())))
     digest = hashlib.sha256(point.encode()).hexdigest()[:16]
     key = (h.number, digest, h.hole[0] + h.hole[1], sum(len(x) for x in h.history), len(h.board))
-    if key not in CACHE:
-        t0 = time.perf_counter()
-        hero = h.hero()
-        opp = next((x for x in h.seats.values() if x is not hero), None)
-        with DECIDE_LOCK:                                   # several tables: one opponent's state at a time
+    with DECIDE_LOCK:                                       # cache check and evidence share the opponent's lock
+        if key not in CACHE:
+            t0 = time.perf_counter()
+            hero = h.hero()
+            opp = next((x for x in h.seats.values() if x is not hero), None)
+            audit = _audit_log()
             ADAPT.apply(opp.pid if opp else None)
             d = ENGINE.decide(h.position(hero), "".join(h.hole), "".join(h.board), h.history, stack=h.effective_bb())
-        to_chips, all_in = round(d.to * h.bb, 2), False
-        if d.action in ("bet", "raise"):
-            # PokerNow's rules: at least a min-raise, at most the stack; a size at the stack is an all-in.
-            lo, hi = h.legal_to(hero)
-            to_chips = max(to_chips, lo)
-            if to_chips >= hi - 0.005:
-                to_chips, all_in = hi, True
-        elif d.action == "call":
-            all_in = (table.get("to_call") or 0) >= h.stack_now(hero) - 0.005
-        CACHE[key] = {"action": d.action, "to_chips": to_chips, "to_bb": round(to_chips / h.bb, 2), "all_in": all_in,
-                      "label": d.label, "probs": {k: round(v, 4) for k, v in sorted(d.probs.items(), key=lambda kv: -kv[1])},
-                      "node": d.node, "source": d.source, "notes": d.notes, "id": "-".join(map(str, key)),
-                      "ms": round((time.perf_counter() - t0) * 1000, 1)}
-        STATS["decisions"] += 1
-        LOG_DIR.mkdir(parents=True, exist_ok=True)
-        with open(LOG_DIR / "decisions.jsonl", "a") as f:
-            f.write(json.dumps({"t": time.time(), "table": table, "decision": CACHE[key]}) + "\n")
+            to_chips, all_in = round(d.to * h.bb, 2), False
+            if d.action in ("bet", "raise"):
+                # PokerNow's rules: at least a min-raise, at most the stack; a size at the stack is an all-in.
+                lo, hi = h.legal_to(hero)
+                to_chips = max(to_chips, lo)
+                if to_chips >= hi - 0.005:
+                    to_chips, all_in = hi, True
+            elif d.action == "call":
+                all_in = (table.get("to_call") or 0) >= h.stack_now(hero) - 0.005
+            decision = {
+                "action": d.action, "to_chips": to_chips, "to_bb": round(to_chips / h.bb, 2), "all_in": all_in,
+                "label": d.label, "probs": {k: round(v, 4) for k, v in sorted(d.probs.items(), key=lambda kv: -kv[1])},
+                "node": d.node, "source": d.source, "notes": d.notes,
+                "id": f"{h.number}-{audit.run['run_id'][:12]}-{digest}",
+                "run_id": audit.run["run_id"], "bot_version": audit.run["bot_version"],
+                "diagnostics": d.diagnostics,
+                "engine_action": {"action": d.action, "to_bb": d.to},
+                "ms": round((time.perf_counter() - t0) * 1000, 1),
+            }
+            hid = RE_ID.search(msgs[start])
+            audit.write_decision({"t": time.time(), "hand_id": hid.group("id") if hid else str(h.number),
+                                  "hero_id": hero.pid, "opponent_id": opp.pid if opp else None,
+                                  "table": table, "context": {**d.diagnostics["context"],
+                                                              "adaptation": d.diagnostics["adaptation"]},
+                                  "decision": decision})
+            CACHE[key] = decision
+            STATS["decisions"] += 1
     return {"table": table, "decision": CACHE[key], "wait": None}
 
 
@@ -205,6 +230,11 @@ def _track_locked(msgs, h):
                                         "error": STATS["track_error"]}) + "\n")
                 continue
             SEEN_HANDS.add(hid)                              # only once it has been parsed
+            if rec:
+                metadata = _audit_log().hand_metadata(rec["id"], rec["hero_id"])
+                if metadata:
+                    rec["audit"] = metadata
+                    rec["bot_version"] = metadata["bot_version"]
             if rec and store([rec]):
                 STATS["stored"] = STATS.get("stored", 0) + 1
             if rec:

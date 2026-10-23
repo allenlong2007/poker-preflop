@@ -1,6 +1,6 @@
 # Decision/version logging — current handoff
 
-Status: step 1 GREEN; step 2 in progress (2026-10-23). No strategy changes intended.
+Status: steps 1–2 GREEN; final verification/docs in progress (2026-10-23). No strategy changes intended.
 
 Goal: attribute new decisions and completed hands to an exact server run/build; preserve structured decision evidence for later river/big-pot reviews.
 
@@ -22,3 +22,5 @@ Step 1 implementation: `bot/audit.py` adds run manifests, source/policy SHA-256 
 Step 1 GREEN: `.venv/bin/python -m pytest -q tests/test_audit.py -k 'not server'` → 4 passed. Full server integration test is intentionally pending step 2.
 
 Step 2 RED: server integration test fails on missing `hand_id`; all 3 `tests/test_decision_logging.py` cases fail on missing `Decision.diagnostics`. These cover reusing computed equity (no extra Monte Carlo pass), short-stack evidence, preflop re-raise evidence, and JSON serialization.
+
+Step 2 GREEN: `.venv/bin/python -m pytest -q tests/test_audit.py tests/test_decision_logging.py` → 8 passed. Engine now carries numeric equity/price/range evidence, adaptation snapshot, policy baseline, adjustment distributions, and legal options. Server logs exact input history, identities, run/version, recommended engine size and legal table size; completed hands link only to observed decisions (including after restart). Cache lookup, adaptation, decision, and logging share one lock to prevent duplicate concurrent polling. Tests isolate logs and tracking. Files: bot/engine.py, bot/potodds.py, bot/pokernow/server.py, tests/test_audit.py. RED checkpoint: 7e98959.

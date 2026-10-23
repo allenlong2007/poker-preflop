@@ -92,6 +92,7 @@ class Decision:
     label: str = ""                        # the chosen option's label in `probs`
     notes: list = field(default_factory=list)
     shove_read: bool = False               # experiment 46: decided by this opponent's observed shoves
+    diagnostics: dict = field(default_factory=dict)
 
 
 # ----------------------------------------------------------------------------- cards
@@ -254,23 +255,42 @@ class Engine:
         st = State([[a if isinstance(a, Act) else Act(*a) for a in h] for h in history], stack=stack)
         if st.street == 0:
             d = self._preflop(hero, hole, st)
-            d = self._vs_shove(d, hero, hole, st)
-            d = self._small_raise(d, hero, hole, st)
-            d = self._vs_reraise_war(d, hero, hole, st)
+            d.diagnostics["base"] = {"source": d.source, "node": d.node, "probs": dict(d.probs)}
+            d = _adjust(d, "vs_shove", self._vs_shove, hero, hole, st)
+            d = _adjust(d, "small_raise", self._small_raise, hero, hole, st)
+            d = _adjust(d, "reraise_war", self._vs_reraise_war, hero, hole, st)
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
-            d = self._monster(d, hero, hole, board[:2 + st.street], st)
-            d = self._trap(d, hero, hole, board[:2 + st.street], st)
+            d.diagnostics.setdefault("base", {"source": d.source, "node": d.node, "probs": dict(d.probs)})
+            d = _adjust(d, "monster", self._monster, hero, hole, board[:2 + st.street], st)
+            d = _adjust(d, "trap", self._trap, hero, hole, board[:2 + st.street], st)
             if self.river_jam:
-                d = self._river_jam(d, hero, hole, board[:2 + st.street], st)
+                d = _adjust(d, "river_jam", self._river_jam, hero, hole, board[:2 + st.street], st)
             if self._short(st, hero):
-                d = self._short_stack(d, hero, hole, board[:2 + st.street], st)
+                d = _adjust(d, "short_stack", self._short_stack, hero, hole, board[:2 + st.street], st)
             elif self.pot_odds and st.facing(hero) > EPS:
                 if "fold" in self._options and "call" in self._options:
+                    before = dict(d.probs)
                     probs = {k: d.probs.get(k, 0.0) for k in set(d.probs) | {"fold", "call"}}
+                    evidence = {}
                     d.probs = _normalise(potodds.check(probs, hole, board[:2 + st.street], st, hero, self.pre,
                                                        self.opp_profile, self.exploit["defend"], d.notes,
-                                                       self.size_value, self._bluffs(), self.strict))
+                                                       self.size_value, self._bluffs(), self.strict,
+                                                       diagnostics=evidence))
+                    d.diagnostics["pot_odds"] = evidence
+                    _trace(d.diagnostics, "pot_odds", before, d.probs)
+        d.diagnostics.update({
+            "context": {"hero_position": hero, "hero_hole": "".join(map(card_str, hole)),
+                        "board": "".join(map(card_str, board[:2 + st.street])) if st.street else "",
+                        "history": [[[a.player, a.kind, a.to] for a in street] for street in st.history],
+                        "effective_stack_bb": st.stack, "pot_bb": st.pot(), "to_call_bb": st.facing(hero)},
+            "adaptation": {"strictness": self.strict, "preflop_weight": self.lam,
+                           "bluff_scale": self.exploit["bluff"], "defend_scale": self.exploit["defend"],
+                           "opponent_hands": (self.opp_profile or {}).get("hands", 0),
+                           "bluff_model": self.bluff_model.w.tolist() if self.bluff_model is not None else None},
+            "legal_options": {k: {"action": a, "to_bb": to} for k, (a, to) in self._options.items()},
+        })
+        d.diagnostics.setdefault("adjustments", [])
         if sample:
             labels = list(d.probs)
             p = np.array([d.probs[k] for k in labels], dtype=float)
@@ -459,6 +479,8 @@ class Engine:
         source, node = "model", f"{fg.STREETS[s]} {kind}"
         probs = None
         notes = []
+        diagnostics = {"lookup": {"pot_type": pot, "texture": tex, "line": line,
+                                   "bucket": int(bkt), "untrained_fallback": False}}
         if weights[0][0] is not None:
             sizes = bets if seq.startswith("x") else leads
             faced = aggressive[0].to / P
@@ -480,15 +502,25 @@ class Engine:
                 deep = line - line % 3
                 cells = [((c[0], deep) + tuple(c[2:]), w) for c, w in cells]
                 notes.append(f"untrained cell: line {line} -> {deep}")
+                diagnostics["lookup"]["untrained_fallback"] = True
+                diagnostics["lookup"]["fallback_line"] = deep
                 line = deep
             probs = _blend([(row(c), w) for c, w in cells])
+            diagnostics["base"] = {"source": source, "node": node, "probs": dict(probs)}
             notes.append(f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}")
+            before = dict(probs)
             probs = self._oop_correction(probs, s, kind, bkt, st, notes, aggressive[0].to / P if aggressive else 0)
+            _trace(diagnostics, "oop_correction", before, probs)
             if kind == "bb_first" and s == 1 and pot in ("srp", "srp_alt"):
+                before = dict(probs)
                 probs = _small_leads(probs, notes)
+                _trace(diagnostics, "small_leads", before, probs)
             if s == 2 and kind in ("btn_vs_check", "bb_first"):
+                before = dict(probs)
                 probs = _polar_river(probs, notes, self.river_shift)
+                _trace(diagnostics, "polar_river", before, probs)
 
+        before_exploit = dict(probs)
         probs = self._exploit(probs, kind, bkt, notes, aggressive[0].to / P if aggressive else 0)
         # Can't raise an all-in player; a raise that needs the whole stack is an all-in.
         if opp_all_in or hero_left <= b_facing + EPS:
@@ -496,7 +528,11 @@ class Engine:
                 probs["call"] = probs.get("call", 0) + probs.pop(lab)
                 opts.pop(lab, None)
         self._options = opts
-        return Decision("", 0, _normalise(probs), node, source, notes=notes)
+        d = Decision("", 0, _normalise(probs), node, source, notes=notes)
+        d.diagnostics = diagnostics
+        d.diagnostics.setdefault("base", {"source": source, "node": node, "probs": before_exploit})
+        _trace(d.diagnostics, "exploit_and_legality", before_exploit, d.probs)
+        return d
 
     # -- experiment 40: short stacks postflop -------------------------------------------------------
 
@@ -585,6 +621,8 @@ class Engine:
         f = (seen + SHOVE_PRIOR[1] * SHOVE_PRIOR[0]) / (n + SHOVE_PRIOR[1])
         eq = _equity_vs_top(hole, max(0.01, min(1.0, f * share)))
         need = b / (st.pot() + b)
+        d.diagnostics["vs_shove"] = {"equity": eq, "price": need, "range_top_share": f * share,
+                                      "observed_shoves": seen, "opportunities": n}
         call = eq > need + SHOVE_MARGIN
         d.probs = {"call": 1.0} if call else {"fold": 1.0}
         d.shove_read = True
@@ -614,6 +652,8 @@ class Engine:
         # Full weight only with a read on this opponent; the population prior alone keeps the tree in the mix.
         own = bool(((self.opp_profile or {}).get("nodes") or {}))
         w = min(1.0 if own else REWAR_PRIOR_CAP, self.strict / REWAR_FULL_STRICT)
+        d.diagnostics["reraise_war"] = {"equity": eq, "price": need, "range_top_share": share,
+                                         "realization": real, "realized_equity": eq * real, "weight": w}
         go = [k for k in d.probs if k != "fold" and d.probs[k] > 0]
         cont = sum(d.probs[k] for k in go)
         if cont <= 0:
@@ -651,7 +691,11 @@ class Engine:
         need = b / (st.pot() + b)
         if need > SMALL_RAISE_PRICE:
             return d
-        eq = _equity_vs_top(hole, SMALL_RAISE_RANGE) * SMALL_RAISE_REAL
+        raw_eq = _equity_vs_top(hole, SMALL_RAISE_RANGE)
+        eq = raw_eq * SMALL_RAISE_REAL
+        d.diagnostics["small_raise"] = {"equity": raw_eq, "price": need,
+                                        "range_top_share": SMALL_RAISE_RANGE,
+                                        "realization": SMALL_RAISE_REAL, "realized_equity": eq}
         if eq <= need:
             return d
         probs = dict(d.probs)
@@ -745,8 +789,11 @@ class Engine:
             probs = {"all-in": 1.0} if eq >= SHORT_JAM else {"check": 1.0}
             why = f"equity {eq:.0%} vs jam threshold {SHORT_JAM:.0%}"
         self._options = opts
-        return Decision("", 0, probs, d.node + " (short stack)", "short",
-                        notes=d.notes + [f"short stack ({st.left(hero):.1f}bb behind): {why}"])
+        out = Decision("", 0, probs, d.node + " (short stack)", "short",
+                       notes=d.notes + [f"short stack ({st.left(hero):.1f}bb behind): {why}"])
+        out.diagnostics["short_stack"] = {"equity": eq, "price": b / (st.pot() + b) if b > EPS else 0.0,
+                                           "jam_threshold": SHORT_JAM, "range_combos": len(rng)}
+        return out
 
     def set_adaptation(self, nodes, lam, exploit):
         """Experiment 37 (bot/adapt.py): best-response preflop nodes blended in with weight lam, and the
@@ -879,6 +926,21 @@ def _solver_labels(kind, row, labels):
         for a, lab in zip(sized, labels[1:]):
             out[lab] += row[a]
     return out
+
+
+def _trace(diagnostics, stage, before, after):
+    """Record only probability changes; do not alter normalization or random sampling."""
+    if before != after:
+        diagnostics.setdefault("adjustments", []).append(
+            {"stage": stage, "before": dict(before), "after": dict(after)})
+
+
+def _adjust(d, stage, fn, *args):
+    before, diagnostics = dict(d.probs), d.diagnostics
+    result = fn(d, *args)
+    result.diagnostics = {**diagnostics, **result.diagnostics}
+    _trace(result.diagnostics, stage, before, result.probs)
+    return result
 
 
 def _blend(parts):

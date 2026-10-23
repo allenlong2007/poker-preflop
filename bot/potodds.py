@@ -278,7 +278,8 @@ def _bet_rate(nodes, street, default, shrink=10):
     return (hits + shrink * default) / (n + shrink)
 
 
-def check(probs, hole, board, st, hero, pre, prof, aggression, notes, size_value=None, bluff_model=None, strict=1.0):
+def check(probs, hole, board, st, hero, pre, prof, aggression, notes, size_value=None, bluff_model=None, strict=1.0,
+          diagnostics=None):
     """Adjust a facing-a-bet decision by pot odds; returns probs."""
     call_amt = st.facing(hero)
     if call_amt <= 1e-9 or "call" not in probs or "fold" not in probs:
@@ -289,6 +290,10 @@ def check(probs, hole, board, st, hero, pre, prof, aggression, notes, size_value
     eq = equity(list(hole), list(board), rng)
     real = 1.0 if len(board) == 5 else REALIZE["oop" if hero == "bb" else "ip"]
     eff = eq * real
+    if diagnostics is not None:
+        diagnostics.update({"equity": eq, "realization": real, "realized_equity": eff,
+                            "price": need, "call_bb": call_amt, "pot_before_call_bb": st.pot(),
+                            "range_combos": len(rng), "range_weight": float(sum(w for _, _, w in rng))})
     out = dict(probs)
     river = len(board) == 5
     out = dict(probs)

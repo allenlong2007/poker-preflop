@@ -113,7 +113,7 @@ def test_server_persists_context_and_links_only_observed_hands(tmp_path, monkeyp
     stored = []
     monkeypatch.setattr(server, "store", lambda rows: stored.extend(rows) or len(rows))
     monkeypatch.setattr(server.ADAPT, "update", lambda *args: None)
-    monkeypatch.setattr(server, "load", lambda *args: [])
+    monkeypatch.setattr(server, "load", lambda *args: stored)
     server._track_locked(msgs, server.parse_hand(msgs, hero_seat=3))
     assert len(stored) == 2
     assert stored[0]["bot_version"] is None
