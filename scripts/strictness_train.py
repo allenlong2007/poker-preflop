@@ -32,9 +32,9 @@ OPPONENTS = ("itself", "aggro 0.2", "aggro 0.4", "maniac", "value-heavy")
 def make(name):
     from bot.engine import Engine
     from bot.selfplay import Aggro, EngineAgent, Maniac, ValueHeavy
-    return {"itself": lambda: EngineAgent(Engine(seed=2)), "aggro 0.2": lambda: Aggro(Engine(seed=2), rate=0.2),
-            "aggro 0.4": lambda: Aggro(Engine(seed=2), rate=0.4), "maniac": Maniac,
-            "value-heavy": lambda: ValueHeavy(Engine(seed=2))}[name]()
+    return {"itself": lambda: EngineAgent(Engine(exact_required=False, seed=2)), "aggro 0.2": lambda: Aggro(Engine(exact_required=False, seed=2), rate=0.2),
+            "aggro 0.4": lambda: Aggro(Engine(exact_required=False, seed=2), rate=0.4), "maniac": Maniac,
+            "value-heavy": lambda: ValueHeavy(Engine(exact_required=False, seed=2))}[name]()
 
 
 def profile_of(name, deals, seed=5):
@@ -42,7 +42,7 @@ def profile_of(name, deals, seed=5):
     from bot.opponent import profile
     from bot.selfplay import DECK, EngineAgent, play_hand
     rng = np.random.default_rng(seed)
-    eng, opp = EngineAgent(Engine(seed=9)), make(name)
+    eng, opp = EngineAgent(Engine(exact_required=False, seed=9)), make(name)
 
     class Rec:
         def __init__(self, a):
@@ -86,7 +86,7 @@ def play(job):
     from bot.adapt import size_value
     from bot.engine import Engine
     from bot.selfplay import EngineAgent, match
-    e = Engine(seed=1, pot_odds=True)
+    e = Engine(exact_required=False, seed=1, pot_odds=True)
     if ctx["pre"]:
         e.set_adaptation(ctx["pre"]["nodes"], ctx["pre"]["lam"], ctx["post"])
     from bot import bluffmodel

@@ -56,7 +56,7 @@ def play(job):
     from bot.engine import Engine
     from bot.selfplay import EngineAgent, match
     if ctx is None:
-        r = match(EngineAgent(Engine(seed=1, pot_odds=True)), make(name), deals, seed=3)
+        r = match(EngineAgent(Engine(exact_required=False, seed=1, pot_odds=True)), make(name), deals, seed=3)
         return (name, hist, "none"), float(r.mean() / 2 * 100), float(r.std(ddof=1) / np.sqrt(len(r)) / 2 * 100)
     else:
         return stt.play(((name, hist), "evidence", ctx, deals))

@@ -286,7 +286,7 @@ def make(name, seed=11):
     from bot.engine import Engine
     return {"equity": lambda: EquityBot(seed), "chart": lambda: ChartBot(seed), "pushfold": lambda: PushFold(seed),
             "minraise": lambda: MinRaiser(seed), "overbet": lambda: Overbettor(seed), "nit": lambda: Nit(seed),
-            "exploiter": lambda: Exploiter(Engine(seed=2), seed)}[name]()
+            "exploiter": lambda: Exploiter(Engine(exact_required=False, seed=2), seed)}[name]()
 
 
 RIVALS = ("equity", "chart", "pushfold", "minraise", "overbet", "nit", "exploiter")

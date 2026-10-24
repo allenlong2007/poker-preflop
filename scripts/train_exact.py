@@ -177,9 +177,9 @@ def _evaluate_frozen(path, deals, seed, minimum, fingerprint):
     if seed == meta["seed"]:
         raise ValueError("use a held-out evaluation seed")
     cfg = Config(**meta["config"])
-    candidate = Engine(seed=seed + 1, pot_odds=True, exact_policy_path=path,
+    candidate = Engine(exact_required=False, seed=seed + 1, pot_odds=True, exact_policy_path=path,
                        exact_candidate=True, exact_min_updates=minimum)
-    baseline = Engine(seed=seed + 2, pot_odds=True, exact_policy_path=False)
+    baseline = Engine(exact_required=False, seed=seed + 2, pot_odds=True, exact_policy_path=False)
     provenance = AuditLog(Path(path).parent / "_evaluation_provenance", baseline).run
     rng = np.random.default_rng(seed)
     results, counts = [], {"exact": 0, "total": 0, "focus_used": 0, "illegal": 0}
@@ -223,7 +223,7 @@ def _promote_frozen(args, fingerprint):
     errors = promotion_errors(report)
     if errors:
         raise ValueError("promotion rejected: " + "; ".join(errors))
-    provenance = AuditLog(args.path.parent / "_promotion_provenance", Engine(exact_policy_path=False)).run
+    provenance = AuditLog(args.path.parent / "_promotion_provenance", Engine(exact_required=False, exact_policy_path=False)).run
     if report.get("evaluation_source_sha256") != provenance["source_sha256"] or \
             report.get("baseline_policy_sha256") != provenance["policy_sha256"] or report.get("runtime") != _runtime():
         raise ValueError("promotion provenance changed; rerun frozen evaluation")

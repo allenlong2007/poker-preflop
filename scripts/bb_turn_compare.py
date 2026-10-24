@@ -58,7 +58,7 @@ def averaged(eng, rng, board, hist):
 def main():
     keep_t, keep_r, lead = (float(x) for x in sys.argv[1:4]) if len(sys.argv) > 3 else (None, None, None)
     po = os.environ.get("POT_ODDS") == "1"
-    eng = Engine(seed=0, pot_odds=po) if keep_t is None else Engine(seed=0, defend_keep={1: keep_t, 2: keep_r}, river_lead=lead, pot_odds=po)
+    eng = Engine(exact_required=False, seed=0, pot_odds=po) if keep_t is None else Engine(exact_required=False, seed=0, defend_keep={1: keep_t, 2: keep_r}, river_lead=lead, pot_odds=po)
     c = round(OPEN * 2 / 3, 4)
     pre = [Act("btn", "raise", OPEN), Act("bb", "call")]
     flop = [Act("bb", "check"), Act("btn", "bet", c), Act("bb", "call")]

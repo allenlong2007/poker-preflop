@@ -63,7 +63,7 @@ class AuditLog:
                        "solver_flops": engine.use_solver_flops, "translate": engine.translate,
                        "pot_odds": engine.pot_odds,
                        **{key: getattr(engine, key, None) for key in
-                          ("defend_keep", "river_shift", "river_lead", "river_jam")}},
+                          ("defend_keep", "river_shift", "river_lead", "river_jam", "exact_required")}},
         }
         self._links = {}
         self._lock = threading.Lock()

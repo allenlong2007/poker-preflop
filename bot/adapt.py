@@ -312,7 +312,7 @@ def baseline(deals):
             d = self.eng.decide(seat, hole, board, history)
             return d.action, d.to
 
-    a, b = Rec(Engine(seed=3)), Rec(Engine(seed=4))
+    a, b = Rec(Engine(exact_required=False, seed=3)), Rec(Engine(exact_required=False, seed=4))
     recs = []
     for k in range(deals):
         c = [DECK[i] for i in rng.choice(52, size=9, replace=False)]

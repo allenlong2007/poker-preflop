@@ -34,7 +34,12 @@ def main():
     seat, hole = sys.argv[1], sys.argv[2]
     board = sys.argv[3] if len(sys.argv) > 3 else ""
     hist = parse_actions(sys.argv[4] if len(sys.argv) > 4 else "")
-    d = Engine().decide(seat, hole, board, hist)
+    from bot.coverage import ExactCoverageError
+    try:
+        d = Engine(coverage_path="output/pokernow/coverage.sqlite").decide(seat, hole, board, hist)
+    except ExactCoverageError as error:
+        print(str(error))
+        return
     print(f"{d.node} [{d.source}] {'; '.join(d.notes)}")
     for label, p in sorted(d.probs.items(), key=lambda kv: -kv[1]):
         print(f"  {label:<12} {p:6.1%}")

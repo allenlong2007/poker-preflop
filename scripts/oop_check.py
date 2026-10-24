@@ -37,7 +37,7 @@ def main():
     deals = int(sys.argv[1]) if len(sys.argv) > 1 else 3000
     rng = np.random.default_rng(7)
     log = []
-    a, b = Recorder(Engine(seed=1), log), Recorder(Engine(seed=2), log)
+    a, b = Recorder(Engine(exact_required=False, seed=1), log), Recorder(Engine(exact_required=False, seed=2), log)
     for _ in range(deals):
         c = [DECK[i] for i in rng.choice(52, size=9, replace=False)]
         play_hand({"btn": a, "bb": b}, {"btn": c[:2], "bb": c[2:4]}, c[4:])

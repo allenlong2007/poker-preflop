@@ -206,7 +206,7 @@ def build_prior(deals):
     X, y = [], []
     # Near-equilibrium play only: the loose-aggressive test player's extra bets are random hands, which would
     # teach that big bets and raises are bluffs, the opposite of how people play.
-    pairs = [(EngineAgent(Engine(seed=31)), EngineAgent(Engine(seed=32))), (EngineAgent(Engine(seed=33)), EngineAgent(Engine(seed=34)))]
+    pairs = [(EngineAgent(Engine(exact_required=False, seed=31)), EngineAgent(Engine(exact_required=False, seed=32))), (EngineAgent(Engine(exact_required=False, seed=33)), EngineAgent(Engine(exact_required=False, seed=34)))]
     for k in range(deals):
         a, b = (Rec(x) for x in pairs[k % 2])
         c = [DECK[i] for i in rng.choice(52, size=9, replace=False)]

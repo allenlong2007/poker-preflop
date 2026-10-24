@@ -29,6 +29,7 @@ from pathlib import Path
 from bot.adapt import Adapter
 from bot.audit import AuditLog
 from bot.engine import Engine
+from bot.coverage import ExactCoverageError
 from bot.opponent import RE_ID, load, profile, read_style, record, results, split_hands, store
 from bot.pokernow.parse import describe, parse_hand, read_log
 
@@ -48,6 +49,7 @@ def _audit_log():
     """Lazy startup also lets tests redirect all session files into their temporary directory."""
     global AUDIT
     with AUDIT_LOCK:
+        ENGINE.coverage_path = LOG_DIR / "coverage.sqlite"
         if AUDIT is None or AUDIT.directory != LOG_DIR:
             AUDIT = AuditLog(LOG_DIR, ENGINE)
         return AUDIT
@@ -165,7 +167,18 @@ def decide(payload):
             opp = next((x for x in h.seats.values() if x is not hero), None)
             audit = _audit_log()
             ADAPT.apply(opp.pid if opp else None)
-            d = ENGINE.decide(h.position(hero), "".join(h.hole), "".join(h.board), h.history, stack=h.effective_bb())
+            try:
+                d = ENGINE.decide(h.position(hero), "".join(h.hole), "".join(h.board), h.history, stack=h.effective_bb())
+            except ExactCoverageError as error:
+                hid = RE_ID.search(msgs[start])
+                denied = {"id": f"{h.number}-{audit.run['run_id'][:12]}-{digest}", "source": "withheld",
+                          "diagnostics": error.diagnostics, "wait": str(error)}
+                audit.write_decision({"t": time.time(), "hand_id": hid.group("id") if hid else str(h.number),
+                                      "hero_id": hero.pid, "opponent_id": opp.pid if opp else None,
+                                      "table": table, "context": error.diagnostics["context"], "decision": denied})
+                CACHE[key] = denied
+                return {"table": table, "decision": None, "wait": str(error),
+                        "coverage": error.diagnostics["coverage"]}
             to_chips, all_in = round(d.to * h.bb, 2), False
             if d.action in ("bet", "raise"):
                 # PokerNow's rules: at least a min-raise, at most the stack; a size at the stack is an all-in.
@@ -193,6 +206,9 @@ def decide(payload):
                                   "decision": decision})
             CACHE[key] = decision
             STATS["decisions"] += 1
+    if CACHE[key].get("source") == "withheld":
+        return {"table": table, "decision": None, "wait": CACHE[key]["wait"],
+                "coverage": CACHE[key]["diagnostics"]["coverage"]}
     return {"table": table, "decision": CACHE[key], "wait": None}
 
 

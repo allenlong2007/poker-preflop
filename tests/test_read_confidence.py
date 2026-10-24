@@ -40,7 +40,7 @@ def test_unknown_opponent_does_not_inherit_population_read():
     class Engine:
         def set_adaptation(self, *args):
             pass
-    a = Adapter(Engine())
+    a = Adapter(Engine(exact_required=False))
     a.pop = .01
     a.apply("new")
     assert a.engine.strict == 0
@@ -74,7 +74,7 @@ def test_mixed_opponents_rejected():
 
 def test_other_preflop_actions_cannot_qualify_shove_read():
     from bot.engine import Act, Engine
-    e = Engine(pot_odds=True)
+    e = Engine(exact_required=False, pot_odds=True)
     from bot.reads import jam_key
     e.read_evidence = {"version": 1, "decisions": {}, "jams": {
         jam_key("btn_first_in", 100, []): {"n": 3000, "hits": 90, "index": 1}}}
@@ -97,7 +97,7 @@ def test_near_jams_do_not_count_as_exact_jams_and_depths_are_separate():
     for h in hands:
         h["history"][0][0][2] = 60
     p = evidence_profile(hands)
-    e = Engine(pot_odds=True)
+    e = Engine(exact_required=False, pot_odds=True)
     e.read_evidence = p["read_evidence"]
     d = e.decide("bb", "Ah9c", "", [[Act("btn", "raise", 100)]], sample=False)
     assert not d.shove_read
@@ -148,7 +148,7 @@ def test_adapter_keeps_evidence_and_resets_between_opponents(monkeypatch):
             return None
     monkeypatch.setattr(bluffmodel, "calibration_report", lambda hands: {"applied": False})
     monkeypatch.setattr(bluffmodel, "for_opponent", lambda hands: (None, 0))
-    e = Engine()
+    e = Engine(exact_required=False)
     adapter = Adapter(e)
     adapter.pre = Pre()
     adapter._run("villain", [hand(i) for i in range(10)])

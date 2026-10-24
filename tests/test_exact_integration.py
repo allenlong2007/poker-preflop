@@ -21,13 +21,13 @@ def test_engine_routes_covered_candidate_without_bucket_overrides(tmp_path):
         key = db.execute("SELECT key FROM nodes WHERE street=0 AND updates>0 LIMIT 1").fetchone()[0]
     obs = json.loads(key)
     history = [[[("btn", "bb")[p], k, to * config.chip_bb] for p, k, to in h] for h in obs["history"]]
-    engine = Engine(seed=1, exact_policy_path=frozen, exact_candidate=True, exact_min_updates=1)
+    engine = Engine(exact_required=False, seed=1, exact_policy_path=frozen, exact_candidate=True, exact_min_updates=1)
     d = engine.decide(("btn", "bb")[obs["actor"]], "".join(obs["hole"]), "", history, stack=3)
     assert d.source == "exact"
     assert d.diagnostics["exact"]["status"] == "ready"
     assert d.diagnostics["adjustments"] == []
     engine.exact_policy.close()
-    guarded = Engine(seed=1, exact_policy_path=frozen)
+    guarded = Engine(exact_required=False, seed=1, exact_policy_path=frozen)
     d = guarded.decide("btn", "AsKh", "", [[]], stack=3)
     assert d.source != "exact" and d.diagnostics["exact"]["status"] == "unpromoted"
     guarded.exact_policy.close()
@@ -105,6 +105,6 @@ def test_malformed_exact_artifact_falls_back_instead_of_crashing(tmp_path):
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT)")
         db.execute("INSERT INTO metadata VALUES ('schema','1')")
-    engine = Engine(exact_policy_path=path)
+    engine = Engine(exact_required=False, exact_policy_path=path)
     d = engine.decide("btn", "AsKh", "", [[]])
     assert d.source != "exact" and d.diagnostics["exact"]["status"] == "load_error"

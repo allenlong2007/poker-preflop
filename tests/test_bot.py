@@ -27,7 +27,7 @@ def test_map_combo_same_flop_is_identity():
 def test_map_combo_keeps_hand_group_and_class():
     rng = np.random.default_rng(0)
     deck = parse_cards("".join(r + s for r in "23456789TJQKA" for s in "cdhs"))
-    eng = Engine()
+    eng = Engine(exact_required=False)
     same, tried = 0, 0
     for _ in range(300):
         cards = [deck[i] for i in rng.choice(52, 5, replace=False)]
@@ -45,7 +45,7 @@ def test_map_combo_keeps_hand_group_and_class():
 
 
 def test_decisions_are_distributions_with_legal_sizes():
-    eng = Engine(seed=0)
+    eng = Engine(exact_required=False, seed=0)
     pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
     spots = [("btn", "AhKd", "", [[]]),
              ("bb", "QsJs", "", [[Act("btn", "raise", 2.5)]]),
@@ -64,8 +64,8 @@ def test_decisions_are_distributions_with_legal_sizes():
 
 
 def test_matches_run_and_stay_within_stacks():
-    eng = EngineAgent(Engine(seed=3))
-    for opp in (Station(), Maniac(), EngineAgent(Engine(seed=4))):
+    eng = EngineAgent(Engine(exact_required=False, seed=3))
+    for opp in (Station(), Maniac(), EngineAgent(Engine(exact_required=False, seed=4))):
         r = match(eng, opp, 50, seed=1)
         assert np.all(np.abs(r) <= 200 + 1e-9)
 
@@ -93,7 +93,7 @@ def test_size_weights_pseudo_harmonic():
 
 
 def test_blended_decision_lies_between_neighbours():
-    eng = Engine(seed=0)
+    eng = Engine(exact_required=False, seed=0)
     pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
     flop = [Act("bb", "check"), Act("btn", "check")]
     spot = lambda b: eng.decide("bb", "Qc9d", "Kh8d3c2s", [pre, flop, [Act("bb", "check"), Act("btn", "bet", b)]],
@@ -104,7 +104,7 @@ def test_blended_decision_lies_between_neighbours():
 
 def test_no_deep_preflop_jam_over_a_3bet():
     """Experiment 36: at 100bb the BTN 4-bets small instead of jamming; all-ins only at short stacks."""
-    eng = Engine(seed=0)
+    eng = Engine(exact_required=False, seed=0)
     pre = lambda t: [[Act("btn", "raise", 2.25), Act("bb", "raise", t)]]
     for hole in ("Ah4d", "KhKd", "AdKs", "As5s", "QsJs"):
         for t, stack in ((3.5, 79), (6.75, 100)):
@@ -144,7 +144,7 @@ def test_adaptation_never_adds_deep_all_ins():
 def test_river_calls_depend_on_the_raise_size():
     """Experiments 40-41: one pair folds more to a bigger river raise; top two pair always calls (against an
     opponent read as value-heavy, strictness 1)."""
-    eng = Engine(seed=0, pot_odds=True)
+    eng = Engine(exact_required=False, seed=0, pot_odds=True)
     eng.strict = 1.0
     line = lambda r: [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "call")],
                       [Act("bb", "check"), Act("btn", "check")], [Act("bb", "bet", 7.5), Act("btn", "call")],
@@ -158,7 +158,7 @@ def test_river_calls_depend_on_the_raise_size():
 
 def test_short_stack_postflop_jams_or_checks():
     """Experiment 40: with ~5bb behind, no small c-bets: shove with equity, check without it."""
-    eng = Engine(seed=0)
+    eng = Engine(exact_required=False, seed=0)
     hist = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check")]]
     strong = eng.decide("btn", "KsKd", "Kc7d2s", hist, sample=False, stack=7)
     weak = eng.decide("btn", "4h3d", "KcQdJs", hist, sample=False, stack=7)
@@ -168,7 +168,7 @@ def test_short_stack_postflop_jams_or_checks():
 
 def test_every_depth_can_answer_a_shove():
     """The 40 / 60bb trees have no shoves of their own; facing one they must still answer (100bb nodes)."""
-    eng = Engine(seed=0)
+    eng = Engine(exact_required=False, seed=0)
     for st in (100, 60, 45, 40, 30, 25, 15, 10, 6):
         for hero, hist in (("bb", [[Act("btn", "raise", st)]]),
                            ("btn", [[Act("btn", "raise", 2.25), Act("bb", "raise", st)]]),
@@ -180,7 +180,7 @@ def test_every_depth_can_answer_a_shove():
 
 def test_never_just_call_with_the_nuts():
     """Experiments 43-44: straight flush, quads, the nut flush: bet or raise, never call or check."""
-    eng = Engine(seed=0, pot_odds=True)
+    eng = Engine(exact_required=False, seed=0, pot_odds=True)
     pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
     riv = [pre, [Act("bb", "check"), Act("btn", "check")], [Act("bb", "check"), Act("btn", "check")], [Act("bb", "bet", 3)]]
     d = eng.decide("btn", "9h8h", "7h6h5hKc2d", riv, sample=False)
@@ -201,7 +201,7 @@ def test_traps_follow_the_solver_and_the_opponent():
     assert trap_texture(cards("KdKc4s")) == "paired" and trap_texture(cards("As7d2c")) == "dry"
     assert strong_class(cards("Ks8s"), cards("Kh8d3c")) == "two pair"
     assert strong_class(cards("AsAd"), cards("KhKd3c")) is None          # the board's pair plays
-    eng = Engine(seed=0, pot_odds=True)
+    eng = Engine(exact_required=False, seed=0, pot_odds=True)
     pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
     turn = [pre, [Act("bb", "check"), Act("btn", "check")], [Act("bb", "check")]]
     check = lambda: eng.decide("btn", "Ks8s", "Kh8d3c2h", turn, sample=False).probs.get("check", 0.0)
@@ -239,7 +239,7 @@ def test_opponent_traps_and_results():
 def test_reads_a_push_fold_bot():
     """Experiment 46: after a few shoves the bot calls with equity against the shover's real range, not the
     equilibrium one; a tiny re-raise is never folded with a playable hand."""
-    eng = Engine(seed=0, pot_odds=True)
+    eng = Engine(exact_required=False, seed=0, pot_odds=True)
     shove = [[Act("btn", "raise", 100)]]
     assert eng.decide("bb", "Ah9c", "", shove, sample=False).label == "fold"          # no read: equilibrium
     eng.opp_profile = {"nodes": {"btn_first_in": {"n": 30, "all-in": 0.35, "fold": 0.65}}}
@@ -287,7 +287,7 @@ def test_survives_any_rival_bot():
             size = [0.01, 0.13, 1.0, 3.7, 10.0][self.rng.integers(5)]
             return ("raise", top + max(facing, 0.01) + pot * size if k < 5 else 100.0)
 
-    eng = EngineAgent(Engine(seed=0, pot_odds=True))
+    eng = EngineAgent(Engine(exact_required=False, seed=0, pot_odds=True))
     seen = []
 
     class Check(EngineAgent):
@@ -312,7 +312,7 @@ def test_survives_any_rival_bot():
 
 def test_river_jam_is_polar():
     """Experiment 47: at a low stack-to-pot, sets jam the river some of the time, top pair never does."""
-    eng = Engine(seed=0, pot_odds=True)
+    eng = Engine(exact_required=False, seed=0, pot_odds=True)
     pre = [Act("btn", "raise", 2.25), Act("bb", "call")]
     h = [pre, [Act("bb", "check"), Act("btn", "bet", 3), Act("bb", "call")],
          [Act("bb", "check"), Act("btn", "bet", 10), Act("bb", "call")], [Act("bb", "check")]]
@@ -323,7 +323,7 @@ def test_river_jam_is_polar():
 def test_reraise_wars_respect_value_ranges():
     """Experiment 48: with a value-heavy read, weak hands fold to small 4-bets (live: 33 and T9o called and lost
     101bb); premium hands continue; with no value read (strictness 0) the tree decides."""
-    eng = Engine(seed=0, pot_odds=True)
+    eng = Engine(exact_required=False, seed=0, pot_odds=True)
     four = [[Act("btn", "raise", 3), Act("bb", "raise", 9), Act("btn", "raise", 15)]]
     eng.strict = 0.37
     eng.opp_profile = {"nodes": {"btn_first_in": {"n": 20, "raise": 0.8, "fold": 0.2}}}   # a read on this player
@@ -336,7 +336,7 @@ def test_reraise_wars_respect_value_ranges():
 def test_reraise_war_all_in_calls_use_raw_equity():
     """Review fix: an all-in call closes the action, so no realisation discount; and the population read alone
     never fully overrides the tree."""
-    eng = Engine(seed=0, pot_odds=True)
+    eng = Engine(exact_required=False, seed=0, pot_odds=True)
     eng.strict = 0.37
     jam = [[Act("btn", "raise", 3), Act("bb", "raise", 9), Act("btn", "raise", 100)]]
     d = eng.decide("bb", "AsQd", "", jam, sample=False)

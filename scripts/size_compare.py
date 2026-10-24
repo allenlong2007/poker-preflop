@@ -37,7 +37,7 @@ def sizes(eng, seat, w, board, hist):
 
 
 def main():
-    eng = Engine(seed=0)
+    eng = Engine(exact_required=False, seed=0)
     if len(sys.argv) > 2:
         eng.river_shift = (float(sys.argv[1]), float(sys.argv[2]))
     c = round(OPEN * 2 / 3, 4)

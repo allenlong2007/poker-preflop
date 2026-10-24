@@ -212,10 +212,13 @@ def size_weights(x, sizes, translate=True):
 class Engine:
     def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
-                 exact_candidate=False, exact_min_updates=1000):
+                 exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=None):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
+        self.exact_required = exact_required
+        self.coverage_path = Path(coverage_path) if coverage_path else None
+        self.coverage_counts = {}
         self.defend_keep = dict(DEFEND_KEEP if defend_keep is None else defend_keep)
         self.river_shift = RIVER_SHIFT
         self.adapted, self.lam, self.exploit = {}, 0.0, {"bluff": 1.0, "defend": 1.0}
@@ -243,6 +246,7 @@ class Engine:
         self.exact_path = None
         if exact_policy_path is not False:
             self.exact_path = Path(exact_policy_path) if exact_policy_path is not None else ROOT / "output/exact/active.sqlite"
+            self.exact_status = {"status": "missing_artifact"}
             if self.exact_path.exists():
                 from preflop.exacttrain import ExactPolicy
                 try:
@@ -255,6 +259,8 @@ class Engine:
 
     def warm(self):
         """Load every policy and solved flop up front, so no decision during a game waits on disk."""
+        if self.exact_required:
+            return self
         for pot in POTS:
             if (self.policy_dir / f"{pot}.npz").exists():
                 self._pot(pot)
@@ -275,6 +281,16 @@ class Engine:
                 "board": "".join(map(card_str, board[:2 + st.street])) if st.street else "",
                 "effective_stack_bb": stack,
                 "history": [[[a.player, a.kind, a.to] for a in street] for street in st.history]})
+        context = {"hero_position": hero, "hero_hole": "".join(map(card_str, hole)),
+                   "board": "".join(map(card_str, board[:2 + st.street])) if st.street else "",
+                   "effective_stack_bb": stack,
+                   "history": [[[a.player, a.kind, a.to] for a in street] for street in st.history]}
+        if exact["status"] != "ready" and self.exact_required:
+            from bot.coverage import ExactCoverageError
+            diagnostics = {"exact": exact, "context": context, "fallbacks": [f"exact:{exact['status']}"],
+                           "strategy_mode": "exact_required", "coverage": self._record_coverage(
+                               context, exact["status"], "withheld", [f"exact:{exact['status']}"])}
+            raise ExactCoverageError(diagnostics)
         if exact["status"] == "ready":
             self._options = exact.pop("options")
             probs = exact.pop("probs")
@@ -321,6 +337,26 @@ class Engine:
                            "bluff_model": self.bluff_model.w.tolist() if self.bluff_model else None},
             "legal_options": {k: {"action": a, "to_bb": to} for k, (a, to) in self._options.items()},
         })
+        fallbacks = []
+        if d.source != "exact":
+            fallbacks.append(f"exact:{exact['status']}")
+            fallbacks.append("legacy_preflop_hand_groups" if st.street == 0 else "legacy_postflop_buckets")
+            lookup = d.diagnostics.get("lookup", {})
+            if d.source == "solver":
+                fallbacks.append("legacy_representative_flop")
+            if d.source == "rule":
+                fallbacks.append("legacy_raise_sequence_rule")
+            if lookup.get("untrained_fallback"):
+                fallbacks.append("legacy_untrained_cell")
+            if lookup.get("depth_bb") and lookup["depth_bb"] != stack:
+                fallbacks.append("legacy_nearest_stack")
+            if lookup.get("depth_node_borrow"):
+                fallbacks.append("legacy_depth_node_borrow")
+            if lookup.get("size_translation"):
+                fallbacks.append("legacy_size_translation")
+        d.diagnostics.update(strategy_mode="exact_required" if self.exact_required else "legacy_permitted",
+                             fallbacks=fallbacks, coverage=self._record_coverage(
+                                 context, exact["status"], "exact" if d.source == "exact" else "legacy", fallbacks))
         d.diagnostics.setdefault("adjustments", [])
         if sample:
             labels = list(d.probs)
@@ -330,6 +366,16 @@ class Engine:
             d.label = max(d.probs, key=d.probs.get)
         d.action, d.to = self._options[d.label]
         return d
+
+    def _record_coverage(self, context, status, route, reasons):
+        self.coverage_counts[route] = self.coverage_counts.get(route, 0) + 1
+        if self.coverage_path is not None:
+            from bot.coverage import CoverageStore
+            with CoverageStore(self.coverage_path) as store:
+                store.record(context, status, route, reasons)
+                return store.summary()
+        return {"attempts": sum(self.coverage_counts.values()), "routes": dict(self.coverage_counts),
+                "persistent_queue": False}
 
     # -- preflop -----------------------------------------------------------------------------
 
@@ -412,7 +458,7 @@ class Engine:
             opts = {"fold": ("fold", 0), "call": ("call", min(last.to, st.stack))}
         probs = {a: float(v[i]) for a, v in pol.items() if a in opts}
         diagnostics = {"base": {"source": "preflop", "node": node, "probs": dict(probs)},
-                       "lookup": {"depth_bb": depth}}
+                       "lookup": {"depth_bb": depth, "depth_node_borrow": n.borrowed}}
         base = node.split(" ")[0]
         if deep and self.lam > 0 and base in self.adapted:
             ad = self.adapted[base]
@@ -515,6 +561,7 @@ class Engine:
         notes = []
         diagnostics = {"lookup": {"pot_type": pot, "texture": tex, "line": line,
                                    "bucket": int(bkt), "untrained_fallback": False}}
+        diagnostics["lookup"]["size_translation"] = weights[0][0] is not None and (len(weights) > 1 or abs(aggressive[0].to / P - (bets if seq.startswith("x") else leads)[weights[0][0]]) > EPS)
         if weights[0][0] is not None:
             sizes = bets if seq.startswith("x") else leads
             faced = aggressive[0].to / P
@@ -532,13 +579,9 @@ class Engine:
             # Experiment 40: a cell the training never reached is uniform (every action alike); then use the same
             # spot's deep-stack cell (line with stack-to-pot >= 4) instead of playing at random.
             flat = lambda d: len(d) > 2 and max(d.values()) - min(d.values()) < 1e-6
-            if FALLBACK_UNTRAINED and line % 3 and any(flat(row(c)) for c, _ in cells):
-                deep = line - line % 3
-                cells = [((c[0], deep) + tuple(c[2:]), w) for c, w in cells]
-                notes.append(f"untrained cell: line {line} -> {deep}")
+            if any(flat(row(c)) for c, _ in cells):
+                notes.append("untrained legacy cell; deep-stack substitution disabled")
                 diagnostics["lookup"]["untrained_fallback"] = True
-                diagnostics["lookup"]["fallback_line"] = deep
-                line = deep
             probs = _blend([(row(c), w) for c, w in cells])
             diagnostics["base"] = {"source": source, "node": node, "probs": dict(probs)}
             notes.append(f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}")
@@ -1127,10 +1170,12 @@ class _Fallback(dict):
     def __init__(self, nodes, *others):
         super().__init__(nodes)
         self.others = others
+        self.borrowed = []
 
     def __missing__(self, key):
         for o in self.others:
             if key in o:
+                self.borrowed.append(key)
                 return o[key]
         raise KeyError(key)
 

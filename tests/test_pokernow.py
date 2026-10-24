@@ -68,6 +68,7 @@ def test_waits_for_the_next_card():
 def test_server_decisions_through_the_demo_hand(tmp_path, monkeypatch):
     from bot.pokernow import server
     from bot.pokernow.server import decide
+    monkeypatch.setattr(server.ENGINE, "exact_required", False)  # explicit legacy sizing/format regression
     monkeypatch.setattr(server, "LOG_DIR", tmp_path)            # keep the real session log clean
     seen = []
     for k in range(1, len(MSGS) + 1):
@@ -115,6 +116,7 @@ def test_legal_bet_sizes():
 @pytest.mark.skipif(not (POLICY / "preflop.json").exists(), reason="match policies not built")
 def test_server_sizes_are_legal_and_all_in_flagged(tmp_path, monkeypatch):
     from bot.pokernow import server
+    monkeypatch.setattr(server.ENGINE, "exact_required", False)  # explicit legacy sizing/format regression
     monkeypatch.setattr(server, "LOG_DIR", tmp_path)
     server.CACHE.clear()
     # B (big blind, 3.00 = 15bb) holds aces facing a 3bb open: the bot's 3-bet can't exceed 3.00.
@@ -137,6 +139,7 @@ def test_server_only_answers_the_pokernow_tab(tmp_path, monkeypatch):
     import urllib.request
     from http.server import ThreadingHTTPServer
     from bot.pokernow import server
+    monkeypatch.setattr(server.ENGINE, "exact_required", False)  # explicit legacy sizing/format regression
     monkeypatch.setattr(server, "LOG_DIR", tmp_path)
     srv = ThreadingHTTPServer(("127.0.0.1", 0), server.Handler)
     server.PORT["n"] = srv.server_address[1]
@@ -198,6 +201,7 @@ def test_missing_and_dead_blind_wordings():
 @pytest.mark.skipif(not (POLICY / "preflop.json").exists(), reason="match policies not built")
 def test_chat_lines_do_not_change_the_decision_id(tmp_path, monkeypatch):
     from bot.pokernow import server
+    monkeypatch.setattr(server.ENGINE, "exact_required", False)  # explicit legacy sizing/format regression
     monkeypatch.setattr(server, "LOG_DIR", tmp_path)
     log = list(upto("bets 1.80"))
     a = server.decide({"log": json.dumps(log), "seat": 3})["decision"]["id"]

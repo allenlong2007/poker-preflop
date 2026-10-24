@@ -152,9 +152,9 @@ def match(a, b, hands, seed=0):
 def main():
     hands = int(sys.argv[1]) if len(sys.argv) > 1 else 2000
     opp = sys.argv[2] if len(sys.argv) > 2 else "station"
-    a = EngineAgent(Engine(seed=1), "engine (solver flops)")
-    b = {"station": Station(), "maniac": Maniac(), "model": EngineAgent(Engine(use_solver_flops=False, seed=2), "engine (model flops)"),
-         "self": EngineAgent(Engine(seed=2), "engine (solver flops)"), "aggro": Aggro(Engine(seed=2))}[opp]
+    a = EngineAgent(Engine(exact_required=False, seed=1), "engine (solver flops)")
+    b = {"station": Station(), "maniac": Maniac(), "model": EngineAgent(Engine(exact_required=False, use_solver_flops=False, seed=2), "engine (model flops)"),
+         "self": EngineAgent(Engine(exact_required=False, seed=2), "engine (solver flops)"), "aggro": Aggro(Engine(exact_required=False, seed=2))}[opp]
     t0 = time.time()
     r = match(a, b, hands)
     per100 = r.mean() / 2 * 100                              # two hands per deal

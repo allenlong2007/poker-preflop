@@ -207,13 +207,13 @@ def matches(deals):
         print(f"{label}: {per100:+.2f} ± {se:.2f} bb/100 ({time.time() - t0:.0f}s)", flush=True)
         pd.DataFrame(rows).round(3).to_csv(OUT / "matches.csv", index=False)
 
-    fine = lambda **k: Engine(policy_dir=POLICY_FINE, seed=1, **k)
-    old = lambda **k: Engine(policy_dir=POLICY, seed=2, **k)
+    fine = lambda **k: Engine(exact_required=False, policy_dir=POLICY_FINE, seed=1, **k)
+    old = lambda **k: Engine(exact_required=False, policy_dir=POLICY, seed=2, **k)
     run(EngineAgent(fine()), EngineAgent(old()), "fine sizes vs old sizes")
     for factor, desc in ((0.8, "bets 0.8x its sizes (40%, 80% ...)"), (1.3, "bets 1.3x its sizes (65%, 130% ...)")):
         for name, eng in (("fine, blend", fine()), ("fine, nearest", fine(translate=False)),
                           ("old, blend", old()), ("old, nearest", old(translate=False))):
-            opp = OddSizer(Engine(policy_dir=POLICY, seed=3), factor, desc)
+            opp = OddSizer(Engine(exact_required=False, policy_dir=POLICY, seed=3), factor, desc)
             run(EngineAgent(eng), opp, f"{name} vs old bot that {desc}")
 
 
