@@ -6,9 +6,9 @@ player already bet / raised this hand, board texture (flush possible, straight p
 
   prior     fit on self-play bets where every hand's cards are known (the bot against itself and against a
             loose-aggressive version of itself): the structure (bigger bets, raises, later streets, scare boards)
-  opponent  refit for each opponent on their own shown-down bets, as a MAP estimate with a Gaussian prior centred
-            on the prior's weights (a tight prior on the slopes, a looser one on the bias): with a handful of
-            showdowns it moves little, with many it becomes their own model
+  opponent  MAP refits are shadow-only: chronological, hand-separated validation measures
+            Brier loss and uncertainty. Selected reveals cannot identify all betting hands,
+            so live serving retains the frozen self-play prior.
 
 predict() gives P(bluff) for a bet; bot/potodds.py uses it as the bluff share of that bet's range.
 
@@ -126,7 +126,7 @@ def prior():
 
 
 def for_opponent(hands):
-    """The prior refit on this opponent's shown-down bets; (model, number of labeled bets)."""
+    """Frozen prior and descriptive labeled-bet count; never deploy a selected-reveal refit."""
     p = prior()
     if p is None:
         return None, 0

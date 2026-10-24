@@ -1,22 +1,12 @@
-"""Experiment 37: adapt to the opponent from the hands stored by bot/opponent.py.
+"""Evidence-gated opponent adaptation.
 
-Preflop (a restricted Nash response, Johanson et al. 2007): the opponent's observed frequencies at each preflop
-node become a fixed strategy (their most aggressive action goes to their strongest hands, then calls, then
-folds, among the hands that reach the node). The preflop tree is solved again with the opponent playing that
-fixed strategy with probability p = n / (n + N_CONF) (at most P_MAX) at each node and best-responding otherwise.
-The bot's answer exploits what was seen in proportion to the evidence and stays robust where the read is
-thin or wrong; a pure best response to a noisy read (tried first) bluffs into lines that only work if the read
-is exact. The bot has no all-in options in these solves: at 100bb it adapts with normal sizes, never by shoving.
+Preflop locks require a supported practical deviation from fixed equilibrium
+frequencies. Postflop action rates use hand-clustered confidence gates before
+reaching legacy range consumers. Selected showdown size/strictness reads and
+population overrides are withheld; bluff refits are measured in shadow only.
 
-Postflop (scaled, not solved): compared with the bot's own self-play profile (the baseline),
-    bluff   = (their fold rate to bets / baseline)  ->  more or fewer bluffs with weak hands
-    defend  = (their betting rate / baseline)       ->  call down wider against an aggressive opponent, fold
-                                                        more marginal hands against a passive one
-both shrunk toward 1 by sample size and clipped to [0.5, 2].
-
-Usage:
-    python -m bot.adapt baseline [deals]       (self-play profile for comparison; ~1 min)
-    python -m bot.adapt show [opponent id]     (what the bot would change against them)
+    python -m bot.reads [opponent]  # reproducible uncertainty/calibration report
+    python -m bot.adapt baseline [deals]  # generate fixed self-play reference
 """
 import json
 import sys
@@ -26,7 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from bot.opponent import load, profile
-from bot.reads import evidence_profile, gate, serving_profile
+from bot.reads import approved_nodes, evidence_profile, gate, serving_profile
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "output" / "match" / "baseline_profile.json"
@@ -70,8 +60,9 @@ def _ratio(obs, base, names, kind):
 
 
 def postflop_exploit(prof, base):
-    bluff, n_f = _ratio(prof["nodes"], base["nodes"], POST_FOLD, "fold")
-    defend, n_b = _ratio(prof["nodes"], base["nodes"], POST_BET, "bet")
+    nodes = approved_nodes(prof)
+    bluff, n_f = _ratio(nodes, base["nodes"], POST_FOLD, "fold")
+    defend, n_b = _ratio(nodes, base["nodes"], POST_BET, "bet")
     return {"bluff": round(bluff, 3), "defend": round(defend, 3), "n_fold": n_f, "n_bet": n_b}
 
 
@@ -81,8 +72,7 @@ SIZE_SHRINK = 20
 
 
 def size_value(prof):
-    """Experiment 39: scale of the opponent's bluff share by bet size, from the bets they showed down; feeds the
-    pot-odds range (bot/potodds.py). 1 = as expected; 0.5 = half the bluffs (fold more); 2 = twice (call more)."""
+    """Neutral size scales until revealed labels support full-range calibration."""
     # Reveals are selected by players, not a representative sample of all bets.
     scale = {band: 1.0 for band in BAND_BLUFF}
     return lambda frac: 1.0, scale
@@ -125,10 +115,7 @@ def population_bluff(exclude=None):
 
 
 def evidence_strictness(hands, prof=None, base=None, prior=LOOSE_BLUFF):
-    """Experiment 42: trust in the value-heavy reading of this opponent's bets and raises, from what they showed
-    down. Their bluff share among shown bets / raises is estimated with a prior of LOOSE_BLUFF worth PRIOR_WEIGHT
-    bets; strictness = how far it sits below LOOSE_BLUFF (0 with no showdowns or when they show bluffs; 0.5 after
-    five value showdowns; ~0.7 after ten)."""
+    """Withhold value-heavy range changes inferred from selected showdowns."""
     # Selected showdown labels do not identify the unseen betting range.
     return 0.0
 
@@ -297,7 +284,7 @@ class Adapter:
             post = postflop_exploit(served, self.base) if self.base else {"bluff": 1.0, "defend": 1.0}
             fn, scale = size_value(prof)
             from bot import bluffmodel
-            bm, n_shown = bluffmodel.for_opponent(hands)        # experiment 41: retrained on every update
+            bm, _ = bluffmodel.for_opponent(hands)  # frozen self-play prior
             prof["read_evidence"]["calibration"] = bluffmodel.calibration_report(hands)
             # Kept per opponent (several tables at once) and loaded into the engine before each of their decisions.
             self.states[opp_id] = {
@@ -346,25 +333,9 @@ def main():
         p = baseline(int(sys.argv[2]) if len(sys.argv) > 2 else 3000)
         print(json.dumps({k: v for k, v in p["nodes"].items()}, indent=0)[:2000])
         return
-    prof = profile(load(sys.argv[2] if len(sys.argv) > 2 else None))
-    base = json.load(open(BASELINE))
-    pre = Preflop().adapt(prof)
-    print(f"{prof['hands']} hands" if pre else "no preflop data")
-    if pre:
-        for node, u in pre["locked"].items():
-            print(f"  opponent at {node} (n={u['n']}, confidence {u['confidence']:.0%}): read {u['freqs']}  vs equilibrium {u['equilibrium']}")
-        w = np.array([1.0])
-        pp = Preflop()
-        w = pp.w
-        for node in ("btn_root", "bb_vs_limp", "bb_vs_raise", "btn_vs_iso", "btn_vs_3bet_small"):
-            if node in pre["nodes"]:
-                who = 0 if node.startswith("btn") else 1
-                rw = pp.eq.reach(node)[who] * w
-                f = {a: f"{np.dot(rw, v) / rw.sum():.0%}" for a, v in pre["nodes"][node].items()}
-                e = {a: f"{np.dot(rw, v) / rw.sum():.0%}" for a, v in pp.eq.actions(node).items()}
-                print(f"  bot at {node}: best response {f}  (equilibrium {e})")
-        print(f"  model BTN EV: equilibrium {pre['btn_ev_eq'] * 100:+.2f} bb/100")
-    print("postflop:", postflop_exploit(prof, base), "| bluff share by size vs expected:", size_value(prof)[1])
+    from bot.reads import main as reads_main
+    sys.argv = [sys.argv[0]] + sys.argv[2:]
+    reads_main()
 
 
 if __name__ == "__main__":

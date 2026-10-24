@@ -631,10 +631,11 @@ class Engine:
         return d
 
     def _vs_shove(self, d, hero, hole, st):
-        """Experiment 46: facing a preflop all-in, once the opponent has shoved at this spot SHOVE_MIN_SEEN times,
-        call exactly when our equity against their shove range beats the price. Their range is the top share of
-        hands (by equity vs random) given how often they shove there, shrunk to a tight prior (SHOVE_PRIOR). The
-        tree assumes an equilibrium shove range, far too tight against a push/fold bot."""
+        """Use only a supported direct exact-jam frequency at this depth/history.
+
+        The top-strength range remains a heuristic; frequency confidence does
+        not establish range calibration or a poker EV improvement.
+        """
         if "call" not in self._options or "fold" not in self._options:
             return d
         opp = "bb" if hero == "btn" else "btn"
