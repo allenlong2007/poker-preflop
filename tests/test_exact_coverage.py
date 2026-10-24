@@ -239,3 +239,19 @@ def test_resume_cannot_ignore_manifest_precision_or_raise_menu(tmp_path):
     plan.write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="configuration"):
         main(command)
+
+
+def test_legacy_nearest_size_and_group_average_are_counted_explicitly(tmp_path, monkeypatch):
+    from bot import engine as module
+    from bot.coverage import CoverageStore
+    e = Engine(exact_required=False, exact_policy_path=False, coverage_path=tmp_path / "counts.sqlite")
+    d = e.decide("bb", "AsQd", "", [[["btn", "raise", 2.37]]])
+    assert "legacy_preflop_nearest_size" in d.diagnostics["fallbacks"]
+    monkeypatch.setattr(module, "map_combo", lambda *args: None)
+    e.use_solver_flops, e.solved_open = True, 3
+    nodes = {"btn_vs_check": {(frozenset(("As", "Qd")), None): {"check": .5, "bet 2bb": .5}}}
+    monkeypatch.setattr(e, "_flop", lambda t: ("Kh8d3c", nodes))
+    d = e.decide("btn", "AsQd", "Kh8d3c", [[["btn", "raise", 3], ["bb", "call", 0]], [["bb", "check", 0]]])
+    assert "legacy_flop_hand_group_average" in d.diagnostics["fallbacks"]
+    with CoverageStore(tmp_path / "counts.sqlite") as store:
+        assert store.summary()["fallbacks"]["legacy_flop_hand_group_average"]["fraction_of_attempts"] == .5
