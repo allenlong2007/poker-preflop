@@ -1,6 +1,6 @@
 # Exact-only coverage — Claude handoff
 
-**Implemented, reviewed, 121 tests passed (2026-10-24). Overnight job prepared; launch/status details follow below.** User explicitly chose: **withhold action and queue exact training** for states lacking a validated exact policy. Read this first; full contract/commands/limits: `docs/exact-coverage.md`.
+**Implemented, reviewed, 121 tests passed; bounded overnight CPU job RUNNING (2026-10-24).** User explicitly chose: **withhold action and queue exact training** for states lacking a validated exact policy. Read this first; full contract/commands/limits: `docs/exact-coverage.md`.
 
 ## Shipped
 
@@ -14,7 +14,7 @@
 
 - Plan: `output/exact/coverage-2026-10-24/targets.json` (ignored). **761 trainable exact cells: 357 preflop, 185 flop, 131 turn, 88 river; 247 exact depths; 68 extra observed sizing totals; 14 pot increments; histories through six prior bets/raises.** Queue also retains 16 unsupported histories (777 requests total); 935 old decision rows lack reconstructable contexts. Raw archives untouched.
 - Bounded real-data validation: 2000 iterations, 21971 infosets, 13422 regret updates, 6.52s,~52.8MB; 0/761 cells reached 1000-update readiness. Files: `output/exact/coverage-2026-10-24/validation/`. Mechanics validation only; no strength or convergence claim.
-- **121 tests passed**; production coverage summary below/final update. `compileall` and `git diff --check` passed. Coverage DB: `/private/tmp/poker-exact-coverage.coverage`. MLE/Python reviewers approve; regressions cover readiness-with-zero-average, manifest tampering/config drift, strict routing without legacy files, exact turn/river/long raises, private-card expansion, queue idempotency, unsupported gaps, and detailed fallback counters. Synthetic positive-policy routing fixtures are not training evidence.
+- **121 tests passed**; measured production modules 88% combined; queue 96%, target trainer 89%, preparation 95%. `compileall` and `git diff --check` passed. Coverage DB: `/private/tmp/poker-exact-coverage.coverage`. MLE/Python reviewers approve; regressions cover readiness-with-zero-average, manifest tampering/config drift, strict routing without legacy files, exact turn/river/long raises, private-card expansion, queue idempotency, unsupported gaps, and detailed fallback counters. Synthetic positive-policy routing fixtures are not training evidence.
 - Historical source rollup: `output/exact/coverage-2026-10-24/historical-fallbacks.json`: 935 legacy decisions (422 preflop/69 solver/414 model/12 rule/18 short). Old logs lack detailed reason diagnostics; those frequencies are unknown. New live counters currently 0 attempts (archive import is not play).
 - **Full board/game coverage is NOT complete.** Reports always retain `full_game_complete:false`. Counts concern the requested frontier only. Zero-own-reach historical lines can remain without average mass even with many visits. High variance/sparse coverage remain risks. No model promoted; default serving will withhold until a real frozen candidate passes independent evaluation/promotion. Broad opponent-read heuristics are bypassed in exact mode; evidence/shadow calibration retained.
 
@@ -32,6 +32,15 @@ New requests arriving after manifest freeze need a new manifest/job. Don't silen
 
 Checkpoints: `16765ac` RED contract; `ffac880` strict serving/queue; `d571beb` guided full-game trainer; `4424868` CLI RED; `6225b3e` manifest/CLI/readiness; `b614d95` detailed fallback RED; final GREEN/docs commit follows. Full step ledger: `docs/exact-coverage-progress.md`.
 
-Prior opponent-confidence handoff: `docs/handoff-opponent-confidence.md`. Previous completed exact run remains untouched/readable: 5896000 iterations, 15259454 infosets; `output/exact/overnight/latest.sqlite`; prior detailed handoff `docs/handoff-exact-card-training.md`. Do not resume it after training source/config changes.
+Prior opponent-confidence handoff: `docs/handoff-opponent-confidence.md`. Previous completed exact run remains untouched/readable: 5896000 iterations, 15259454 infosets;  `output/exact/overnight/latest.sqlite`; prior detailed handoff `docs/handoff-exact-card-training.md`. Do not resume it after training source/config changes.
 
 Unrelated outputs left untouched: `output/match/equity_vs_random.json`, `output/match/rival_train.json`, `output/trap_study.log`, `output/trap_study/`.
+
+
+## Verified background job — do not edit training source
+
+- PID **11858**, managed exec session **40621**; source checkpoint **76d16af**. One worker, nice+10, numerical threads 1. Budget: 8 hours or 16 GiB candidate+WAL (free-disk guard); stops earlier if all requested targets meet valid 1000-update readiness.
+- Actual command: `.venv/bin/python scripts/train_exact.py train --path output/exact/coverage-2026-10-24/overnight/candidate.sqlite --coverage-targets output/exact/coverage-2026-10-24/targets.json --hours 8 --batch 100 --max-gb 16 --target-min-updates 1000 --snapshot-every 900` (thread limits and nice set in launching environment).
+- Candidate/status/log/PID in `output/exact/coverage-2026-10-24/overnight/`; frozen `latest.sqlite` every 900s and clean exit. Latest verified snapshot: **15000 iterations; 157022 exact infosets; 100709 regret updates; 0/761 ready** at47.02s. This snapshot will become stale; read the status file.
+- Completion heartbeat **poker-exact-coverage-completion** is ACTIVE, checking about every 10 minutes. It stays quiet on normal progress and notifies once on stop/completion/failure, then disables itself. Verify process/session liveness before interpreting stale status. Keep the Mac/Codex managed session running.
+- No model promotion or new live server startup. 121 tests pass; no playing-strength claim. Stop with SIGTERM to the verified live PID only; resume saved RNG/config after the writer stops. Do not change `preflop/exactgame.py`, `preflop/exacttrain.py`, or `preflop/exactcoverage.py` during this run.
