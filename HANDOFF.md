@@ -38,3 +38,7 @@ Default `Engine` is exact-required; uncovered decisions raise `ExactCoverageErro
 ### Exact coverage step 3 — targeted full-game training GREEN
 
 `CoverageTrainer` now replays from blinds in the **whole_game namespace** rather than installing uniform-prior subgame strategies. Round-robin queued cells guide literal hero+board chance events with a full-support80/20 proposal and p/q correction;90% observed-history proposal (full recall, no raise-depth cutoff) uses the existing per-action importance correction. Both players update; sampling proposals never become policy features. `Config.extra_sizes_bb` includes exact observed raise totals in legal menus without nearest-size mapping, preserving old empty-extra config fingerprints.20 targeted/game/trainer tests GREEN, including saved/resumed exact target coverage and candidate-only serving. CLI manifest import/budget/progress integration and final MLE/Python review remain pending. Completion of queued cells will not mean complete NLHE board coverage.
+
+### Exact coverage step 4 — CLI/manifest RED
+
+Added2 failing regressions for reproducible queue/archive preparation, bounded training until queued update floor, and action-time-only board/private-card extraction. `scripts.prepare_coverage` missing as intended. Next implementation adds a hashed immutable exact target manifest, expanded raise menus including observed totals, per-street/depth/raise-count progress, and bounded CPU/time/disk integration. Raw archives remain untouched; preparation will not increment live fallback attempt counts.

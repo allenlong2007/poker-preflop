@@ -115,3 +115,35 @@ def test_extra_observed_raise_totals_are_legal_without_rounding_to_menu():
     import numpy as np
     s = State.deal(cfg, np.random.default_rng(1), stack_bb=100)
     assert "to:237" in s.actions() and "to:819" in s.actions()
+
+
+def test_prepare_plan_and_bounded_cli_train_are_reproducible(tmp_path, capsys):
+    from scripts.prepare_coverage import prepare
+    from scripts.train_exact import main
+    queue, data, plan = tmp_path / "queue.sqlite", tmp_path / "decisions.jsonl", tmp_path / "plan.json"
+    data.write_text(json.dumps({"context": context(stack=3)}) + "\n")
+    result = prepare(queue, [data], [], chip_bb=.5)
+    assert len(result["targets"]) == 1
+    assert result["full_game_complete"] is False
+    plan.write_text(json.dumps(result))
+    candidate = tmp_path / "coverage.sqlite"
+    main(["train", "--path", str(candidate), "--coverage-targets", str(plan), "--iterations", "30",
+          "--batch", "5", "--target-min-updates", "2", "--max-gb", ".1"])
+    status = json.loads(candidate.with_suffix(".status.json").read_text())
+    assert status["coverage"]["trained_targets"] == 1
+    assert status["stop_reason"] == "queued_target_floor_reached"
+    assert status["iterations"] <= 30
+    result2 = prepare(queue, [data], [], chip_bb=.5)
+    assert result["manifest_sha256"] == result2["manifest_sha256"]
+
+
+def test_archived_targets_use_only_action_time_cards_and_no_revealed_opponent(tmp_path):
+    from scripts.prepare_coverage import hand_contexts
+    record = {"hero_pos": "btn", "hero_hole": "AsQd", "shown": {"opp": "AcAd"},
+              "board": "Kh8d3c2s9h", "stacks": {"hero": 10, "opp": 20},
+              "history": context()["history"]}
+    record["history"][1].append(["btn", "bet", 1])
+    targets = list(hand_contexts(record))
+    flop = next(c for c in targets if len(c["board"]) == 6)
+    assert flop["board"] == "Kh8d3c"
+    assert "9h" not in json.dumps(flop) and "AcAd" not in json.dumps(flop)
