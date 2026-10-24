@@ -129,6 +129,10 @@ def test_adaptation_never_adds_deep_all_ins():
         "btn_first_in": {"n": 150, "limp": 0.6, "raise": 0.3, "fold": 0.1},
         "bb_vs_limp": {"n": 90, "raise": 0.9, "check": 0.1},
         "bb_vs_open": {"n": 60, "fold": 0.7, "call": 0.2, "raise": 0.1}}}
+    assert pre.adapt(prof) is None  # aggregate counts alone cannot qualify a read
+    prof["read_evidence"] = {"version": 1, "decisions": {}, "nodes": {
+        name: {"n": 3000, "totals": {a: 3000 * v for a, v in obs.items() if a != "n"}}
+        for name, obs in prof["nodes"].items()}}
     out = pre.adapt(prof)
     assert out and all(0 < u["confidence"] <= 0.85 for u in out["locked"].values())
     for name, acts in out["nodes"].items():
@@ -204,6 +208,11 @@ def test_traps_follow_the_solver_and_the_opponent():
     base = check()
     assert abs(base - TRAP[("dry", "two pair")][2]) < 0.02
     eng.opp_profile = {"nodes": {"turn_bet_when_checked_to": {"n": 40, "bet": 0.9}}}
+    assert check() == base  # sparse/unqualified counts cannot change trapping
+    from bot.reads import serving_profile
+    prof = {"hands": 3000, "read_evidence": {"version": 1, "decisions": {}, "nodes": {
+        "turn_bet_when_checked_to": {"n": 3000, "totals": {"bet": 2700, "check": 300}}}}}
+    eng.opp_profile = serving_profile(prof)
     assert check() > base + 0.1                                            # a player who bets when checked to
     eng.opp_profile = None
     d = eng.decide("btn", "Ks8s", "Kh8d3c", [pre, [Act("bb", "check")]], sample=False)
@@ -234,9 +243,14 @@ def test_reads_a_push_fold_bot():
     shove = [[Act("btn", "raise", 100)]]
     assert eng.decide("bb", "Ah9c", "", shove, sample=False).label == "fold"          # no read: equilibrium
     eng.opp_profile = {"nodes": {"btn_first_in": {"n": 30, "all-in": 0.35, "fold": 0.65}}}
+    assert eng.decide("bb", "Ah9c", "", shove, sample=False).label == "fold"
+    from bot.reads import jam_key
+    eng.read_evidence = {"version": 1, "decisions": {}, "jams": {
+        jam_key("btn_first_in", 100, []): {"n": 30000, "hits": 10500, "index": 1}}}
     assert eng.decide("bb", "Ah9c", "", shove, sample=False).label == "call"
     assert eng.decide("bb", "Kh9c", "", shove, sample=False).label == "fold"
     eng.opp_profile = None
+    eng.read_evidence = {}
     d = eng.decide("bb", "Qs6d", "", [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "raise", 6)]], sample=False)
     assert d.probs.get("fold", 0.0) == 0.0
 

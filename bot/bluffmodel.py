@@ -136,6 +136,60 @@ def for_opponent(hands):
     return p, len(data)
 
 
+def calibration_report(hands):
+    """Shadow-only chronological holdout, one loss observation per revealed hand.
+
+    Brier loss measures probabilistic accuracy (calibration AND discrimination).
+    Improvement intervals use bounded per-hand paired losses, never independent
+    street labels. A fixed first-half fit cannot see the later validation labels.
+    Selected reveals cannot qualify this model for full-range live serving.
+    """
+    from bot.reads import MIN_HANDS, interval, unique_hands
+    p = prior()
+    report = {"applied": False, "reason": "selected_reveals_not_range_calibrated",
+              "train_hands": 0, "validation_hands": 0,
+              "metric": "per_hand_mean_brier", "sampling": "opponent_selected_reveals"}
+    if p is None:
+        return dict(report, reason="missing_prior")
+    hands = unique_hands(hands)
+    # Archive order is temporal only within one monotonically numbered source.
+    numbers = [h.get("number") for h in hands]
+    if (len({h["opp_id"] for h in hands}) > 1
+            or any(not isinstance(n, (int, float)) for n in numbers)
+            or any(b <= a for a, b in zip(numbers, numbers[1:]))):
+        return dict(report, reason="chronology_unverified")
+    labeled = [(r, examples_from_record(r, "opp")) for r in hands]
+    labeled = [(r, data) for r, data in labeled if data]
+    split = len(labeled) // 2
+    train, validation = labeled[:split], labeled[split:]
+    report.update(train_hands=len(train), validation_hands=len(validation))
+    if min(len(train), len(validation)) < MIN_HANDS:
+        return dict(report, reason="too_few_independent_reveals")
+    # Weight each training hand equally, using one deterministic first bet label.
+    X, y = zip(*(data[0] for _, data in train))
+    sd = np.full(len(p.w), SLOPE_SD)
+    sd[0] = BIAS_SD
+    candidate = Model(fit(X, y, p.w, sd))
+    prior_loss, candidate_loss, prior_residual, candidate_residual = [], [], [], []
+    for _, data in validation:
+        Xv, yv = map(np.asarray, zip(*data))
+        pp = 1 / (1 + np.exp(-Xv @ p.w))
+        pc = 1 / (1 + np.exp(-Xv @ candidate.w))
+        prior_loss.append(float(np.mean((pp - yv) ** 2)))
+        candidate_loss.append(float(np.mean((pc - yv) ** 2)))
+        prior_residual.append(float(np.mean(pp - yv)))
+        candidate_residual.append(float(np.mean(pc - yv)))
+    diff = np.asarray(prior_loss) - candidate_loss
+    # Paired loss differences lie in [-1, 1]; rescale to [0, 1].
+    lo, hi = interval(float(((diff + 1) / 2).sum()), len(diff))
+    report.update(prior_brier=float(np.mean(prior_loss)), candidate_brier=float(np.mean(candidate_loss)),
+                  prior_mean_residual=float(np.mean(prior_residual)),
+                  candidate_mean_residual=float(np.mean(candidate_residual)),
+                  brier_improvement=float(diff.mean()), brier_improvement_interval=[2 * lo - 1, 2 * hi - 1],
+                  improvement_supported=lo > .5)
+    return report
+
+
 def build_prior(deals):
     from bot.engine import Engine
     from bot.selfplay import DECK, EngineAgent, play_hand

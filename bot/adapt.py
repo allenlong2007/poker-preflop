@@ -57,11 +57,14 @@ def _pooled(nodes, names, kind):
 
 
 def _ratio(obs, base, names, kind):
+    # Compare identical node support, weighted by the opponent's opportunities.
+    names = [k for k in names if obs.get(k, {}).get("n", 0) and base.get(k, {}).get("n", 0)]
     h, n = _pooled(obs, names, kind)
-    hb, nb = _pooled(base, names, kind)
-    if not n or not nb or hb <= 0:
+    if not n:
+        return 1.0, 0
+    f_base = sum(obs[k]["n"] * base[k].get(kind, 0) for k in names) / n
+    if f_base <= 0:
         return 1.0, n
-    f_base = hb / nb
     f = (h + SHRINK * f_base) / (n + SHRINK)                  # shrunk toward the baseline
     return float(np.clip(f / f_base, 0.5, 2.0)), n
 
@@ -252,10 +255,7 @@ class Adapter:
         self.lock = threading.Lock()
         self.state = {}
         self.states = {}                      # opponent id -> what the engine should use against them
-        try:
-            self.pop = population_bluff()     # experiment 47: the starting read on a new opponent
-        except Exception:                     # noqa: BLE001 - no stored hands yet
-            self.pop = None
+        self.pop = None  # selected population reveals are descriptive only
 
     def apply(self, opp_id):
         """Load this opponent's adaptation into the engine (defaults if there is none yet). The caller holds the
@@ -298,12 +298,12 @@ class Adapter:
             fn, scale = size_value(prof)
             from bot import bluffmodel
             bm, n_shown = bluffmodel.for_opponent(hands)        # experiment 41: retrained on every update
+            prof["read_evidence"]["calibration"] = bluffmodel.calibration_report(hands)
             # Kept per opponent (several tables at once) and loaded into the engine before each of their decisions.
             self.states[opp_id] = {
                 "nodes": pre["nodes"] if pre else {}, "lam": pre["lam"] if pre else 0.0, "post": post,
                 "profile": served, "size_value": fn, "bluff_model": bm, "evidence": prof["read_evidence"],
-                "strict": evidence_strictness(hands, prof, self.base, population_bluff(opp_id)) if self.base else 0.0}
-            self.pop = population_bluff()
+                "strict": evidence_strictness(hands, prof, self.base) if self.base else 0.0}
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
                           "postflop": dict(post, sizes=scale), "locked": pre["locked"] if pre else {}, "read_evidence": prof["read_evidence"]}
         finally:

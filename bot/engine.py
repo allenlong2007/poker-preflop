@@ -642,19 +642,29 @@ class Engine:
         if st.left(opp) > EPS and st.left(hero) > b + EPS:
             return d                                         # not an all-in (theirs or ours by calling)
         node, reach = _shove_node(st.history[0], opp)
-        x = ((self.opp_profile or {}).get("nodes") or {}).get(node, {}) if node else {}
-        from bot.reads import gate
-        # Only a supported direct shove frequency may override the baseline.
+        from bot.reads import MAX_WIDTH, MIN_HANDS, MARGIN, VERSION, interval, jam_key
+        # This channel alone must support a shove-rate change; raises/limps
+        # cannot qualify a shove read. Conditional reach needs a joint model.
+        i = max(k for k, a in enumerate(st.history[0]) if a.player == opp)
+        prefix = [(a.player, a.kind, a.to) for a in st.history[0][:i]]
+        key = jam_key(node, st.stack, prefix)
+        obs = self.read_evidence.get("jams", {}).get(key, {})
+        n = obs.get("n", 0)
+        seen = obs.get("hits", 0)
+        # Countable context allocation preserves the family error budget as
+        # new exact depth/size contexts arrive, in first-observation order.
+        rank = obs.get("index", 1)
+        lo, hi = interval(seen, n, rank * (rank + 1))
         prior = SHOVE_PRIOR[0]
-        evidence_profile = {"read_evidence": self.read_evidence}
-        rates, evidence = gate(evidence_profile, node, {"all-in": prior, "fold": 1 - prior})
-        d.diagnostics["shove_evidence"] = evidence
-        # Conditional shove reach requires a joint range model; abstain for now.
-        if not evidence["applied"] or reach is not None:
+        applied = (self.read_evidence.get("version") == VERSION and n >= MIN_HANDS
+                   and hi - lo <= MAX_WIDTH and (lo > prior + MARGIN or hi < prior - MARGIN)
+                   and reach is None)
+        d.diagnostics["shove_evidence"] = {
+            "applied": applied, "n_hands": n, "interval": [lo, hi], "reference": prior, "context": key,
+            "reason": "supported_shove_frequency" if applied else "uncertain_shove_frequency_or_conditional_reach"}
+        if not applied:
             return d
-        n = evidence["n_hands"]
-        f = rates["all-in"]
-        seen = evidence["estimates"].get("all-in", 0) * n
+        f = lo if lo > prior else hi
         share = 1.0
         eq = _equity_vs_top(hole, max(0.01, min(1.0, f * share)))
         need = b / (st.pot() + b)
@@ -790,7 +800,8 @@ class Engine:
 
     def _checked_to_bet(self, street):
         """The opponent's bet rate when checked to on this street, shrunk to the prior (bot/opponent.py profile)."""
-        x = ((self.opp_profile or {}).get("nodes") or {}).get(f"{['', 'flop', 'turn', 'river'][street]}_bet_when_checked_to", {})
+        from bot.reads import approved_nodes
+        x = approved_nodes(self.opp_profile).get(f"{['', 'flop', 'turn', 'river'][street]}_bet_when_checked_to", {})
         n = x.get("n", 0)
         return (n * x.get("bet", 0.0) + 10 * TRAP_BET_PRIOR) / (n + 10)
 

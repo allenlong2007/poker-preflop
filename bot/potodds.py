@@ -220,7 +220,8 @@ def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_v
     opp = "bb" if hero == "btn" else "btn"
     dead = set(hole) | set(board)
     rng = combos(preflop_weights(pre, st.history[0], opp), dead)
-    nodes = (prof or {}).get("nodes", prof or {})
+    from bot.reads import approved_nodes
+    nodes = approved_nodes(prof)
     barrels = 0
     for s in range(1, st.street + 1):
         b = board[:2 + s]

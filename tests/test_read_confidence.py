@@ -70,3 +70,38 @@ def test_mixed_opponents_rejected():
     other = dict(hand(2), opp_id="different")
     with pytest.raises(ValueError, match="identities"):
         evidence_profile([hand(1), other])
+
+
+def test_other_preflop_actions_cannot_qualify_shove_read():
+    from bot.engine import Act, Engine
+    e = Engine(pot_odds=True)
+    from bot.reads import jam_key
+    e.read_evidence = {"version": 1, "decisions": {}, "jams": {
+        jam_key("btn_first_in", 100, []): {"n": 3000, "hits": 90, "index": 1}}}
+    d = e.decide("bb", "Ah9c", "", [[Act("btn", "raise", 100)]], sample=False)
+    assert not d.shove_read
+
+
+def test_postflop_baseline_uses_same_nodes_and_weights():
+    from bot.adapt import postflop_exploit
+    prof = {"nodes": {"flop_vs_bet": {"n": 3000, "fold": .6}}}
+    base = {"nodes": {"flop_vs_bet": {"n": 100, "fold": .4},
+                      "river_vs_bet": {"n": 10000, "fold": .9}}}
+    assert postflop_exploit(prof, base)["bluff"] > 1
+
+
+def test_near_jams_do_not_count_as_exact_jams_and_depths_are_separate():
+    from bot.engine import Act, Engine
+    hands = [hand(i) for i in range(3000)]
+    for h in hands:
+        h["history"][0][0][2] = 60
+    p = evidence_profile(hands)
+    e = Engine(pot_odds=True)
+    e.read_evidence = p["read_evidence"]
+    d = e.decide("bb", "Ah9c", "", [[Act("btn", "raise", 100)]], sample=False)
+    assert not d.shove_read
+    for h in hands:
+        h["history"][0][0][2] = 100
+    e.read_evidence = evidence_profile(hands)["read_evidence"]
+    assert e.decide("bb", "Ah9c", "", [[Act("btn", "raise", 100)]], sample=False).shove_read
+    assert not e.decide("bb", "Ah9c", "", [[Act("btn", "raise", 40)]], stack=40, sample=False).shove_read
