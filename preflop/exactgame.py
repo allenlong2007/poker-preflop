@@ -33,6 +33,7 @@ class Config:
     stacks_bb: tuple = (6.0, 10.0, 15.0, 25.0, 40.0, 60.0, 100.0)
     exhaustive: bool = False
     exploration: float = 0.6
+    extra_sizes_bb: tuple = ()
 
     def __post_init__(self):
         if not math.isfinite(self.chip_bb) or self.chip_bb <= 0 or self.chip_bb > 0.5:
@@ -45,6 +46,11 @@ class Config:
             raise ValueError("positive finite sizing fractions required")
         if not self.stacks_bb or any(not math.isfinite(s) or s < 1 for s in self.stacks_bb):
             raise ValueError("stacks must be at least one big blind")
+        object.__setattr__(self, "extra_sizes_bb", tuple(sorted(set(self.extra_sizes_bb))))
+        if any(not math.isfinite(v) or v <= 0 for v in self.extra_sizes_bb):
+            raise ValueError("extra sizes must be positive finite chip totals")
+        for amount in self.extra_sizes_bb:
+            self.chips(amount)
         self.chips(0.5)
         for stack in self.stacks_bb:
             self.chips(stack)
@@ -56,7 +62,10 @@ class Config:
         return round(value)
 
     def fingerprint(self):
-        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
+        values = asdict(self)
+        if not self.extra_sizes_bb:
+            values.pop("extra_sizes_bb")  # retain existing immutable artifact fingerprints
+        return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -131,6 +140,7 @@ class State:
         else:
             # Raises are increments over the call, as a fraction of the pot after calling.
             sizes = {high + round(f * (self.pot + self.facing)) for f in self.config.fractions}
+            sizes.update(self.config.chips(v) for v in self.config.extra_sizes_bb)
             sizes.add(self.minimum)
         sizes = {size for size in sizes if self.minimum <= size <= self.cap}
         sizes.add(self.cap)  # includes a short all-in raise, which need not meet the normal minimum

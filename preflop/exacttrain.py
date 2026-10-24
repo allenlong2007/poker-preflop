@@ -38,7 +38,7 @@ def outcome_update(policy, chosen, probability, child, own, opponent, sampled):
 
 
 def _code_hash():
-    paths = (Path(__file__), Path(__file__).with_name("exactgame.py"))
+    paths = (Path(__file__), Path(__file__).with_name("exactgame.py"), Path(__file__).with_name("exactcoverage.py"))
     return hashlib.sha256(b"".join(p.read_bytes() for p in paths)).hexdigest()
 
 
@@ -198,6 +198,10 @@ class Trainer:
             return replace(root, root_id=root.public_root_id())
         return State.deal(self.config, self.rng)
 
+    def _behavior(self, state, updater, strategy, actions):
+        return (1 - self.config.exploration) * strategy + self.config.exploration / len(actions) \
+            if state.actor == updater else strategy
+
     def _walk(self, state, updater, own=1.0, opponent=1.0, sampled=1.0):
         if state.terminal:
             return state.utility(updater)
@@ -213,8 +217,7 @@ class Trainer:
         positive = np.maximum(regrets, 0)
         strategy = positive / positive.sum() if positive.sum() > 0 else np.full(len(actions), 1 / len(actions))
         updating = state.actor == updater
-        behavior = (1 - self.config.exploration) * strategy + self.config.exploration / len(actions) \
-            if updating else strategy
+        behavior = self._behavior(state, updater, strategy, actions)
         chosen = int(self.rng.choice(len(actions), p=behavior))
         child = self._walk(state.step(actions[chosen]), updater,
                            own * strategy[chosen] if updating else own,
@@ -236,6 +239,9 @@ class Trainer:
             group["updates"] += 1
         return value
 
+    def _sample(self, updater):
+        return self._root(), 1.0
+
     def train(self, iterations):
         if iterations <= 0:
             raise ValueError("positive iteration count required")
@@ -245,7 +251,8 @@ class Trainer:
             self.db.execute("BEGIN IMMEDIATE")
             for _ in range(iterations):
                 for player in (0, 1):
-                    self._walk(self._root(), player)
+                    root, chance_weight = self._sample(player)
+                    self._walk(root, player, chance_weight, chance_weight)
             completed = _metadata(self.db)["iterations"] + iterations
             self._set("iterations", completed)
             self._set("rng", self.rng.bit_generator.state)
