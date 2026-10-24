@@ -44,3 +44,29 @@ def test_unknown_opponent_does_not_inherit_population_read():
     a.pop = .01
     a.apply("new")
     assert a.engine.strict == 0
+
+
+def test_temporal_calibration_keeps_selected_reveals_in_shadow(monkeypatch):
+    import numpy as np
+    from bot import bluffmodel
+    monkeypatch.setattr(bluffmodel, "prior", lambda: bluffmodel.Model(np.zeros(10)))
+    seen = []
+    def examples(r, who):
+        seen.append(r["id"])
+        return [(np.ones(10), float(int(r["id"]) % 2))] * 3
+    monkeypatch.setattr(bluffmodel, "examples_from_record", examples)
+    hands = [hand(i) for i in range(100)]
+    report = bluffmodel.calibration_report(hands + hands)
+    assert report["train_hands"] == 50 and report["validation_hands"] == 50
+    assert report["applied"] is False and report["reason"] == "selected_reveals_not_range_calibrated"
+    assert len(seen) == 100
+    assert report["brier_improvement_interval"][0] <= 0 <= report["brier_improvement_interval"][1]
+    model, n = bluffmodel.for_opponent(hands)
+    assert np.array_equal(model.w, np.zeros(10))
+
+
+def test_mixed_opponents_rejected():
+    import pytest
+    other = dict(hand(2), opp_id="different")
+    with pytest.raises(ValueError, match="identities"):
+        evidence_profile([hand(1), other])

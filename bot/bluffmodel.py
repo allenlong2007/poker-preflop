@@ -130,13 +130,10 @@ def for_opponent(hands):
     p = prior()
     if p is None:
         return None, 0
+    # Shown cards are selected outcomes. Keep the frozen prior in production;
+    # opponent refits are evaluated separately in calibration_report().
     data = [e for r in hands for e in examples_from_record(r, "opp")]
-    if not data:
-        return p, 0
-    X, y = zip(*data)
-    sd = np.full(len(p.w), SLOPE_SD)
-    sd[0] = BIAS_SD
-    return Model(fit(X, y, p.w, sd)), len(data)
+    return p, len(data)
 
 
 def build_prior(deals):

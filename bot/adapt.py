@@ -26,6 +26,7 @@ from pathlib import Path
 import numpy as np
 
 from bot.opponent import load, profile
+from bot.reads import evidence_profile, gate, serving_profile
 
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "output" / "match" / "baseline_profile.json"
@@ -79,15 +80,9 @@ SIZE_SHRINK = 20
 def size_value(prof):
     """Experiment 39: scale of the opponent's bluff share by bet size, from the bets they showed down; feeds the
     pot-odds range (bot/potodds.py). 1 = as expected; 0.5 = half the bluffs (fold more); 2 = twice (call more)."""
-    nodes = prof["nodes"]
-    scale = {}
-    for band, base in BAND_BLUFF.items():
-        sh = nodes.get(f"shown_{band}", {})
-        n = sh.get("n", 0)
-        bluffs = n * sh.get("bluff", 0.0)
-        scale[band] = float(np.clip((bluffs + SIZE_SHRINK * base) / (n + SIZE_SHRINK) / base, 0.5, 2.0))
-    from bot.opponent import size_band
-    return lambda frac: scale[size_band(frac)], scale
+    # Reveals are selected by players, not a representative sample of all bets.
+    scale = {band: 1.0 for band in BAND_BLUFF}
+    return lambda frac: 1.0, scale
 
 
 # Experiment 42: strictness = clip(S0 - K * ln(aggression), 0, 1) where aggression is their postflop raise and
@@ -131,15 +126,8 @@ def evidence_strictness(hands, prof=None, base=None, prior=LOOSE_BLUFF):
     down. Their bluff share among shown bets / raises is estimated with a prior of LOOSE_BLUFF worth PRIOR_WEIGHT
     bets; strictness = how far it sits below LOOSE_BLUFF (0 with no showdowns or when they show bluffs; 0.5 after
     five value showdowns; ~0.7 after ten)."""
-    from bot import bluffmodel
-    labels = [y for r in hands for _, y in bluffmodel.examples_from_record(r, "opp")]
-    est = (sum(labels) + prior * PRIOR_WEIGHT) / (len(labels) + PRIOR_WEIGHT)
-    s = float(np.clip(1 - est / LOOSE_BLUFF, 0.0, 1.0))
-    if prof is not None and base is not None:
-        # Capped by their measured aggression: a player betting / raising far above normal can't be read as
-        # value-heavy off a few (self-selected) showdowns: at twice the normal rate the cap is 0.31, at e times 0.
-        s = min(s, strictness(prof, base, 1.0, 1.0))
-    return s
+    # Selected showdown labels do not identify the unseen betting range.
+    return 0.0
 
 
 class Preflop:
@@ -212,6 +200,17 @@ class Preflop:
             who = "btn" if node.startswith("btn") else "bb"
             reach = self.eq.reach(node)[0 if who == "btn" else 1] * self.w
             eq_f = {a: float(np.dot(reach, v) / max(reach.sum(), 1e-12)) for a, v in self.eq.actions(node).items()}
+            # Gate against this node's fixed equilibrium frequencies, before solving.
+            reverse = {k: eq_f.get(a, 0) for k, a in amap.items()}
+            # Two archive actions can map to one tree action; split its reference mass.
+            for a in set(amap.values()):
+                keys = [k for k, v in amap.items() if v == a]
+                for k in keys:
+                    reverse[k] /= len(keys)
+            rates, evidence = gate(prof, name, reverse)
+            if not evidence["applied"]:
+                continue
+            obs = dict(rates, n=evidence["n_hands"])
             n = obs["n"]
             f = {a: eq_f[a] * PRIOR / (n + PRIOR) for a in eq_f}
             for k, a in amap.items():
@@ -268,11 +267,13 @@ class Adapter:
         if st is None:
             e.set_adaptation({}, 0.0, {"bluff": 1.0, "defend": 1.0})
             e.opp_profile, e.size_value, e.bluff_model = None, None, None
-            e.strict = STRICT_PRIOR if self.pop is None else float(np.clip(1 - self.pop / LOOSE_BLUFF, 0.0, 1.0))
+            e.strict = STRICT_PRIOR
+            e.read_evidence = {"reason": "no_opponent_evidence", "applied": False}
             return
         e.set_adaptation(st["nodes"], st["lam"], st["post"])
         e.opp_profile, e.size_value, e.strict = st["profile"], st["size_value"], st["strict"]
         e.bluff_model = st["bluff_model"]
+        e.read_evidence = st["evidence"]
 
     def update(self, opp_id, force=False):
         from bot.opponent import canonical
@@ -288,22 +289,23 @@ class Adapter:
             self.done[opp_id] -= MIN_NEW                       # busy: try again on the next hand
             return
         try:
-            prof = profile(hands)
+            prof = evidence_profile(hands)
             if self.pre is None:
                 self.pre = Preflop()
             pre = self.pre.adapt(prof)
-            post = postflop_exploit(prof, self.base) if self.base else {"bluff": 1.0, "defend": 1.0}
+            served = serving_profile(prof, self.base)
+            post = postflop_exploit(served, self.base) if self.base else {"bluff": 1.0, "defend": 1.0}
             fn, scale = size_value(prof)
             from bot import bluffmodel
             bm, n_shown = bluffmodel.for_opponent(hands)        # experiment 41: retrained on every update
             # Kept per opponent (several tables at once) and loaded into the engine before each of their decisions.
             self.states[opp_id] = {
                 "nodes": pre["nodes"] if pre else {}, "lam": pre["lam"] if pre else 0.0, "post": post,
-                "profile": prof, "size_value": fn, "bluff_model": bm,
+                "profile": served, "size_value": fn, "bluff_model": bm, "evidence": prof["read_evidence"],
                 "strict": evidence_strictness(hands, prof, self.base, population_bluff(opp_id)) if self.base else 0.0}
             self.pop = population_bluff()
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
-                          "postflop": dict(post, sizes=scale), "locked": pre["locked"] if pre else {}}
+                          "postflop": dict(post, sizes=scale), "locked": pre["locked"] if pre else {}, "read_evidence": prof["read_evidence"]}
         finally:
             self.lock.release()
 

@@ -50,3 +50,7 @@ Run stopped cleanly at `candidate_disk_limit` after 18,106.64 seconds (~5h 2m), 
 ## Opponent confidence work — 2026-10-24, step 1 (RED)
 
 New task: gate opponent adaptation on uncertainty before changing strategy. Regression tests in `tests/test_read_confidence.py` cover sparse reads, independent hand counts, conservative supported reads, missing provenance, showdown selection bias, and population leakage. RED confirmed: `bot.reads` does not exist yet. Exact training is complete as above; do not restart or promote it. No production changes in this step.
+
+### Step 2 — confidence gates implemented; calibration RED next
+
+`bot/reads.py` adds distinct-hand deduplication/clustering, simultaneous anytime Hoeffding intervals, minimum support/width/practical-effect gates, and conservative frequency projection. `bot/adapt.py` gates preflop locks and serves only supported postflop nodes; population strictness, selected-reveal size/strictness and live bluff refits are withheld. `bot/engine.py` logs gate evidence and requires support for direct shove overrides (conditional shove ranges abstain). First 4 regression tests GREEN. Added temporal calibration regression now RED (`calibration_report` missing), plus identity isolation test GREEN. Full regression suite/review still pending; no calibration improvement or strength claim yet.

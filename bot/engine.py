@@ -220,6 +220,7 @@ class Engine:
         self.river_shift = RIVER_SHIFT
         self.adapted, self.lam, self.exploit = {}, 0.0, {"bluff": 1.0, "defend": 1.0}
         self.pot_odds = pot_odds              # experiment 39: equity vs the opponent's range against the price
+        self.read_evidence = {}
         self.opp_profile = None               # the opponent's profile (bot/opponent.py), set by the adapter
         self.size_value = None                # experiment 39: bluff-share scale by the opponent's bet size
         self.bluff_model = None               # experiment 41: learned P(bluff) for the opponent's bets
@@ -316,6 +317,7 @@ class Engine:
                            "bluff_scale": self.exploit["bluff"], "defend_scale": self.exploit["defend"],
                            "opponent_hands": (self.opp_profile or {}).get("hands", 0),
                            "opponent_profile": self.opp_profile,
+                           "read_evidence": self.read_evidence,
                            "bluff_model": self.bluff_model.w.tolist() if self.bluff_model else None},
             "legal_options": {k: {"action": a, "to_bb": to} for k, (a, to) in self._options.items()},
         })
@@ -641,16 +643,19 @@ class Engine:
             return d                                         # not an all-in (theirs or ours by calling)
         node, reach = _shove_node(st.history[0], opp)
         x = ((self.opp_profile or {}).get("nodes") or {}).get(node, {}) if node else {}
-        n = x.get("n", 0)
-        seen = n * x.get("all-in", 0.0)
-        if seen < SHOVE_MIN_SEEN - 1e-9:
+        from bot.reads import gate
+        # Only a supported direct shove frequency may override the baseline.
+        prior = SHOVE_PRIOR[0]
+        evidence_profile = {"read_evidence": self.read_evidence}
+        rates, evidence = gate(evidence_profile, node, {"all-in": prior, "fold": 1 - prior})
+        d.diagnostics["shove_evidence"] = evidence
+        # Conditional shove reach requires a joint range model; abstain for now.
+        if not evidence["applied"] or reach is not None:
             return d
-        if reach is not None:
-            r = ((self.opp_profile or {}).get("nodes") or {}).get(reach[0], {})
-            share = sum(r.get(k, 0.0) for k in reach[1]) if r.get("n", 0) >= 5 else 0.5
-        else:
-            share = 1.0
-        f = (seen + SHOVE_PRIOR[1] * SHOVE_PRIOR[0]) / (n + SHOVE_PRIOR[1])
+        n = evidence["n_hands"]
+        f = rates["all-in"]
+        seen = evidence["estimates"].get("all-in", 0) * n
+        share = 1.0
         eq = _equity_vs_top(hole, max(0.01, min(1.0, f * share)))
         need = b / (st.pot() + b)
         d.diagnostics["vs_shove"] = {"equity": eq, "price": need, "range_top_share": f * share,
