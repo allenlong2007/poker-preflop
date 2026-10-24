@@ -1,8 +1,8 @@
 # Exact-card training — Claude handoff
 
-**Status: implemented, reviewed, tested; local 8-hour candidate run ACTIVE (2026-10-23).** Read this first. User approved local CPU with overnight runs; no cloud spend or automatic promotion. Detailed design/commands/limits: `docs/exact-card-training.md`. Prior logging work: `docs/decision-logging.md`.
+**Status: implemented, reviewed, tested; local candidate run COMPLETED at its 16 GiB storage limit (2026-10-23).** Read this first. User approved local CPU with overnight runs; no cloud spend or automatic promotion. Detailed design/commands/limits: `docs/exact-card-training.md`. Prior logging work: `docs/decision-logging.md`.
 
-## Running job — verify status, do not start a second writer
+## Completed job — checkpoint saved; evaluation still required
 
 - Actual PID **68736**, managed exec session **32039**. Two detached launch attempts exited before starting; `training.pid` now contains the verified real PID.
 - Candidate: `output/exact/overnight/candidate.sqlite`; status: `candidate.status.json`; log: `training.log`; PID: `training.pid` in the same directory. Generated files are Git-ignored.
@@ -41,3 +41,12 @@ SIGTERM to the verified PID stops after the current batch. Do not trust an old P
 All steps have RED/GREEN Git checkpoints (start 350187f, game 7abceec, trainer d24ad51, integration ca24252, lifecycle 57869f3; final reviewed implementation 84c01c4). Use `git log` for integrity-fix checkpoints. Next: let the candidate run, freeze it, evaluate at ≥2000 duplicate deals/min_updates≥1000, inspect coverage/error slices before promotion. No recurring scheduler installed.
 
 Unrelated pre-existing untracked outputs left alone: output/match/equity_vs_random.json, output/match/rival_train.json, output/trap_study.log, output/trap_study/.
+
+
+## Completion detected 2026-10-23
+
+Run stopped cleanly at `candidate_disk_limit` after 18,106.64 seconds (~5h 2m), before its 8-hour time budget. Final: **5,896,000 iterations; 15,259,454 exact information sets; 24,354,392 regret updates**. Candidate size: 17,180,086,272 bytes (~16 GiB). Frozen checkpoint `output/exact/overnight/latest.sqlite` exists and its metadata confirms all 5,896,000 iterations. Candidate/status/log remain in the same directory. This completes this bounded run, not full solver training or validation; no model was promoted and no new run/evaluation was started. Completion monitor is being removed after this one notification. Earlier running-progress/PID notes above are historical.
+
+## Opponent confidence work — 2026-10-24, step 1 (RED)
+
+New task: gate opponent adaptation on uncertainty before changing strategy. Regression tests in `tests/test_read_confidence.py` cover sparse reads, independent hand counts, conservative supported reads, missing provenance, showdown selection bias, and population leakage. RED confirmed: `bot.reads` does not exist yet. Exact training is complete as above; do not restart or promote it. No production changes in this step.
