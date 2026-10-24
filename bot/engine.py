@@ -1,22 +1,12 @@
-"""The match bot's decision engine (experiment 29): what to do in any 100bb heads-up spot.
+"""Exact-card decision engine with an explicit legacy research mode.
 
-Given the hero's seat, hole cards, the board and the betting so far, it returns an action, its size and
-the full action distribution. Nothing here talks to a poker site; an interface (PokerNow or otherwise)
-only has to translate the table into `Act` lists and the decision back into clicks.
+Default serving requires a promoted, sufficiently updated literal-card policy.
+Uncovered states withhold an action and enter the persistent exact training
+queue. No board textures, hand groups, deep-stack borrowing, or legacy rule
+adjustments run in this mode. ``exact_required=False`` opts research benchmarks
+into historical approximations, with separately counted fallback reasons.
 
-Sources, in order of preference:
-  1. Preflop: experiment 26's solved tree (`output/match/policy/preflop.json`, per hand class). The
-     opponent's open / 3-bet sizes are matched to the nearest trained size.
-  2. Flop of a 3bb single-raised pot: experiment 28's TexasSolver solve of the representative flop for
-     the board's texture class. The hero's combo is mapped onto that flop (suits and ranks relative to
-     the board); if the mapped combo isn't in the solved range or lands in a different hand group, the
-     solver's average over that hand group is used.
-  3. Everything else postflop: the whole-hand model (`output/match/policy/<pot>.npz`) by texture, line
-     and hand group. Opponent bet sizes are matched to the nearest trained size (in log terms).
-  4. Spots no model covers (a re-raise of a raise postflop): a simple rule (jam the nuts, call strong made
-     hands, fold the rest).
-
-All amounts are in big blinds; `to` is the player's total chips put in on the current street.
+All amounts are big blinds; ``to`` is the total committed on this street.
 """
 import json
 import math
@@ -51,7 +41,6 @@ JAM_FRACTION = 0.6                         # a preflop raise to >= 60% of the st
 # rarely after the turn checked through. These corrections move part of the fold (or check) to call (or lead),
 # only for hands with a pair or better (a live draw on the turn, overcards against small bets); air folds.
 DEFEND_KEEP = {1: 0.7, 2: 0.85}            # street -> share of a model fold kept (turn, river), for those hands
-FALLBACK_UNTRAINED = True
 MONSTER_TILT = 0.75                       # experiment 43: share of a nut-hand decision moved to max value / trap
 STRICT_PRIOR = 0.0                        # experiment 42: strictness before any data on the opponent (trained)
 RIVER_SHIFT = (0.6, 0.3)                  # experiment 40: (1/3 -> 3/4, 1/2 -> pot) share of the model's river bets
@@ -242,6 +231,7 @@ class Engine:
         self.solved_open = float(meta.get("open", SOLVED_OPEN))
         self.translate = translate
         self._pots, self._flops, self._opts = {}, {}, {}
+        self._solver_flags = set()
         self.rng = np.random.default_rng(seed)
         self.exact_policy = None
         self.exact_status = {"status": "disabled"}
@@ -356,6 +346,12 @@ class Engine:
                 fallbacks.append("legacy_depth_node_borrow")
             if lookup.get("size_translation"):
                 fallbacks.append("legacy_size_translation")
+            for flag in ("preflop_nearest_size", "preflop_node_alias", "near_jam_as_all_in", "preflop_deep_raise_alias"):
+                if lookup.get(flag):
+                    fallbacks.append(f"legacy_{flag}")
+            if lookup.get("flop_group_average"):
+                fallbacks.append("legacy_flop_hand_group_average")
+            fallbacks.extend(f"legacy_solver_attempt:{reason}" for reason in lookup.get("solver_attempt_fallbacks", ()))
         d.diagnostics.update(strategy_mode="exact_required" if self.exact_required else "legacy_permitted",
                              fallbacks=fallbacks, coverage=self._record_coverage(
                                  context, exact["status"], "exact" if d.source == "exact" else "legacy", fallbacks))
@@ -395,6 +391,7 @@ class Engine:
         # falls back to the 100bb tree's answer.
         n = _Fallback(self.pre["nodes"] if deep else depths[depth], self.pre["nodes"],
                       *[depths[d] for d in sorted(depths, reverse=True)])
+        size_alias = False
         f4 = self.pre.get("fourbet_x")
         opts = {}
         raise_ = lambda to: ("raise", min(round(to, 2), st.stack))
@@ -411,6 +408,7 @@ class Engine:
                 node, pol = "bb_vs_open_jam", n["bb_vs_open_jam"]
             else:
                 key = min(self.pre["vs_open"], key=lambda k: abs(math.log(float(k) / s)))
+                size_alias = abs(float(key) - s) > EPS
                 spot = self.pre["vs_open"][key]
                 node, pol = f"bb_vs_raise (open {key})", spot["bb_vs_raise"] if deep else n["bb_vs_raise"]
                 opts = {"3-bet": raise_(spot["threebet_to"] * s / float(key)), "all-in": ("raise", st.stack)}
@@ -431,6 +429,7 @@ class Engine:
                 node, pol = "btn_vs_3bet (all-in)", n["btn_vs_3bet"]
             else:
                 key = min(self.pre["vs_3bet"], key=lambda k: abs(math.log(float(k) / t)))
+                size_alias = abs(float(key) - t) > EPS
                 node, pol = f"btn_vs_3bet_small (3-bet {key})", self.pre["vs_3bet"][key] if deep \
                     else n["btn_vs_3bet_small"]
                 opts = {"all-in": ("raise", st.stack)}
@@ -460,7 +459,10 @@ class Engine:
             opts = {"fold": ("fold", 0), "call": ("call", min(last.to, st.stack))}
         probs = {a: float(v[i]) for a, v in pol.items() if a in opts}
         diagnostics = {"base": {"source": "preflop", "node": node, "probs": dict(probs)},
-                       "lookup": {"depth_bb": depth, "depth_node_borrow": n.borrowed}}
+                       "lookup": {"depth_bb": depth, "depth_node_borrow": n.borrowed,
+                                  "preflop_nearest_size": size_alias, "preflop_node_alias": n.missing,
+                                  "near_jam_as_all_in": any(a.kind == "raise" and jam(a) and a.to < st.stack - EPS for a in acts),
+                                  "preflop_deep_raise_alias": len(acts) >= 4 and acts[-1].kind == "raise" and not jam(acts[-1])}}
         base = node.split(" ")[0]
         if deep and self.lam > 0 and base in self.adapted:
             ad = self.adapted[base]
@@ -570,11 +572,14 @@ class Engine:
             notes.append(f"facing {faced:.2f} pot -> " + " / ".join(f"{sizes[k]:.2f} ({w:.0%})" for k, w in weights))
         if s == 0 and pot == "srp" and self.use_solver_flops and abs(st.history[0][0].to - self.solved_open) < 0.26 \
                 and kind in ("bb_first", "btn_vs_check", "bb_vs_bet"):
+            self._solver_flags = set()
             parts = [(self._solver_flop(hole, board, kind, labels, c, bets), w) for c, w in cells]
             if all(p is not None for (p, _), _ in parts):
                 probs = _blend([(p, w) for (p, _), w in parts])
                 source = "solver"
+                diagnostics["lookup"]["flop_group_average"] = "group_average" in self._solver_flags
                 notes.append(parts[0][0][1])
+            diagnostics["lookup"]["solver_attempt_fallbacks"] = sorted(self._solver_flags)
         if probs is None:
             table = self._pot(pot)[f"sigma_{s}_{kind}"]
             row = lambda c: dict(zip(labels, map(float, table[c])))
@@ -977,10 +982,12 @@ class Engine:
         t = flop_texture(flop)
         got = self._flop(t)
         if got is None:
+            self._solver_flags.add("missing_class")
             return None, "no solved flop for this class"
         rep_str, nodes = got
         rep = parse_cards(rep_str)
         if kind not in nodes:
+            self._solver_flags.add("missing_node")
             return None, "node not in the solved flop"
         facing = None
         if kind == "bb_vs_bet":
@@ -998,9 +1005,11 @@ class Engine:
             if row is not None:
                 note += f", as {''.join(card_str(c) for c in mapped)}"
         if row is None:                                     # average over the solver's combos in this group
+            self._solver_flags.add("group_average")
             rows = [v for (combo, _), v in table.items()
                     if fg.fine_bucket(parse_cards("".join(sorted(combo))), rep) == bkt]
             if not rows:
+                self._solver_flags.add("missing_group")
                 return None, note + ": no combos in this hand group"
             row = {a: float(np.mean([r.get(a, 0.0) for r in rows])) for a in rows[0]}
             note += f", average of {len(rows)} combos ({fg.BUCKETS[bkt]})"
@@ -1173,12 +1182,14 @@ class _Fallback(dict):
         super().__init__(nodes)
         self.others = others
         self.borrowed = []
+        self.missing = []
 
     def __missing__(self, key):
         for o in self.others:
             if key in o:
                 self.borrowed.append(key)
                 return o[key]
+        self.missing.append(key)
         raise KeyError(key)
 
     def get(self, key, default=None):

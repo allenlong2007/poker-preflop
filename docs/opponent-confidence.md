@@ -32,3 +32,6 @@ Training uses the first labeled bet per hand; validation averages all labeled be
 The JSON includes data/source hashes, per-node support, intervals, references, accepted/withheld reasons, and shadow metrics. Regular decision audit diagnostics include `adaptation.read_evidence` and a shove-specific gate report. Restart the bot server to load this code; no server restart or model promotion is performed automatically.
 
 Acceptance evidence: sparse and duplicate samples abstain; repeated actions cluster by hand; supported synthetic rates move conservatively; unrelated actions cannot approve shoves; actual jams cannot transfer across depths; comparison mixtures match; future labels cannot enter fitting; unknown opponents reset; seeded null streams stay neutral across repeated looks. Tests validate mechanics and bounded synthetic cases, not live strength.
+
+
+The subsequent exact-only serving change (`docs/exact-coverage.md`) bypasses these legacy adaptation overrides in default live mode. Opponent evidence and shadow calibration remain available; modifying a validated exact policy using opponent reads requires a future exact range/strategy validation path.

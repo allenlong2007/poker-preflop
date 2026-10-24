@@ -3,7 +3,7 @@
 The new training path uses exact information states, not the legacy board textures or hand buckets.
 It is implemented and tested; it is **not a fully trained solution of heads-up no-limit hold'em**.
 The live engine uses an exact checkpoint only after promotion and only for sufficiently trained
-states. Everything else is an explicitly logged legacy fallback. Overnight training alone cannot
+states. Default serving now withholds uncovered actions and queues exact training; legacy fallback is an explicit research opt-in. See `docs/exact-coverage.md`. Overnight training alone cannot
 cover the enormous full-game state space; this tabular method does not generalize to unseen states.
 
 ## Information and sizing
@@ -113,7 +113,7 @@ These are empirical guardrails, not proof of equilibrium or superiority against 
 A thin checkpoint normally fails coverage. `--min-updates 1` is available for exploratory evaluation
 only and cannot authorize live promotion. A promoted artifact becomes `output/exact/active.sqlite`;
 restart the server to load it. Live logs include exact lookup status/visits/root/config fingerprint
-and the model hash. Absent/unseen/undertrained/incompatible policies retain logged fallback behavior.
+and the model hash. Absent/unseen/undertrained/incompatible policies now withhold actions by default and persist the exact training request. Legacy research mode explicitly opts into logged fallback behavior.
 
 ## Revealed opponent hands
 

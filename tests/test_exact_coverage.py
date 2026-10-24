@@ -249,9 +249,45 @@ def test_legacy_nearest_size_and_group_average_are_counted_explicitly(tmp_path, 
     assert "legacy_preflop_nearest_size" in d.diagnostics["fallbacks"]
     monkeypatch.setattr(module, "map_combo", lambda *args: None)
     e.use_solver_flops, e.solved_open = True, 3
+    e.pre["open"] = 3
     nodes = {"btn_vs_check": {(frozenset(("As", "Qd")), None): {"check": .5, "bet 2bb": .5}}}
     monkeypatch.setattr(e, "_flop", lambda t: ("Kh8d3c", nodes))
     d = e.decide("btn", "AsQd", "Kh8d3c", [[["btn", "raise", 3], ["bb", "call", 0]], [["bb", "check", 0]]])
     assert "legacy_flop_hand_group_average" in d.diagnostics["fallbacks"]
     with CoverageStore(tmp_path / "counts.sqlite") as store:
         assert store.summary()["fallbacks"]["legacy_flop_hand_group_average"]["fraction_of_attempts"] == .5
+
+
+def test_private_expansion_enumerates_every_literal_combo_for_requested_board(tmp_path):
+    from math import comb
+    from scripts.prepare_coverage import prepare
+    data = tmp_path / "one.jsonl"
+    data.write_text(json.dumps({"context": context(stack=3)}) + "\n")
+    plan = prepare(tmp_path / "queue.sqlite", [data], [], chip_bb=.5, expand_private=True)
+    assert plan["target_count"] == comb(47, 2)
+    assert len({c["hero_hole"] for c in plan["targets"]}) == comb(47, 2)
+    assert plan["full_game_complete"] is False
+
+
+def test_prepare_retains_unsupported_requests_and_cli_reports_only_real_attempts(tmp_path, capsys, monkeypatch):
+    import sys
+    from scripts.prepare_coverage import main
+    from bot.coverage import CoverageStore
+    data, plan, queue = tmp_path / "log.jsonl", tmp_path / "plan.json", tmp_path / "queue.sqlite"
+    good = {**context(stack=10), "board": "", "history": [[]]}
+    bad = {**good, "hero_position": "bb", "history": [[["btn", "raise", 20]]]}
+    data.write_text("not json\n{}\n" + json.dumps({"context": good}) + "\n" + json.dumps({"context": bad}) + "\n")
+    monkeypatch.setattr(sys, "argv", ["prepare", "--queue", str(queue), "--decisions", str(data),
+                                     "--hands", str(tmp_path / "empty"), "--output", str(plan)])
+    main()
+    result = json.loads(plan.read_text())
+    assert result["target_count"] == 1
+    assert result["rejected_or_missing"]["invalid_archive_record"] == 1
+    with CoverageStore(queue) as store:
+        assert store.summary()["attempts"] == 0
+        assert len(store.targets()) == 2
+        assert any(row["reason"].startswith("unsupported:") for row in store.targets())
+    from bot.coverage import main as coverage_main
+    monkeypatch.setattr(sys, "argv", ["coverage", "--path", str(queue), "--export", str(tmp_path / "export.json")])
+    coverage_main()
+    assert len(json.loads((tmp_path / "export.json").read_text())) == 2
