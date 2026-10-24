@@ -87,6 +87,10 @@ def test_server_persists_context_and_links_only_observed_hands(tmp_path, monkeyp
     from bot.opponent import record, split_hands
     from bot.pokernow import server
 
+    from bot.engine import Engine
+    from bot.adapt import Adapter
+    monkeypatch.setattr(server, "ENGINE", Engine(exact_required=False, pot_odds=True))
+    monkeypatch.setattr(server, "ADAPT", Adapter(server.ENGINE))
     demo = Path(__file__).resolve().parents[1] / "bot" / "pokernow" / "demo_log.csv"
     msgs = server.read_log(demo.read_text())
     end = next(i for i, msg in enumerate(msgs) if "bets 4.10" in msg)

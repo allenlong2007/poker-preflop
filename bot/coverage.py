@@ -43,6 +43,7 @@ class CoverageStore:
         self.db.execute("CREATE TABLE IF NOT EXISTS counts (kind TEXT, name TEXT, n INTEGER NOT NULL, PRIMARY KEY(kind,name))")
         self.db.execute("CREATE TABLE IF NOT EXISTS targets (key TEXT PRIMARY KEY, context TEXT NOT NULL, "
                         "occurrences INTEGER NOT NULL, reason TEXT NOT NULL, first_seen REAL, last_seen REAL)")
+        self.db.execute("CREATE TABLE IF NOT EXISTS imports (key TEXT PRIMARY KEY)")
         self.db.commit()
 
     def __enter__(self):
@@ -62,9 +63,13 @@ class CoverageStore:
                         (key, text, reason, now, now))
         return key
 
-    def enqueue(self, context, reason="archive_gap"):
+    def enqueue(self, context, reason="archive_gap", import_key=None):
         """Import a target without pretending it was a newly observed live attempt."""
         with self.db:
+            if import_key is not None:
+                new = self.db.execute("INSERT OR IGNORE INTO imports VALUES (?)", (import_key,)).rowcount
+                if not new:
+                    return identity(context)[0]
             return self._enqueue(context, reason)
 
     def record(self, context, status, route, fallbacks=()):

@@ -64,7 +64,21 @@ def _train(args):
         raise ValueError("provide a finite positive iteration or hours budget")
     if args.batch < 1 or not math.isfinite(args.max_gb) or args.max_gb <= 0 or args.max_focus < 1:
         raise ValueError("invalid batch, disk budget, or focus limit")
-    base = Config(**_read_meta(args.path)["config"]) if args.path.exists() else Config()
+    manifest = json.loads(args.coverage_targets.read_text()) if args.coverage_targets else None
+    if manifest:
+        import hashlib
+        digest = hashlib.sha256(json.dumps({k: manifest[k] for k in ("config", "targets")}, sort_keys=True).encode()).hexdigest()
+        if digest != manifest.get("manifest_sha256"):
+            raise ValueError("coverage manifest hash mismatch")
+    if manifest and args.focus:
+        raise ValueError("coverage curriculum cannot mix with uniform-prior focus subgames")
+    existing = _read_meta(args.path) if args.path.exists() else {}
+    if existing and manifest and Config(**manifest["config"]).fingerprint() != Config(**existing["config"]).fingerprint():
+        raise ValueError("coverage manifest configuration mismatch on resume")
+    base = Config(**existing["config"]) if existing else Config(**manifest["config"]) if manifest else Config()
+    coverage_mode = bool(manifest or existing.get("coverage_manifest"))
+    if args.target_min_updates < 1:
+        raise ValueError("target minimum updates must be positive")
     changes = {}
     if args.chip_bb is not None:
         changes["chip_bb"] = args.chip_bb
@@ -84,16 +98,29 @@ def _train(args):
         signal.signal(sig, lambda number, frame: stop.append(number))
     status_path = args.path.with_suffix(".status.json")
     try:
-        with Trainer(args.path, cfg, seed=args.seed, focus=focus) as trainer:
+        if coverage_mode:
+            from preflop.exactcoverage import CoverageTrainer
+            trainer_instance = CoverageTrainer(args.path, cfg, seed=args.seed,
+                                               targets=manifest["targets"] if manifest else None)
+        else:
+            trainer_instance = Trainer(args.path, cfg, seed=args.seed, focus=focus)
+        with trainer_instance as trainer:
             initial = trainer.status()["iterations"]
             state = {"state": "running", "pid": os.getpid(), "started_at": started,
                      "path": str(args.path.resolve()), "hours_budget": args.hours,
                      "iteration_budget": args.iterations, "max_candidate_gb": args.max_gb}
+            if coverage_mode:
+                state["coverage"] = trainer.coverage(args.target_min_updates)
             _write_json(status_path, {**state, **trainer.status()})
             last_snapshot = last_print = time.monotonic()
             reason = "budget_complete"
             try:
                 while time.monotonic() < deadline and not stop:
+                    if coverage_mode:
+                        state["coverage"] = trainer.coverage(args.target_min_updates)
+                        if state["coverage"]["trained_targets"] == state["coverage"]["targets"]:
+                            reason = "queued_target_floor_reached"
+                            break
                     completed = trainer.status()["iterations"] - initial
                     if args.iterations is not None and completed >= args.iterations:
                         break
@@ -107,6 +134,8 @@ def _train(args):
                     count = min(args.batch, args.iterations - completed) if args.iterations is not None else args.batch
                     trainer.train(count)
                     trainer.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    if coverage_mode:
+                        state["coverage"] = trainer.coverage(args.target_min_updates)
                     state.update(trainer.status(), elapsed_seconds=round(time.time() - started, 2),
                                  candidate_bytes=args.path.stat().st_size)
                     _write_json(status_path, state)
@@ -129,6 +158,10 @@ def _train(args):
                 state.update(state="failed", error=f"{type(error).__name__}: {error}", **trainer.status())
                 _write_json(status_path, state)
                 raise
+            if coverage_mode:
+                state["coverage"] = trainer.coverage(args.target_min_updates)
+            if reason == "budget_complete" and time.monotonic() >= deadline:
+                reason = "time_limit"
             state.update(trainer.status(), state="stopped" if stop else "completed", stop_reason=reason,
                          elapsed_seconds=round(time.time() - started, 2))
             _write_json(status_path, state)
@@ -252,6 +285,8 @@ def main(argv=None):
     train.add_argument("--fractions")
     train.add_argument("--exhaustive", action="store_true")
     train.add_argument("--max-gb", type=float, default=4)
+    train.add_argument("--coverage-targets", type=Path)
+    train.add_argument("--target-min-updates", type=int, default=1000)
     train.add_argument("--focus", type=Path)
     train.add_argument("--max-focus", type=int, default=32)
     train.add_argument("--snapshot-every", type=float, default=900)

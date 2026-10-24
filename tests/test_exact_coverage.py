@@ -121,7 +121,8 @@ def test_prepare_plan_and_bounded_cli_train_are_reproducible(tmp_path, capsys):
     from scripts.prepare_coverage import prepare
     from scripts.train_exact import main
     queue, data, plan = tmp_path / "queue.sqlite", tmp_path / "decisions.jsonl", tmp_path / "plan.json"
-    data.write_text(json.dumps({"context": context(stack=3)}) + "\n")
+    root = {**context(stack=3), "board": "", "history": [[]]}
+    data.write_text(json.dumps({"context": root}) + "\n")
     result = prepare(queue, [data], [], chip_bb=.5)
     assert len(result["targets"]) == 1
     assert result["full_game_complete"] is False
@@ -147,3 +148,94 @@ def test_archived_targets_use_only_action_time_cards_and_no_revealed_opponent(tm
     flop = next(c for c in targets if len(c["board"]) == 6)
     assert flop["board"] == "Kh8d3c"
     assert "9h" not in json.dumps(flop) and "AcAd" not in json.dumps(flop)
+
+
+def test_update_count_without_average_mass_is_not_covered(tmp_path):
+    from preflop.exactcoverage import CoverageTrainer
+    cfg = Config(chip_bb=.5, stacks_bb=(3,))
+    with CoverageTrainer(tmp_path / "zero.sqlite", cfg, targets=[context(stack=3)]) as trainer:
+        trainer.train(20)
+        key = trainer.targets[0][0]
+        actions = json.loads(trainer.db.execute("SELECT actions FROM nodes WHERE key=?", (key,)).fetchone()[0])
+        trainer.db.execute("UPDATE nodes SET updates=5000,total=? WHERE key=?", (json.dumps([0] * len(actions)), key))
+        trainer.db.commit()
+        assert trainer.coverage(1000)["trained_targets"] == 0
+
+
+def test_coverage_resume_rejects_changed_target_table(tmp_path):
+    from preflop.exactcoverage import CoverageTrainer
+    cfg = Config(chip_bb=.5, stacks_bb=(3,))
+    path = tmp_path / "tampered.sqlite"
+    with CoverageTrainer(path, cfg, targets=[context(stack=3)]) as trainer:
+        trainer.db.execute("UPDATE coverage_targets SET context=replace(context,'AsQd','AcQd')")
+        trainer.db.commit()
+    with pytest.raises(ValueError, match="manifest"):
+        CoverageTrainer(path)
+
+
+def test_exact_only_engine_does_not_need_any_legacy_policy_files(tmp_path, monkeypatch):
+    from bot import engine as module
+    from bot.coverage import ExactCoverageError
+    monkeypatch.setattr(module, "POLICY", tmp_path / "no-legacy-policies")
+    e = Engine(exact_policy_path=False)
+    e.warm()
+    with pytest.raises(ExactCoverageError):
+        e.decide("btn", "AsQd", "", [[]], stack=10)
+
+
+def test_default_strict_engine_really_persists_its_queue():
+    from bot.coverage import CoverageStore, ExactCoverageError
+    engine = Engine(exact_policy_path=False)
+    with pytest.raises(ExactCoverageError):
+        engine.decide("btn", "AsQd", "", [[]], stack=10)
+    assert engine.coverage_path is not None
+    with CoverageStore(engine.coverage_path) as store:
+        assert store.summary()["queued_exact_cells"] == 1
+
+
+def test_exact_turn_river_and_raise_policies_bypass_every_legacy_path(tmp_path):
+    from preflop.exactcoverage import CoverageTrainer
+    from bot.coverage import ExactCoverageError
+    river = context(stack=100)
+    river["history"][-1] += [["btn", "bet", 2], ["bb", "raise", 6], ["btn", "raise", 14], ["bb", "raise", 30]]
+    turn = {**context(stack=100), "board": "Kh8d3c2s", "history": context()["history"][:2] + [[["bb", "check", 0]] , []]}
+    cfg = Config(chip_bb=.5, stacks_bb=(100,), extra_sizes_bb=(2, 6, 14, 30))
+    path = tmp_path / "candidate.sqlite"
+    with CoverageTrainer(path, cfg, targets=[turn, river], seed=22) as trainer:
+        trainer.train(100)
+        # Routing fixture: positive exact averages are supplied explicitly.
+        # This test makes no convergence claim for an unreachable historical line.
+        for key, _ in trainer.targets:
+            actions = trainer.target_actions[key]
+            trainer.db.execute("INSERT OR REPLACE INTO nodes VALUES (?,?,?,?,?,?,?)",
+                               (key, json.dumps(actions), json.dumps([0] * len(actions)),
+                                json.dumps([1] * len(actions)), 10, 10, json.loads(key)["street"]))
+        trainer.db.commit()
+        trainer.checkpoint(tmp_path / "frozen.sqlite")
+    e = Engine(exact_policy_path=tmp_path / "frozen.sqlite", exact_candidate=True, exact_min_updates=1)
+    with patch.object(e, "_postflop", side_effect=AssertionError("legacy forbidden")):
+        for c in (turn, river):
+            d = e.decide(c["hero_position"], c["hero_hole"], c["board"], c["history"], stack=100)
+            assert d.source == "exact" and d.diagnostics["fallbacks"] == []
+            assert d.diagnostics["adjustments"] == []
+        with pytest.raises(ExactCoverageError):
+            e.decide("btn", "AcQd", river["board"], river["history"], stack=100)
+    e.exact_policy.close()
+
+
+def test_resume_cannot_ignore_manifest_precision_or_raise_menu(tmp_path):
+    import hashlib
+    from scripts.prepare_coverage import prepare
+    from scripts.train_exact import main
+    data, plan, path = tmp_path / "log.jsonl", tmp_path / "plan.json", tmp_path / "run.sqlite"
+    data.write_text(json.dumps({"context": {**context(stack=3), "board": "", "history": [[]]}}) + "\n")
+    manifest = prepare(tmp_path / "queue.sqlite", [data], [], chip_bb=.5)
+    plan.write_text(json.dumps(manifest))
+    command = ["train", "--path", str(path), "--coverage-targets", str(plan), "--iterations", "1"]
+    main(command)
+    manifest["config"]["fractions"] = [.5, 1]
+    payload = {k: manifest[k] for k in ("config", "targets")}
+    manifest["manifest_sha256"] = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+    plan.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="configuration"):
+        main(command)

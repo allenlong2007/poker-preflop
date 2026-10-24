@@ -35,6 +35,7 @@ from preflop.rivergame import river_texture
 from preflop.turngame import turn_texture
 
 ROOT = Path(__file__).resolve().parents[1]
+COVERAGE_PATH = ROOT / "output/pokernow/coverage.sqlite"
 POLICY = ROOT / "output" / "match" / "policy"
 POLICY_FINE = ROOT / "output" / "match" / "policy_fine"     # experiment 30: finer turn / river sizes
 POTS = ("srp", "3bet", "limp", "iso", "srp_alt")
@@ -212,12 +213,13 @@ def size_weights(x, sizes, translate=True):
 class Engine:
     def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
-                 exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=None):
+                 exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
         self.exact_required = exact_required
-        self.coverage_path = Path(coverage_path) if coverage_path else None
+        self.coverage_path = COVERAGE_PATH if coverage_path is True and exact_required else (
+            Path(coverage_path) if coverage_path not in (None, False, True) else None)
         self.coverage_counts = {}
         self.defend_keep = dict(DEFEND_KEEP if defend_keep is None else defend_keep)
         self.river_shift = RIVER_SHIFT
@@ -232,9 +234,9 @@ class Engine:
         self.river_jam = True                 # experiment 47 (switchable for comparisons)
         if policy_dir is None:
             policy_dir = POLICY_FINE if all((POLICY_FINE / f"{p}.npz").exists() for p in POTS) else POLICY
-        self.pre = json.load(open(POLICY / "preflop.json"))
+        self.pre = {} if exact_required else json.load(open(POLICY / "preflop.json"))
         self.policy_dir, self.flops_dir = Path(policy_dir), Path(flops_dir)
-        self.use_solver_flops = use_solver_flops and (Path(flops_dir) / "index.json").exists()
+        self.use_solver_flops = not exact_required and use_solver_flops and (Path(flops_dir) / "index.json").exists()
         meta = json.load(open(Path(flops_dir) / "index.json")) if self.use_solver_flops else {}
         self.index = meta.get("classes", {})
         self.solved_open = float(meta.get("open", SOLVED_OPEN))

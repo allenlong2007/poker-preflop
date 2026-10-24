@@ -40,7 +40,7 @@ def test_unknown_opponent_does_not_inherit_population_read():
     class Engine:
         def set_adaptation(self, *args):
             pass
-    a = Adapter(Engine(exact_required=False))
+    a = Adapter(Engine())
     a.pop = .01
     a.apply("new")
     assert a.engine.strict == 0

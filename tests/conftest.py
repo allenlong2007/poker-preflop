@@ -7,3 +7,6 @@ def _private_hand_store(tmp_path, monkeypatch):
     from bot import opponent
     monkeypatch.setattr(opponent, "HANDS", tmp_path / "hands")
     monkeypatch.setattr(opponent, "BOT_IDS", tmp_path / "bot_ids.json")
+
+    from bot import engine
+    monkeypatch.setattr(engine, "COVERAGE_PATH", tmp_path / "coverage.sqlite")

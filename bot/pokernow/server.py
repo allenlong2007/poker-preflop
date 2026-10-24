@@ -172,7 +172,8 @@ def decide(payload):
             except ExactCoverageError as error:
                 hid = RE_ID.search(msgs[start])
                 denied = {"id": f"{h.number}-{audit.run['run_id'][:12]}-{digest}", "source": "withheld",
-                          "diagnostics": error.diagnostics, "wait": str(error)}
+                          "diagnostics": error.diagnostics, "wait": str(error),
+                          "run_id": audit.run["run_id"], "bot_version": audit.run["bot_version"]}
                 audit.write_decision({"t": time.time(), "hand_id": hid.group("id") if hid else str(h.number),
                                       "hero_id": hero.pid, "opponent_id": opp.pid if opp else None,
                                       "table": table, "context": error.diagnostics["context"], "decision": denied})

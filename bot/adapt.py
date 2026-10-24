@@ -277,9 +277,12 @@ class Adapter:
             return
         try:
             prof = evidence_profile(hands)
-            if self.pre is None:
-                self.pre = Preflop()
-            pre = self.pre.adapt(prof)
+            if self.engine.exact_required:
+                pre = None
+            else:
+                if self.pre is None:
+                    self.pre = Preflop()
+                pre = self.pre.adapt(prof)
             served = serving_profile(prof, self.base)
             post = postflop_exploit(served, self.base) if self.base else {"bluff": 1.0, "defend": 1.0}
             fn, scale = size_value(prof)
