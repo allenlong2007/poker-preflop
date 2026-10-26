@@ -316,10 +316,10 @@ class Engine:
             elif self.pot_odds and "pot_odds" not in self.off and st.facing(hero) > EPS:
                 if "fold" in self._options and "call" in self._options:
                     before = dict(d.probs)
-                    probs = {k: d.probs.get(k, 0.0) for k in set(d.probs) | {"fold", "call"}}
+                    probs = dict.fromkeys(("fold", "call"), 0.0) | d.probs
                     evidence = {}
                     d.probs = _normalise(potodds.check(probs, hole, board[:2 + st.street], st, hero, self._range_pre(),
-                                                       self.opp_profile, self.exploit["defend"], d.notes,
+                                                       self.opp_profile, self._defend(st.street), d.notes,
                                                        self.size_value, self._bluffs(), self.strict,
                                                        diagnostics=evidence))
                     d.diagnostics["pot_odds"] = evidence
@@ -332,6 +332,7 @@ class Engine:
                         "effective_stack_bb": st.stack, "pot_bb": st.pot(), "to_call_bb": st.facing(hero)},
             "adaptation": {"strictness": self.strict, "preflop_weight": self.lam,
                            "bluff_scale": self.exploit["bluff"], "defend_scale": self.exploit["defend"],
+                           "defend_street": self.exploit.get("defend_street"),
                            "opponent_hands": (self.opp_profile or {}).get("hands", 0),
                            "opponent_profile": self.opp_profile,
                            "read_evidence": self.read_evidence,
@@ -367,7 +368,9 @@ class Engine:
                                  context, exact["status"], "exact" if d.source == "exact" else "legacy", fallbacks))
         d.diagnostics.setdefault("adjustments", [])
         if sample:
-            labels = list(d.probs)
+            # Sorted: some stages build probs from sets, whose order changes with Python's per-process string hash
+            # seed; the same seed then gave different actions run to run (found by experiment 50's ablations).
+            labels = sorted(d.probs)
             p = np.array([d.probs[k] for k in labels], dtype=float)
             d.label = labels[int(self.rng.choice(len(labels), p=p / p.sum()))]
         else:
@@ -615,7 +618,7 @@ class Engine:
                 _trace(diagnostics, "polar_river", before, probs)
 
         before_exploit = dict(probs)
-        probs = self._exploit(probs, kind, bkt, notes, aggressive[0].to / P if aggressive else 0)
+        probs = self._exploit(probs, kind, bkt, notes, aggressive[0].to / P if aggressive else 0, st.street)
         # Can't raise an all-in player; a raise that needs the whole stack is an all-in.
         if opp_all_in or hero_left <= b_facing + EPS:
             for lab in [l for l in probs if l.startswith("raise")]:
@@ -835,10 +838,10 @@ class Engine:
             rate = None if st.street == 1 else bb_check if hero == "bb" else btn_check
         if rate is None:
             return d
-        mult = float(np.clip(self.exploit["defend"] * self._checked_to_bet(st.street) / TRAP_BET_PRIOR, 0.0, 2.0))
+        mult = float(np.clip(self._defend(st.street) * self._checked_to_bet(st.street) / TRAP_BET_PRIOR, 0.0, 2.0))
         nuts = any(n.startswith("the nuts") for n in d.notes)
         if nuts:
-            if facing or hero != "bb" or self.exploit["defend"] < TRAP_NUTS_AGGRESSION:
+            if facing or hero != "bb" or self._defend(st.street) < TRAP_NUTS_AGGRESSION:
                 return d
         passive = "call" if facing else "check"
         aggressive = [x for x in self._options if self._options[x][0] in ("bet", "raise")]
@@ -885,7 +888,7 @@ class Engine:
     def _short_stack(self, d, hero, hole, board, st):
         """Low SPR: experiment 49 decides by range-vs-range EV (bot/lowspr.py) at the effective stack depth;
         low_spr="legacy" keeps experiment 40's rule (jam with SHORT_JAM equity, else check; call by price)."""
-        rng = potodds.opponent_range(self._range_pre(), st, hero, board, hole, self.opp_profile, self.exploit["defend"],
+        rng = potodds.opponent_range(self._range_pre(), st, hero, board, hole, self.opp_profile, self._defend(st.street),
                                      self.size_value, self._bluffs(), self.strict)
         if self.low_spr == "ev":
             return self._low_spr_ev(d, hero, hole, board, st, rng)
@@ -965,10 +968,20 @@ class Engine:
         postflop bluff / defend scales against the current opponent."""
         self.adapted, self.lam = dict(nodes), float(lam)
         self.exploit = {"bluff": float(exploit.get("bluff", 1.0)), "defend": float(exploit.get("defend", 1.0))}
+        if "defend_street" in exploit:
+            self.exploit["defend_street"] = {k: float(v) for k, v in exploit["defend_street"].items()}
 
-    def _exploit(self, probs, kind, bkt, notes, faced=0.0):
-        """Scale bluffs by how often the opponent folds, and calling down by how often they bet."""
-        b, d = self.exploit["bluff"], self.exploit["defend"]
+    def _defend(self, street):
+        """The defend scale on this street (1 flop .. 3 river): per street when the read has it (experiment 50),
+        else the pooled scale."""
+        by_street = self.exploit.get("defend_street")
+        if by_street is None or street < 1:
+            return self.exploit["defend"]
+        return by_street.get(("flop", "turn", "river")[street - 1], 1.0)
+
+    def _exploit(self, probs, kind, bkt, notes, faced=0.0, street=0):
+        """Scale bluffs by how often the opponent folds, and calling down by how often they bet (on this street)."""
+        b, d = self.exploit["bluff"], self._defend(street)
         if kind in ("btn_vs_check", "bb_first") and bkt >= 9 and abs(b - 1) > 0.02:
             bets = [k for k in probs if k.startswith(("bet", "lead"))]
             tot = sum(probs[k] for k in bets)

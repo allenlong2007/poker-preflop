@@ -46,3 +46,32 @@ def test_simulated_reads_pass_the_live_evidence_gates():
     assert state["evidence"]["nodes"]
     assert "flop_bet_when_checked_to" in state["profile"]["nodes"]
     json.dumps(state["evidence"])                                  # the evidence report stays serialisable
+
+
+def test_defend_scale_is_per_street():
+    from bot.adapt import postflop_exploit
+    base = {"nodes": {k: {"n": 500, "bet": 0.3, "check": 0.7}
+                      for k in ("flop_cbet", "turn_bet_when_checked_to", "river_bet_when_checked_to")}}
+    always_cbets = {"hands": 300, "nodes": {"flop_cbet": {"n": 300, "bet": 1.0, "check": 0.0},
+                                            "turn_bet_when_checked_to": {"n": 300, "bet": 0.3, "check": 0.7}},
+                    "read_evidence": {"version": 1, "decisions": {"flop_cbet": {"applied": True},
+                                                                  "turn_bet_when_checked_to": {"applied": True}}}}
+    post = postflop_exploit(always_cbets, base)
+    assert post["defend"] > 1.5                                  # pooled: looks aggressive everywhere
+    assert post["defend_street"]["flop"] >= 2.0 and abs(post["defend_street"]["turn"] - 1) < 0.01
+    assert post["defend_street"]["river"] == 1.0                 # no evidence there: no adjustment
+    eng = Engine(exact_required=False, seed=0)
+    eng.set_adaptation({}, 0.0, post)
+    assert eng._defend(1) >= 2.0 and eng._defend(2) < 1.01 and eng._defend(3) == 1.0
+
+
+def test_results_do_not_depend_on_the_hash_seed():
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    code = ("import sys; sys.path[:0]=['.','scripts']; import ablation as ab; "
+            "print(ab.run(('full', 100.0, 'geo', 25))[1].sum())")
+    out = {subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, check=True,
+                          env={"PYTHONHASHSEED": str(h), "PATH": "/usr/bin:/bin"}).stdout for h in (1, 2)}
+    assert len(out) == 1

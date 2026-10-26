@@ -35,6 +35,7 @@ PRE_NODES = {
     "bb_vs_4bet": ("bb_vs_4bet_small", {"fold": "fold", "call": "call", "raise": "all-in", "all-in": "all-in"}),
 }
 AGGRESSION = ("all-in", "4-bet", "3-bet", "re-raise", "raise", "call", "limp", "check", "fold")
+STREETS = ("flop", "turn", "river")
 POST_FOLD = ("flop_vs_bet", "turn_vs_bet", "river_vs_bet")
 POST_BET = ("flop_bet_when_checked_to", "turn_bet_when_checked_to", "river_bet_when_checked_to",
             "flop_lead", "turn_lead", "river_lead", "flop_cbet")
@@ -63,7 +64,13 @@ def postflop_exploit(prof, base):
     nodes = approved_nodes(prof)
     bluff, n_f = _ratio(nodes, base["nodes"], POST_FOLD, "fold")
     defend, n_b = _ratio(nodes, base["nodes"], POST_BET, "bet")
-    return {"bluff": round(bluff, 3), "defend": round(defend, 3), "n_fold": n_f, "n_bet": n_b}
+    # Experiment 50: the defend scale per street. Pooled, a bot that c-bets every flop small but bets the turn and
+    # river only with value read as twice as aggressive everywhere and the bot called its value bets down
+    # (-117 bb/100 against the held-out "threebet" bot after a 1000-deal read).
+    by_street = {name: round(_ratio(nodes, base["nodes"], tuple(k for k in POST_BET if k.startswith(name)), "bet")[0], 3)
+                 for name in STREETS}
+    return {"bluff": round(bluff, 3), "defend": round(defend, 3), "defend_street": by_street,
+            "n_fold": n_f, "n_bet": n_b}
 
 
 LOOSE_SHARE = 0.5      # of an action's excess over equilibrium, the share played by any hand alike
