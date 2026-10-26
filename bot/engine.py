@@ -222,7 +222,10 @@ class Engine:
         self.strict = STRICT_PRIOR            # experiment 42: trust in value-heavy priors, set from opponent data
         self.river_lead = RIVER_LEAD if river_lead is None else river_lead
         self.river_jam = True                 # experiment 47 (switchable for comparisons)
-        self.low_spr = "ev"                   # experiment 49: range-vs-range EV at low SPR ("legacy": fixed 55% jam)
+        # Experiment 49: low-SPR mode. "legacy" (experiment 40: jam with SHORT_JAM equity, else check; call by price) stays
+        # the default: the range-vs-range EV model ("ev", bot/lowspr.py) lost to it in short-stack self-play (mean
+        # +5.9 vs +10.5 bb/100 over 10/20/35bb and six opponents; it over-bluffs players who call wider than price).
+        self.low_spr = "legacy"
         self.depth_blend = True               # experiment 49: blend solved depths (False: nearest depth, as before)
         self.depth_ranges = True              # experiment 49: opponent preflop ranges at the effective stack
         self.short_bb, self.short_spr = SHORT_BB, SHORT_SPR   # when postflop play switches to low-SPR mode

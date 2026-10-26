@@ -25,6 +25,7 @@ BET_FRACTION = 0.5                 # the non-all-in bet at low SPR
 RAISE_BACK_EQ = 0.62               # their equity vs our betting range above which they jam over a small bet
 TEMPERATURE = 0.015                # softmax temperature as a share of the pot
 BET_MIN_SPR = 1.0                  # below this many pots behind, a small bet commits anyway: jam or check
+CALL_SLACK = 0.0                   # opponents call this much below their price (calling stations call wider)
 
 
 def _subsample(rng_, n, g):
@@ -114,7 +115,7 @@ def _solve_jam_range(m, w_o, w_h, pot, facing, add, cost):
     jam = np.ones(len(w_h))
     avg = np.zeros(len(w_h))
     for t in range(1, SOLVE_ITERATIONS + 1):
-        calls = (_weighted_vs(m, w_h, jam) >= price).astype(float)      # their best response to our jam range
+        calls = (_weighted_vs(m, w_h, jam) >= price - CALL_SLACK).astype(float)   # their response to our jam range
         win = (e * wv * calls[:, None]).sum(axis=0)
         called = (wv * calls[:, None]).sum(axis=0) / den
         ev_jam = (1 - called) * pot + win / den * (pot + add + cost) - called * add
@@ -148,7 +149,7 @@ def decide(hole, board, pot, facing, hero_left, opp_left, opp, hero_range, can_r
     # Jam: our effective add, their cost to call, their response by price against our solved jam range.
     if can_raise and cost > 1e-9:
         price = cost / (pot + add + cost)
-        calls = (their_eq >= price).astype(float)
+        calls = (their_eq >= price - CALL_SLACK).astype(float)
         ev["all-in"] = mean(np.ones_like(eq_me), 1 - calls) * pot + \
             mean(eq_me * (pot + add + cost) - add, calls)
     # Half-pot bet, only first to act and with enough behind for it to differ from a jam.
@@ -156,7 +157,7 @@ def decide(hole, board, pot, facing, hero_left, opp_left, opp, hero_range, can_r
     if facing <= 0 and hero_left > x + 1e-9 and hero_left >= BET_MIN_SPR * pot and opp_left > 0:
         price_x = x / (pot + 2 * x)
         back = ((their_eq >= RAISE_BACK_EQ) & (opp_left > x)).astype(float)
-        call = ((their_eq >= price_x) & (back == 0)).astype(float)
+        call = ((their_eq >= price_x - CALL_SLACK) & (back == 0)).astype(float)
         fold = 1 - back - call
         e = min(hero_left, opp_left)                         # all-in after their jam back
         # Facing their jam we call when our equity against the jamming hands beats the price, else fold.

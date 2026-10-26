@@ -68,6 +68,7 @@ def test_self_play_agents_pass_the_real_stack():
 @pytest.mark.parametrize("stack", [8, 12])
 def test_low_spr_ev_mixes_only_near_equal_options(stack):
     eng = Engine(exact_required=False, seed=0)
+    eng.low_spr = "ev"
     hist = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check")]]
     d = eng.decide("btn", "AhKd", "Kh8d3c", hist, sample=False, stack=stack)
     ev = d.diagnostics["short_stack"]["ev"]

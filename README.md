@@ -2625,6 +2625,43 @@ firing where it shouldn't: it assumed a top-25% range for any cheap raise, so th
 
 Rival population (800 deals, duplicate): no read +23 bb/100 (was +26), 30-deal read +129 (was +120): within noise.
 
+## Experiment 49: Stack-depth-consistent short-stack play
+
+**Problem.** Preflop played from the *nearest* solved depth (100/60/40/25/15/10/6bb), while the postflop range estimator
+(`bot/potodds.py`) always read the opponent's preflop range from the 100bb tree. Its all-in test was a fixed 60bb,
+so it could never apply to a short stack. Low-SPR play (experiment 40) was jam with 55% equity, else check; call by price.
+
+**Changes**
+- `bot/depth.py`: log-linear blend of the two solved depths around the effective stack; missing actions count as 0.
+  A shove at a depth whose tree never shoves (40/60bb) reads the nearest depth that does.
+- `potodds.preflop_weights` reads the same blend at the effective stack; the all-in test is >= 60% of the stack. The
+  opponent's BB 3-bet-shove range widens from 10% at 100bb to 54% at 6bb, instead of always being the 100bb range.
+- The shove-read reference rate is the solved shove frequency at this depth (10bb BTN ~29%, 100bb ~0.1%), not a
+  flat 3%, so normal short-stack shoving is no longer a "deviation".
+- Against a short-stacked opponent: the server already passes the effective stack (the smaller stack), so all of the
+  above happens at their depth; the deeper stack's extra chips don't change any decision.
+- `bot/lowspr.py` (opt-in, `engine.low_spr = "ev"`): low-SPR decisions by range-vs-range EV (check / half-pot bet /
+  jam / call / fold), with the jam range solved by fictitious play against an opponent who calls by price.
+- **Bug fixed:** self-play agents never passed the stack to the engine, so every self-play hand (including
+  experiments 40-48) was decided as if 100bb deep, whatever `play_hand` dealt.
+
+**Results** (`scripts/short_stack_train.py`, duplicate deals, bb/100 averaged over opponents; old = before this experiment):
+
+| variant | 10bb | 20bb | 35bb |
+|---|---|---|---|
+| old (nearest depth, 100bb ranges, 55% jam rule) | +8.7 | +16.5 | +6.2 |
+| depth ranges only | +9.8 | +19.3 | +10.5 |
+| depth ranges + blend | +9.8 | +9.9 | +13.8 |
+| + EV low-SPR model | +5.1 | +13.4 | -0.8 |
+| + EV, low-SPR up to 2 / 3 pots | +5.1 / +5.1 | +1.3 / +0.3 | +4.2 / -3.1 |
+| + EV, opponents call 10 pts wider | +3.3 | +0.3 | +2.4 |
+
+At 10bb the blend equals the 10bb tree, so those two rows match. Blend vs nearest at 2000 deals (over old / equity / chart / aggro): 20bb +9.9 vs +6.7, 30bb
++9.1 vs +4.9, 50bb +15.5 vs +12.4. **Defaults:** blend on, depth ranges on, and the legacy low-SPR rule. The EV model
+lost in every comparison: it assumes opponents call by price against our range, so it over-bluffs players who call
+wider, losing -10 to -57 against the equity bot. It stays available for further work. Widening low-SPR mode
+beyond 1.2 pots made things worse.
+
 ## Versions
 
 One version per round of changes from a live game (v0 = the first version that played a live game). The bot's

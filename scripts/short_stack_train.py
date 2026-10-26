@@ -27,9 +27,16 @@ OPPONENTS = ("old", "equity", "chart", "pushfold", "nit", "aggro")
 def engine(variant, seed):
     from bot.engine import Engine
     e = Engine(exact_required=False, seed=seed, pot_odds=True)
+    if variant in ("new", "new_spr2", "new_spr3", "new_slack"):
+        e.low_spr = "ev"
     if variant in ("old", "ranges"):
         e.depth_blend, e.low_spr = False, "legacy"
         e.depth_ranges = variant == "ranges"
+    if variant == "blend":                          # ablation: blend + depth ranges, legacy low-SPR rule
+        e.low_spr = "legacy"
+    if variant == "new_slack":                      # EV model assuming opponents call 10 points wider than price
+        from bot import lowspr
+        lowspr.CALL_SLACK = 0.10
     if variant == "new_spr2":
         e.short_spr = 2.0
     if variant == "new_spr3":

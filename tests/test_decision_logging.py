@@ -70,7 +70,9 @@ def test_preflop_adaptation_preserves_the_lookup_baseline():
 
 def test_low_spr_ev_is_logged():
     history = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check")]]
-    d = Engine(exact_required=False, pot_odds=True, seed=1).decide("btn", "AsKd", "Kh8d3c", history, stack=10)
+    eng = Engine(exact_required=False, pot_odds=True, seed=1)
+    eng.low_spr = "ev"
+    d = eng.decide("btn", "AsKd", "Kh8d3c", history, stack=10)
     info = d.diagnostics["short_stack"]
     assert 0 <= info["equity"] <= 1 and info["range_combos"] > 0 and info["hero_range_combos"] > 0
     assert set(info["ev"]) <= set(d.diagnostics["legal_options"]) and d.label in info["ev"]
