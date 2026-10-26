@@ -2698,19 +2698,23 @@ PokerNow nickname is `bot/version.py` NAME (e.g. "HUBot v5"); each version is a 
 
 Solver accuracy for the base trees says nothing about the final bot, because trapping, river jams, calling corrections and reads are layered on top of it one after another. `scripts/ablation.py` switches each stage off (`Engine.off`). Every variant then plays the same fixed deals (seed 50001) against six held-out bots (`bot/heldout.py`: geo, trapper, limper, threebet, adaptive, base mirror). None of these bots was used for tuning, and none must be. Two comparisons per stage: full minus the stage, and base plus only the stage. 3000 duplicate deals per cell; differences are paired against full.
 
+Clean rerun after fdc3599, which made results independent of the hash seed and the defend scale per street. Values are bb/100 against full; positive means better than full.
+
 | | 100bb | 20bb |
 |---|---|---|
-| base (all stages off) vs full | +9.1 (z +1.2) | -13.9 (z -4.9) |
-| full minus pot-odds calling check | **+24.2 (z +3.3)** | +4.9 (z +2.0) |
-| full minus the short-stack rule | -3.1 | **-8.6 (z -3.2)** |
-| full plus a 1000-deal read | **-29.8 (z -3.4)**, threebet -149 | |
-| full plus a 200-deal read | -19.7 (z -2.7), threebet -124 | |
+| base (all stages off) | -4.1 (z -0.5) | **-17.3 (z -6.2)** |
+| full minus pot-odds check | +16.1 (z +2.3) | -0.7 |
+| base plus pot-odds check only | -24.1 (z -3.1) | |
+| full minus short-stack rule | -15.4 (z -2.1) | **-16.6 (z -6.1)** |
+| full minus small turn leads | -0.2 | **-7.9 (z -3.5)** |
+| full plus a 1000-deal read | +14.2 (z +1.9), threebet +20 | |
+| full plus a 200-deal read | +2.6 | |
 
-All values are bb/100. Bold = significant after a Bonferroni correction (|z| > 3.3). Every other stage was within noise in both directions.
-- At 100bb the adjustment stack is not shown to help against held-out bots. The pot-odds calling correction hurts.
-- At 20bb nearly all of the gain is the short-stack rule.
-- Opponent reads lose, mostly against the hyper-aggressive preflop bot.
-- `vs_shove`, `small_raise` and `reraise_war` never changed a result on their own: they need reads or other stages to fire.
-- Under exact-only serving (the live default), none of these stages run.
+Bold = significant after a Bonferroni correction (|z| > 3.3).
+- At 100bb the adjustment stack is not shown to beat the base policy. The pot-odds calling check points the wrong way in both tests.
+- At 20bb the short-stack rule carries the gain, and small turn leads help given the other stages.
+- `vs_shove`, `small_raise` and `reraise_war` never changed a single result. They need opponent reads (shove evidence, strictness) to fire.
+- The first run's read loss against threebet (-149) came from one pooled defend scale. threebet c-bets every flop small, so the bot also called its turn and river value bets. The scale is now per street (`defend_street`).
+- Under exact-only serving (the live default) none of these stages run.
 
 Fixed along the way: offline reads in `rival_train.py`/`strictness_train.py` built records without the identities that `bot/reads.py` requires, so every simulated read silently did nothing. `bot.adapt.read_state` is now the one read path, used by both the live adapter and `ablation.py`. The two older scripts still use the old path.

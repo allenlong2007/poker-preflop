@@ -139,7 +139,7 @@ def main():
             if diffs:
                 pooled = np.concatenate(diffs)
                 m, se = pooled.mean(), pooled.std(ddof=1) / np.sqrt(len(pooled))
-                line += f"   {m:+6.1f} ({m / se:+.1f})"
+                line += f"   {m:+6.1f} ({m / se:+.1f})" if se > 0 else "     0.0 (never changed a result)"
                 summary[f"{v}|{s:g}"] = {"diff": float(m), "se": float(se),
                                          "by_opponent": {o: [float(d.mean()), float(d.std(ddof=1) / np.sqrt(len(d)))]
                                                          for o, d in zip(opps, diffs)}}
