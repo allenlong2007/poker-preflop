@@ -75,3 +75,13 @@ def test_results_do_not_depend_on_the_hash_seed():
     out = {subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, check=True,
                           env={"PYTHONHASHSEED": str(h), "PATH": "/usr/bin:/bin"}).stdout for h in (1, 2)}
     assert len(out) == 1
+
+
+def test_pot_odds_check_only_at_shallow_stacks():
+    from bot.engine import POT_ODDS_MAX_BB
+    hist = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check"), Act("btn", "check")],
+            [Act("bb", "check"), Act("btn", "check")], [Act("bb", "bet", 3)]]
+    eng = Engine(exact_required=False, pot_odds=True, seed=1)
+    deep = eng.decide("btn", "AsKd", "Kh8d3c2s9h", hist, stack=100)
+    shallow = eng.decide("btn", "AsKd", "Kh8d3c2s9h", hist, stack=POT_ODDS_MAX_BB)
+    assert "pot_odds" not in deep.diagnostics and "pot_odds" in shallow.diagnostics

@@ -45,6 +45,7 @@ DEFEND_KEEP = {1: 0.7, 2: 0.85}            # street -> share of a model fold kep
 MONSTER_TILT = 0.75                       # experiment 43: share of a nut-hand decision moved to max value / trap
 STRICT_PRIOR = 0.0                        # experiment 42: strictness before any data on the opponent (trained)
 RIVER_SHIFT = (0.6, 0.3)                  # experiment 40: (1/3 -> 3/4, 1/2 -> pot) share of the model's river bets
+POT_ODDS_MAX_BB = 30.0                    # experiment 50: the pot-odds calling check only up to this effective stack
 SHORT_BB, SHORT_SPR = 12.0, 1.2           # experiment 40: postflop short-stack mode thresholds (behind, at street start)
 SHORT_JAM = 0.55                          # equity vs the opponent's range needed to put the stack in unprompted
 # Experiment 45 (scripts/trap_study.py, TexasSolver on 32 flops): how often strong hands slow-play, by board
@@ -215,6 +216,7 @@ class Engine:
         self.river_shift = RIVER_SHIFT
         self.adapted, self.lam, self.exploit = {}, 0.0, {"bluff": 1.0, "defend": 1.0}
         self.pot_odds = pot_odds              # experiment 39: equity vs the opponent's range against the price
+        self.pot_odds_max_bb = POT_ODDS_MAX_BB   # experiment 50: it lost to held-out bots at 100bb
         self.read_evidence = {}
         self.opp_profile = None               # the opponent's profile (bot/opponent.py), set by the adapter
         self.size_value = None                # experiment 39: bluff-share scale by the opponent's bet size
@@ -313,7 +315,8 @@ class Engine:
                 d = self._apply(d, "river_jam", self._river_jam, hero, hole, board[:2 + st.street], st)
             if self._short(st, hero) and "short_stack" not in self.off:     # off: pot-odds check instead
                 d = self._apply(d, "short_stack", self._short_stack, hero, hole, board[:2 + st.street], st)
-            elif self.pot_odds and "pot_odds" not in self.off and st.facing(hero) > EPS:
+            elif self.pot_odds and "pot_odds" not in self.off and st.stack <= self.pot_odds_max_bb \
+                    and st.facing(hero) > EPS:
                 if "fold" in self._options and "call" in self._options:
                     before = dict(d.probs)
                     probs = dict.fromkeys(("fold", "call"), 0.0) | d.probs

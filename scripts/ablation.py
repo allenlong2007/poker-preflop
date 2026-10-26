@@ -10,6 +10,8 @@ duplicate matches on fixed deals against held-out opponents (bot/heldout.py, nev
     +stage      base plus one stage (what it adds alone)
     read200     full plus a 200-deal read of the opponent (bot/adapt.py adaptation, 100bb only)
     read1000    the same after 1000 deals
+    potodds_all   the pot-odds check at every depth (before experiment 50 limited it to POT_ODDS_MAX_BB)
+    potodds_none  no pot-odds check at any depth
 
 Every variant plays the same deals with the same engine and opponent seeds, so results are compared per deal
 (paired): the reported difference to `full` has a much smaller error than either result alone. Also reports how
@@ -28,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 OUT = ROOT / "output" / "match" / "ablation"
-DEAL_SEED = 50_001                 # deals no tuning run used (those used seeds 3 and 7 + stack)
+DEAL_SEED = int(__import__("os").environ.get("DEAL_SEED", 50_001))   # deals no tuning run used (3, 7 + stack)
 READS = {"read200": 200, "read1000": 1000}
 STAGES = ("vs_shove", "small_raise", "reraise_war", "monster", "trap", "river_jam", "short_stack", "pot_odds",
           "oop_correction", "small_leads", "polar_river")
@@ -38,7 +40,11 @@ VARIANTS = ("full", "base") + tuple(f"-{s}" for s in STAGES) + tuple(f"+{s}" for
 def engine(variant):
     from bot.engine import Engine
     e = Engine(exact_required=False, seed=1, pot_odds=True)
-    if variant == "base":
+    if variant == "potodds_all":
+        e.pot_odds_max_bb = float("inf")
+    elif variant == "potodds_none":
+        e.off = {"pot_odds"}
+    elif variant == "base":
         e.off = set(STAGES)
     elif variant.startswith("-"):
         e.off = {variant[1:]}

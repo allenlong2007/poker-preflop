@@ -2718,3 +2718,14 @@ Bold = significant after a Bonferroni correction (|z| > 3.3).
 - Under exact-only serving (the live default) none of these stages run.
 
 Fixed along the way: offline reads in `rival_train.py`/`strictness_train.py` built records without the identities that `bot/reads.py` requires, so every simulated read silently did nothing. `bot.adapt.read_state` is now the one read path, used by both the live adapter and `ablation.py`. The two older scripts still use the old path.
+
+**Pot-odds check limited to 30bb or less** (`POT_ODDS_MAX_BB`). Confirmed on a second deal seed (70001, 3000 deals per cell). bb/100 of the check at every depth vs without it:
+
+| stack | seed 50001 | seed 70001 |
+|---|---|---|
+| 100bb | -16.1 (z -2.3) | -15.5 (z -2.1) |
+| 60bb | | -7.1 (z -1.4) |
+| 40bb | | -5.2 (z -1.3) |
+| 20-25bb | +0.7 (20bb) | +2.1 (25bb) |
+
+The two 100bb results combined give z ≈ -3.1. Above ~30bb the check never shows a gain, and below it the effect is within noise. The 30bb cut is between the 25bb and 40bb points; it was not tuned.

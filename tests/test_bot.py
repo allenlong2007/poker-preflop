@@ -145,6 +145,7 @@ def test_river_calls_depend_on_the_raise_size():
     """Experiments 40-41: one pair folds more to a bigger river raise; top two pair always calls (against an
     opponent read as value-heavy, strictness 1)."""
     eng = Engine(exact_required=False, seed=0, pot_odds=True)
+    eng.pot_odds_max_bb = float("inf")      # the check itself (experiment 50 limits it to shallower stacks)
     eng.strict = 1.0
     line = lambda r: [[Act("btn", "call"), Act("bb", "raise", 5), Act("btn", "call")],
                       [Act("bb", "check"), Act("btn", "check")], [Act("bb", "bet", 7.5), Act("btn", "call")],

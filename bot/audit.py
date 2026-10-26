@@ -1,6 +1,7 @@
 """Versioned, append-only decision evidence; historical imports never inherit today's build."""
 import hashlib
 import json
+import math
 import logging
 import subprocess
 import threading
@@ -36,6 +37,11 @@ def _git_commit(root: Path) -> str | None:
     return result.stdout.strip()
 
 
+
+
+def _finite(x):
+    return x if x is None or math.isfinite(x) else None
+
 class AuditLog:
     """One server run; retain decision links across restarts without relabeling old hands."""
 
@@ -63,6 +69,7 @@ class AuditLog:
                        "solver_flops": engine.use_solver_flops, "translate": engine.translate,
                        "pot_odds": engine.pot_odds,
                        "stages_off": sorted(getattr(engine, "off", ())),
+                       "pot_odds_max_bb": _finite(getattr(engine, "pot_odds_max_bb", None)),   # None: no limit
                        **{key: getattr(engine, key, None) for key in
                           ("defend_keep", "river_shift", "river_lead", "river_jam", "exact_required")}},
         }

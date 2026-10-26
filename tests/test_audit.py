@@ -90,6 +90,7 @@ def test_server_persists_context_and_links_only_observed_hands(tmp_path, monkeyp
     from bot.engine import Engine
     from bot.adapt import Adapter
     monkeypatch.setattr(server, "ENGINE", Engine(exact_required=False, pot_odds=True))
+    server.ENGINE.pot_odds_max_bb = float("inf")      # the check at 100bb, to test its logging
     monkeypatch.setattr(server, "ADAPT", Adapter(server.ENGINE))
     demo = Path(__file__).resolve().parents[1] / "bot" / "pokernow" / "demo_log.csv"
     msgs = server.read_log(demo.read_text())

@@ -24,6 +24,7 @@ def test_equity_is_logged_without_an_extra_calculation(monkeypatch, stack, board
 
     monkeypatch.setattr(potodds, "equity", equity)
     eng = Engine(exact_required=False, pot_odds=True, seed=1)
+    eng.pot_odds_max_bb = float("inf")   # log the check at 100bb too (experiment 50 limits it by default)
     eng.low_spr = "legacy"          # the EV mode logs its own range-vs-range equity (test_low_spr_ev_is_logged)
     d = eng.decide("btn", "AsKd", board, history, stack=stack)
     assert len(calls) == 1
