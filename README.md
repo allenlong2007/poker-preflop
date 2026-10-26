@@ -2729,3 +2729,12 @@ Fixed along the way: offline reads in `rival_train.py`/`strictness_train.py` bui
 | 20-25bb | +0.7 (20bb) | +2.1 (25bb) |
 
 The two 100bb results combined give z ≈ -3.1. Above ~30bb the check never shows a gain, and below it the effect is within noise. The 30bb cut is between the 25bb and 40bb points; it was not tuned.
+
+**Reads against the tuning rivals, after the read fixes** (`HISTORY=0,1000 scripts/rival_train.py 3000`). bb/100, no read → after a 1000-deal read:
+
+| rival | equity | chart | pushfold | minraise | overbet | nit | exploiter | aggro 0.4 | value-heavy | maniac |
+|---|---|---|---|---|---|---|---|---|---|---|
+| no read | +110 | +16 | +74 | +52 | -16 | -9 | -20 | -19 | +9 | +100 |
+| read | +103 | +45 | +100 | +151 | -13 | +40 | +35 | -19 | +45 | +758 |
+
+Average +30 → +125, or +22 → +54 without the maniac. Matches are about ±12 to ±26 each (±49 to ±60 for the maniac) and are not paired. These rivals were used for tuning, so this is in-sample. The held-out bots' read result (+14) is the honest number. Against aggro 0.4 nothing passed the gates.
