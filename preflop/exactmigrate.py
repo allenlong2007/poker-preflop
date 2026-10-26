@@ -60,7 +60,7 @@ def migrate(source, destination, key_text_floor=KEY_TEXT_FLOOR, source_commit=No
         source_sha = file_hash(source)
         temporary = destination.with_name(destination.name + "." + uuid.uuid4().hex + ".migrating")
         try:
-            with closing(sqlite3.connect(temporary)) as dst:
+            with closing(sqlite3.connect(temporary, isolation_level=None)) as dst:   # explicit transactions only
                 dst.execute("PRAGMA journal_mode=OFF")
                 dst.execute("PRAGMA synchronous=OFF")
                 dst.execute("PRAGMA cache_size=-1048576")        # 1 GiB page cache for random digest inserts
@@ -97,9 +97,10 @@ def migrate(source, destination, key_text_floor=KEY_TEXT_FLOOR, source_commit=No
                     "source_commit": source_commit, "source_commit_verified": produced_by is not None,
                     "migration_code_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                     "verified": True, "verification": report, "seconds": round(time.time() - started, 1)}
+                dst.execute("BEGIN")
                 dst.executemany("INSERT INTO metadata VALUES (?,?)",
                                 [(k, json.dumps(v, allow_nan=False, sort_keys=True)) for k, v in carried.items()])
-                dst.commit()
+                dst.execute("COMMIT")
                 dst.execute("PRAGMA journal_mode=DELETE")
             os.replace(temporary, destination)
         finally:

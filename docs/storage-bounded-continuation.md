@@ -1,8 +1,31 @@
 # Storage-bounded continuation of exact coverage training — design
 
-Status: **design only (2026-10-25).** Nothing here is implemented, no training was started, and no artifact was
-modified or promoted. Measurements below are read-only queries of
-`output/exact/coverage-2026-10-24/overnight/latest.sqlite` (same 1,095,300 iterations as the candidate).
+Status: **implemented (2026-10-25, commit `462f4a9`), approved by the user (all four decisions).** Sections
+A-F are in `preflop/exactstore.py`, `preflop/exactmigrate.py`, `preflop/exacttrain.py`, `preflop/exactcoverage.py`,
+`scripts/train_exact.py` and `scripts/migrate_exact_storage.py`, tested in `tests/test_exact_storage.py`.
+Measurements below are read-only queries of `output/exact/coverage-2026-10-24/overnight/latest.sqlite` (same
+1,095,300 iterations as the candidate). Operational results are appended at the end.
+
+Usage:
+
+```sh
+# verified lossless migration (source untouched; checks the source was produced by the given commit's code)
+.venv/bin/python scripts/migrate_exact_storage.py SRC.sqlite DEST.sqlite --source-commit 76d16af
+# phase 2: guide only targets still below readiness (declared once, recorded in metadata)
+.venv/bin/python scripts/train_exact.py train --path DEST.sqlite --hours 8 --max-gb 16 \
+  --target-min-updates 1000 --phase2-unready
+# small ready-only artifact for frozen evaluation / promotion
+.venv/bin/python scripts/train_exact.py export-ready --path latest.sqlite --output ready.sqlite --min-updates 1000
+```
+
+Implementation notes beyond the design:
+- the node row also stores an independent 63-bit check value of the key (`check_value`), so a digest collision
+  raises instead of silently merging two information sets;
+- `key_text_floor` (default 100) is recorded per artifact. A node below it can't be served from schema 2. The
+  reader reports `insufficient` there, and `invalid` for a ready node whose literal key is missing;
+- the phase-2 rotation is recomputed every 100 iterations at fixed absolute iteration numbers and committed with
+  the batch, so resuming mid-block is bit-identical to an uninterrupted run (tested);
+- schema-1 artifacts remain readable; resuming one written before the fingerprint split asks for migration.
 
 ## Goal and constraints
 

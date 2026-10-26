@@ -208,3 +208,20 @@ def test_ready_export_keeps_only_servable_nodes_with_identical_answers(tmp_path)
         Trainer(small)
     with pytest.raises(ValueError, match="floor"):
         export_ready(frozen, tmp_path / "x.sqlite", min_updates=1)
+
+
+def test_coverage_candidate_migrates_and_resumes_identically(tmp_path):
+    """The real candidate is a coverage trainer (targets table, manifest digest, RNG): migrate it mid-run."""
+    from preflop.exactcoverage import CoverageTrainer
+    other = {**context(), "hero_hole": "QsQd"}
+    full, part, migrated, reference = (tmp_path / n for n in ("full.sqlite", "part.sqlite", "m.sqlite", "r.sqlite"))
+    with CoverageTrainer(full, CFG, targets=[context(), other], seed=4, schema=1) as trainer:
+        trainer.train(15)
+    with CoverageTrainer(part, CFG, targets=[context(), other], seed=4, schema=1) as trainer:
+        trainer.train(6)
+    assert migrate(part, migrated)["verification"]["targets"] == 2
+    with CoverageTrainer(migrated) as resumed:
+        resumed.train(9)
+        assert resumed.coverage(1)["targets"] == 2
+    migrate(full, reference)
+    assert dump(migrated) == dump(reference)

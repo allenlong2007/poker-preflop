@@ -67,3 +67,12 @@ Status includes aggregate exact infosets/updates and queued-cell readiness by st
 Jobs stop at the requested frontier's readiness floor, time/iteration budget, disk/free-space guard, signal or failure. The status says why. The same atomic checkpoints, single-writer leases, saved RNG and frozen snapshots as standard exact training apply. Final frozen snapshots are saved beside the candidate as `latest.sqlite`.
 
 Candidate readiness does not mean live eligibility. A frozen candidate still needs independent held-out evaluation and the existing promotion gates before the strict live engine can use it. No automatic promotion or live source change occurs. New queue entries after a manifest is frozen await a new manifest/job rather than silently changing a running training distribution.
+
+
+## Storage schema 2 and phase 2 (2026-10-25)
+
+New candidates use the lossless compact schema 2. Existing schema-1 artifacts migrate with
+`scripts/migrate_exact_storage.py` (bit-exact verification). `--phase2-unready` declares a scheduling phase that
+guides only targets still below readiness; readiness, the manifest, chance/history proposals and corrections are
+unchanged. Snapshots are APFS clones where possible. `export-ready` writes the small average-only artifact used for
+frozen evaluation. Full design, guarantees and measurements: `docs/storage-bounded-continuation.md`.
