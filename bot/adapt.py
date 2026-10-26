@@ -276,28 +276,34 @@ class Adapter:
             self.done[opp_id] -= MIN_NEW                       # busy: try again on the next hand
             return
         try:
-            prof = evidence_profile(hands)
-            if self.engine.exact_required:
-                pre = None
-            else:
-                if self.pre is None:
-                    self.pre = Preflop()
-                pre = self.pre.adapt(prof)
-            served = serving_profile(prof, self.base)
-            post = postflop_exploit(served, self.base) if self.base else {"bluff": 1.0, "defend": 1.0}
-            fn, scale = size_value(prof)
-            from bot import bluffmodel
-            bm, _ = bluffmodel.for_opponent(hands)  # frozen self-play prior
-            prof["read_evidence"]["calibration"] = bluffmodel.calibration_report(hands)
+            if self.pre is None and not self.engine.exact_required:
+                self.pre = Preflop()
+            state, pre, scale = read_state(hands, self.base, None if self.engine.exact_required else self.pre)
             # Kept per opponent (several tables at once) and loaded into the engine before each of their decisions.
-            self.states[opp_id] = {
-                "nodes": pre["nodes"] if pre else {}, "lam": pre["lam"] if pre else 0.0, "post": post,
-                "profile": served, "size_value": fn, "bluff_model": bm, "evidence": prof["read_evidence"],
-                "strict": evidence_strictness(hands, prof, self.base) if self.base else 0.0}
+            self.states[opp_id] = state
             self.state = {"opponent": opp_id, "hands": len(hands), "lam": round(pre["lam"], 3) if pre else 0,
-                          "postflop": dict(post, sizes=scale), "locked": pre["locked"] if pre else {}, "read_evidence": prof["read_evidence"]}
+                          "postflop": dict(state["post"], sizes=scale), "locked": pre["locked"] if pre else {},
+                          "read_evidence": state["evidence"]}
         finally:
             self.lock.release()
+
+
+def read_state(hands, base, pre_solver):
+    """The engine's opponent state from their archived hands: the live adapter and offline matches
+    (scripts/ablation.py) share it, so simulated reads go through the same evidence gates as live ones.
+    pre_solver: a Preflop() (None under exact-only serving: no preflop adaptation)."""
+    prof = evidence_profile(hands)
+    pre = pre_solver.adapt(prof) if pre_solver is not None else None
+    served = serving_profile(prof, base)
+    post = postflop_exploit(served, base) if base else {"bluff": 1.0, "defend": 1.0}
+    fn, scale = size_value(prof)
+    from bot import bluffmodel
+    bm, _ = bluffmodel.for_opponent(hands)  # frozen self-play prior
+    prof["read_evidence"]["calibration"] = bluffmodel.calibration_report(hands)
+    state = {"nodes": pre["nodes"] if pre else {}, "lam": pre["lam"] if pre else 0.0, "post": post,
+             "profile": served, "size_value": fn, "bluff_model": bm, "evidence": prof["read_evidence"],
+             "strict": evidence_strictness(hands, prof, base) if base else 0.0}
+    return state, pre, scale
 
 
 def baseline(deals):

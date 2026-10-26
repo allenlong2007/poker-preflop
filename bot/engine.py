@@ -222,6 +222,7 @@ class Engine:
         self.strict = STRICT_PRIOR            # experiment 42: trust in value-heavy priors, set from opponent data
         self.river_lead = RIVER_LEAD if river_lead is None else river_lead
         self.river_jam = True                 # experiment 47 (switchable for comparisons)
+        self.off = set()                      # experiment 50: adjustment stages switched off (scripts/ablation.py)
         # Experiment 49: low-SPR mode. "legacy" (experiment 40: jam with SHORT_JAM equity, else check; call by price) stays
         # the default: the range-vs-range EV model ("ev", bot/lowspr.py) lost to it in short-stack self-play (mean
         # +5.9 vs +10.5 bb/100 over 10/20/35bb and six opponents; it over-bluffs players who call wider than price).
@@ -300,19 +301,19 @@ class Engine:
         elif st.street == 0:
             d = self._preflop(hero, hole, st)
             d.diagnostics.setdefault("base", {"source": d.source, "node": d.node, "probs": dict(d.probs)})
-            d = _adjust(d, "vs_shove", self._vs_shove, hero, hole, st)
-            d = _adjust(d, "small_raise", self._small_raise, hero, hole, st)
-            d = _adjust(d, "reraise_war", self._vs_reraise_war, hero, hole, st)
+            d = self._apply(d, "vs_shove", self._vs_shove, hero, hole, st)
+            d = self._apply(d, "small_raise", self._small_raise, hero, hole, st)
+            d = self._apply(d, "reraise_war", self._vs_reraise_war, hero, hole, st)
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
             d.diagnostics.setdefault("base", {"source": d.source, "node": d.node, "probs": dict(d.probs)})
-            d = _adjust(d, "monster", self._monster, hero, hole, board[:2 + st.street], st)
-            d = _adjust(d, "trap", self._trap, hero, hole, board[:2 + st.street], st)
+            d = self._apply(d, "monster", self._monster, hero, hole, board[:2 + st.street], st)
+            d = self._apply(d, "trap", self._trap, hero, hole, board[:2 + st.street], st)
             if self.river_jam:
-                d = _adjust(d, "river_jam", self._river_jam, hero, hole, board[:2 + st.street], st)
-            if self._short(st, hero):
-                d = _adjust(d, "short_stack", self._short_stack, hero, hole, board[:2 + st.street], st)
-            elif self.pot_odds and st.facing(hero) > EPS:
+                d = self._apply(d, "river_jam", self._river_jam, hero, hole, board[:2 + st.street], st)
+            if self._short(st, hero) and "short_stack" not in self.off:     # off: pot-odds check instead
+                d = self._apply(d, "short_stack", self._short_stack, hero, hole, board[:2 + st.street], st)
+            elif self.pot_odds and "pot_odds" not in self.off and st.facing(hero) > EPS:
                 if "fold" in self._options and "call" in self._options:
                     before = dict(d.probs)
                     probs = {k: d.probs.get(k, 0.0) for k in set(d.probs) | {"fold", "call"}}
@@ -600,13 +601,14 @@ class Engine:
             diagnostics["base"] = {"source": source, "node": node, "probs": dict(probs)}
             notes.append(f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}")
             before = dict(probs)
-            probs = self._oop_correction(probs, s, kind, bkt, st, notes, aggressive[0].to / P if aggressive else 0)
+            if "oop_correction" not in self.off:
+                probs = self._oop_correction(probs, s, kind, bkt, st, notes, aggressive[0].to / P if aggressive else 0)
             _trace(diagnostics, "oop_correction", before, probs)
-            if kind == "bb_first" and s == 1 and pot in ("srp", "srp_alt"):
+            if kind == "bb_first" and s == 1 and pot in ("srp", "srp_alt") and "small_leads" not in self.off:
                 before = dict(probs)
                 probs = _small_leads(probs, notes)
                 _trace(diagnostics, "small_leads", before, probs)
-            if s == 2 and kind in ("btn_vs_check", "bb_first"):
+            if s == 2 and kind in ("btn_vs_check", "bb_first") and "polar_river" not in self.off:
                 before = dict(probs)
                 probs = _polar_river(probs, notes, self.river_shift)
                 _trace(diagnostics, "polar_river", before, probs)
@@ -624,6 +626,10 @@ class Engine:
         d.diagnostics.setdefault("base", {"source": source, "node": node, "probs": before_exploit})
         _trace(d.diagnostics, "exploit_and_legality", before_exploit, d.probs)
         return d
+
+    def _apply(self, d, stage, fn, *args):
+        """One adjustment stage on top of the decision so far, unless switched off in self.off."""
+        return d if stage in self.off else _adjust(d, stage, fn, *args)
 
     # -- experiment 40: short stacks postflop -------------------------------------------------------
 

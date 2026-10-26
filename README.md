@@ -2693,3 +2693,24 @@ PokerNow nickname is `bot/version.py` NAME (e.g. "HUBot v5"); each version is a 
    strategy book (`STRATEGY.md`) still shows experiment 26's sizes.
 6. **Rerun the TexasSolver comparisons** (experiments 14, 16, 22) with accurate sizes (`SOLVER_CHIP_SCALE=10`).
 7. **Multiway** play.
+
+## Experiment 50: ablation matches against held-out bots
+
+Solver accuracy for the base trees says nothing about the final bot, because trapping, river jams, calling corrections and reads are layered on top of it one after another. `scripts/ablation.py` switches each stage off (`Engine.off`). Every variant then plays the same fixed deals (seed 50001) against six held-out bots (`bot/heldout.py`: geo, trapper, limper, threebet, adaptive, base mirror). None of these bots was used for tuning, and none must be. Two comparisons per stage: full minus the stage, and base plus only the stage. 3000 duplicate deals per cell; differences are paired against full.
+
+| | 100bb | 20bb |
+|---|---|---|
+| base (all stages off) vs full | +9.1 (z +1.2) | -13.9 (z -4.9) |
+| full minus pot-odds calling check | **+24.2 (z +3.3)** | +4.9 (z +2.0) |
+| full minus the short-stack rule | -3.1 | **-8.6 (z -3.2)** |
+| full plus a 1000-deal read | **-29.8 (z -3.4)**, threebet -149 | |
+| full plus a 200-deal read | -19.7 (z -2.7), threebet -124 | |
+
+All values are bb/100. Bold = significant after a Bonferroni correction (|z| > 3.3). Every other stage was within noise in both directions.
+- At 100bb the adjustment stack is not shown to help against held-out bots. The pot-odds calling correction hurts.
+- At 20bb nearly all of the gain is the short-stack rule.
+- Opponent reads lose, mostly against the hyper-aggressive preflop bot.
+- `vs_shove`, `small_raise` and `reraise_war` never changed a result on their own: they need reads or other stages to fire.
+- Under exact-only serving (the live default), none of these stages run.
+
+Fixed along the way: offline reads in `rival_train.py`/`strictness_train.py` built records without the identities that `bot/reads.py` requires, so every simulated read silently did nothing. `bot.adapt.read_state` is now the one read path, used by both the live adapter and `ablation.py`. The two older scripts still use the old path.
