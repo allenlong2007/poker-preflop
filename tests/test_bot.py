@@ -157,13 +157,30 @@ def test_river_calls_depend_on_the_raise_size():
 
 
 def test_short_stack_postflop_jams_or_checks():
-    """Experiment 40: with ~5bb behind, no small c-bets: shove with equity, check without it."""
+    """Experiment 40 (legacy mode): with ~5bb behind, no small c-bets: shove with equity, check without it."""
     eng = Engine(exact_required=False, seed=0)
+    eng.low_spr = "legacy"
     hist = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check")]]
     strong = eng.decide("btn", "KsKd", "Kc7d2s", hist, sample=False, stack=7)
     weak = eng.decide("btn", "4h3d", "KcQdJs", hist, sample=False, stack=7)
     assert strong.label == "all-in" and strong.source == "short"
     assert weak.label == "check"
+
+
+def test_low_spr_ev_picks_the_best_option_against_the_range():
+    """Experiment 49: low-SPR play by range-vs-range EV; the chosen option is the EV maximum, sets jam, a shove is
+    called or folded by its price, and the diagnostics carry every option's EV."""
+    eng = Engine(exact_required=False, seed=0)
+    hist = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check")]]
+    strong = eng.decide("btn", "KsKd", "Kc7d2s", hist, sample=False, stack=7)
+    assert strong.label == "all-in" and strong.source == "short"
+    ev = strong.diagnostics["short_stack"]["ev"]
+    assert max(ev, key=ev.get) == "all-in" and set(ev) <= set(strong.diagnostics["legal_options"])
+    shove = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check"), Act("btn", "bet", 4.75)]]
+    trash = eng.decide("bb", "4h3d", "KcQdJs", shove, sample=False, stack=7)
+    assert trash.label == "fold" and trash.diagnostics["short_stack"]["ev"]["call"] < 0
+    set_ = eng.decide("bb", "7s7c", "Kc7d2s", shove, sample=False, stack=7)
+    assert set_.label == "call"
 
 
 def test_every_depth_can_answer_a_shove():

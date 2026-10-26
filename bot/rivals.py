@@ -272,7 +272,7 @@ class Exploiter(_Base):
 
     def act(self, seat, hole, board, history, facing):
         st, pot, top = self.ctx(history, facing)
-        d = self.engine.decide(seat, hole, board, history)
+        d = self.engine.decide(seat, hole, board, history, stack=getattr(self, "stack", STACK))
         if st.street == 0:
             return d.action, d.to
         if facing <= EPS and st.history[st.street] and d.action == "check":

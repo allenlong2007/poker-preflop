@@ -23,7 +23,9 @@ def test_equity_is_logged_without_an_extra_calculation(monkeypatch, stack, board
         return 0.6
 
     monkeypatch.setattr(potodds, "equity", equity)
-    d = Engine(exact_required=False, pot_odds=True, seed=1).decide("btn", "AsKd", board, history, stack=stack)
+    eng = Engine(exact_required=False, pot_odds=True, seed=1)
+    eng.low_spr = "legacy"          # the EV mode logs its own range-vs-range equity (test_low_spr_ev_is_logged)
+    d = eng.decide("btn", "AsKd", board, history, stack=stack)
     assert len(calls) == 1
     assert d.diagnostics[metric]["equity"] == 0.6
     assert d.diagnostics[metric]["range_combos"] > 0
@@ -64,3 +66,12 @@ def test_preflop_adaptation_preserves_the_lookup_baseline():
     trace = next(x for x in d.diagnostics["adjustments"] if x["stage"] == "preflop_adaptation")
     assert trace["before"] == d.diagnostics["base"]["probs"]
     assert trace["after"]["fold"] > trace["before"]["fold"]
+
+
+def test_low_spr_ev_is_logged():
+    history = [[Act("btn", "raise", 2.25), Act("bb", "call")], [Act("bb", "check")]]
+    d = Engine(exact_required=False, pot_odds=True, seed=1).decide("btn", "AsKd", "Kh8d3c", history, stack=10)
+    info = d.diagnostics["short_stack"]
+    assert 0 <= info["equity"] <= 1 and info["range_combos"] > 0 and info["hero_range_combos"] > 0
+    assert set(info["ev"]) <= set(d.diagnostics["legal_options"]) and d.label in info["ev"]
+    json.dumps(d.diagnostics, allow_nan=False)

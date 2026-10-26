@@ -18,6 +18,7 @@ import eval7
 import numpy as np
 
 from bot import potodds
+from bot.depth import BlendedNodes
 from preflop import fullgame as fg
 from preflop.cards import HANDS, INDEX
 from preflop.flopgame import texture as flop_texture
@@ -221,6 +222,10 @@ class Engine:
         self.strict = STRICT_PRIOR            # experiment 42: trust in value-heavy priors, set from opponent data
         self.river_lead = RIVER_LEAD if river_lead is None else river_lead
         self.river_jam = True                 # experiment 47 (switchable for comparisons)
+        self.low_spr = "ev"                   # experiment 49: range-vs-range EV at low SPR ("legacy": fixed 55% jam)
+        self.depth_blend = True               # experiment 49: blend solved depths (False: nearest depth, as before)
+        self.depth_ranges = True              # experiment 49: opponent preflop ranges at the effective stack
+        self.short_bb, self.short_spr = SHORT_BB, SHORT_SPR   # when postflop play switches to low-SPR mode
         if policy_dir is None:
             policy_dir = POLICY_FINE if all((POLICY_FINE / f"{p}.npz").exists() for p in POTS) else POLICY
         self.pre = {} if exact_required else json.load(open(POLICY / "preflop.json"))
@@ -309,7 +314,7 @@ class Engine:
                     before = dict(d.probs)
                     probs = {k: d.probs.get(k, 0.0) for k in set(d.probs) | {"fold", "call"}}
                     evidence = {}
-                    d.probs = _normalise(potodds.check(probs, hole, board[:2 + st.street], st, hero, self.pre,
+                    d.probs = _normalise(potodds.check(probs, hole, board[:2 + st.street], st, hero, self._range_pre(),
                                                        self.opp_profile, self.exploit["defend"], d.notes,
                                                        self.size_value, self._bluffs(), self.strict,
                                                        diagnostics=evidence))
@@ -341,7 +346,7 @@ class Engine:
             if lookup.get("untrained_fallback"):
                 fallbacks.append("legacy_untrained_cell")
             if lookup.get("depth_bb") and lookup["depth_bb"] != stack:
-                fallbacks.append("legacy_nearest_stack")
+                fallbacks.append("legacy_depth_blend")       # experiment 49: blended solved depths, not exact
             if lookup.get("depth_node_borrow"):
                 fallbacks.append("legacy_depth_node_borrow")
             if lookup.get("size_translation"):
@@ -382,15 +387,12 @@ class Engine:
         acts = st.history[0]
         kinds = [(a.player, a.kind) for a in acts]
         jam = lambda a: a.to >= JAM_FRACTION * st.stack - EPS
-        # Experiment 36: shorter stacks use the tree solved at the nearest depth (the all-in 4-bet only
-        # exists at 40bb or shorter); the per-size answers (vs_open, vs_3bet) are 100bb solves.
-        depths = {float(k): v for k, v in self.pre.get("by_depth", {}).items()}
-        depth = min([STACK] + list(depths), key=lambda d: abs(math.log(d / max(st.stack, 1.0))))
-        deep = depth == STACK
-        # A node the depth tree doesn't have (the 40 / 60bb trees have no shoves, so no answers to one either)
-        # falls back to the 100bb tree's answer.
-        n = _Fallback(self.pre["nodes"] if deep else depths[depth], self.pre["nodes"],
-                      *[depths[d] for d in sorted(depths, reverse=True)])
+        # Experiment 49 (bot/depth.py): a log-linear blend of the two solved depths around the effective stack
+        # (100/60/40/25/15/10/6bb) instead of the nearest one; the range estimator reads the same blend. The per-size
+        # answers (vs_open, vs_3bet) are 100bb solves and enter as the 100bb side of the blend.
+        n = BlendedNodes(self.pre, st.stack, nearest=not self.depth_blend)
+        deep = n.lo == STACK
+        hi100 = n.hi == STACK
         size_alias = False
         f4 = self.pre.get("fourbet_x")
         opts = {}
@@ -410,7 +412,7 @@ class Engine:
                 key = min(self.pre["vs_open"], key=lambda k: abs(math.log(float(k) / s)))
                 size_alias = abs(float(key) - s) > EPS
                 spot = self.pre["vs_open"][key]
-                node, pol = f"bb_vs_raise (open {key})", spot["bb_vs_raise"] if deep else n["bb_vs_raise"]
+                node, pol = f"bb_vs_raise (open {key})", n.blend("bb_vs_raise", hi_override=spot["bb_vs_raise"] if hi100 else None)
                 opts = {"3-bet": raise_(spot["threebet_to"] * s / float(key)), "all-in": ("raise", st.stack)}
             opts.update({"fold": ("fold", 0), "call": ("call", min(s, st.stack))})
         elif hero == "btn" and kinds == [("btn", "call"), ("bb", "raise")]:
@@ -430,8 +432,8 @@ class Engine:
             else:
                 key = min(self.pre["vs_3bet"], key=lambda k: abs(math.log(float(k) / t)))
                 size_alias = abs(float(key) - t) > EPS
-                node, pol = f"btn_vs_3bet_small (3-bet {key})", self.pre["vs_3bet"][key] if deep \
-                    else n["btn_vs_3bet_small"]
+                node, pol = f"btn_vs_3bet_small (3-bet {key})", n.blend(
+                    "btn_vs_3bet_small", hi_override=self.pre["vs_3bet"][key] if hi100 else None)
                 opts = {"all-in": ("raise", st.stack)}
                 if f4:
                     opts["4-bet"] = raise_(f4 * t)
@@ -459,19 +461,21 @@ class Engine:
             opts = {"fold": ("fold", 0), "call": ("call", min(last.to, st.stack))}
         probs = {a: float(v[i]) for a, v in pol.items() if a in opts}
         diagnostics = {"base": {"source": "preflop", "node": node, "probs": dict(probs)},
-                       "lookup": {"depth_bb": depth, "depth_node_borrow": n.borrowed,
+                       "lookup": {"depth_bb": st.stack if n.exact else n.describe()["depth_bb"],
+                           "depth_blend": n.describe(), "depth_node_borrow": n.borrowed,
                                   "preflop_nearest_size": size_alias, "preflop_node_alias": n.missing,
                                   "near_jam_as_all_in": any(a.kind == "raise" and jam(a) and a.to < st.stack - EPS for a in acts),
                                   "preflop_deep_raise_alias": len(acts) >= 4 and acts[-1].kind == "raise" and not jam(acts[-1])}}
         base = node.split(" ")[0]
-        if deep and self.lam > 0 and base in self.adapted:
+        lam = self.lam * n.weight_100                       # adaptation was solved at 100bb: weighted by that side
+        if lam > 0 and base in self.adapted:
             ad = self.adapted[base]
-            probs = {a: (1 - self.lam) * p + self.lam * float(ad[a][i]) if a in ad else (1 - self.lam) * p
+            probs = {a: (1 - lam) * p + lam * float(ad[a][i]) if a in ad else (1 - lam) * p
                      for a, p in probs.items()}
             _trace(diagnostics, "preflop_adaptation", diagnostics["base"]["probs"], probs)
-            node += f" (adapted {self.lam:.0%})"
+            node += f" (adapted {lam:.0%})"
         if not deep:
-            node += f" ({depth:g}bb tree)"
+            node += f" ({n.lo:g}bb tree)" if n.exact else f" ({n.lo:g}/{n.hi:g}bb blend {n.w:.2f})"
         self._options = opts
         return Decision("", 0, _normalise(probs), node, "preflop", diagnostics=diagnostics)
 
@@ -706,7 +710,7 @@ class Engine:
         # new exact depth/size contexts arrive, in first-observation order.
         rank = obs.get("index", 1)
         lo, hi = interval(seen, n, rank * (rank + 1))
-        prior = SHOVE_PRIOR[0]
+        prior = self._tree_shove_rate(node, st.stack)
         applied = (self.read_evidence.get("version") == VERSION and n >= MIN_HANDS
                    and hi - lo <= MAX_WIDTH and (lo > prior + MARGIN or hi < prior - MARGIN)
                    and reach is None)
@@ -866,13 +870,15 @@ class Engine:
     def _short(self, st, hero):
         """Stacks too short for small-ball postflop play: at most SHORT_SPR pots behind, or SHORT_BB big blinds."""
         P, behind = st.street_start[st.street]
-        return behind <= SHORT_BB or behind <= SHORT_SPR * P
+        return behind <= self.short_bb or behind <= self.short_spr * P
 
     def _short_stack(self, d, hero, hole, board, st):
-        """Get it in with equity, otherwise check / fold; call a bet by its price. Replaces small c-bets and thin
-        value at short stacks, where any bet commits a large share of the stack anyway."""
-        rng = potodds.opponent_range(self.pre, st, hero, board, hole, self.opp_profile, self.exploit["defend"],
+        """Low SPR: experiment 49 decides by range-vs-range EV (bot/lowspr.py) at the effective stack depth;
+        low_spr="legacy" keeps experiment 40's rule (jam with SHORT_JAM equity, else check; call by price)."""
+        rng = potodds.opponent_range(self._range_pre(), st, hero, board, hole, self.opp_profile, self.exploit["defend"],
                                      self.size_value, self._bluffs(), self.strict)
+        if self.low_spr == "ev":
+            return self._low_spr_ev(d, hero, hole, board, st, rng)
         eq = potodds.equity(list(hole), list(board), rng)
         b = st.facing(hero)
         all_in = st.inp[hero] + st.left(hero)
@@ -892,6 +898,56 @@ class Engine:
                        notes=d.notes + [f"short stack ({st.left(hero):.1f}bb behind): {why}"])
         out.diagnostics["short_stack"] = {"equity": eq, "price": b / (st.pot() + b) if b > EPS else 0.0,
                                            "jam_threshold": SHORT_JAM, "range_combos": len(rng)}
+        return out
+
+    # Profile node (bot/opponent.py) -> preflop tree node, for the solved shove frequency at a depth.
+    _TREE_NODE = {"btn_first_in": "btn_root", "bb_vs_limp": "bb_vs_limp", "bb_vs_open": "bb_vs_raise",
+                  "btn_vs_iso": "btn_vs_iso", "btn_vs_3bet": "btn_vs_3bet_small", "bb_vs_4bet": "bb_vs_4bet_small"}
+
+    def _tree_shove_rate(self, node, stack):
+        """Experiment 49: the reference shove frequency for an opponent read is the solved tree's at this effective
+        stack (a 10bb button shoves ~29% at equilibrium, a 100bb one ~3%), so only a real deviation from
+        short-stack equilibrium counts as a read. Falls back to SHOVE_PRIOR without a matching node."""
+        name = self._TREE_NODE.get(node)
+        if not name or not self.pre:
+            return SHOVE_PRIOR[0]
+        from preflop.cards import n_combos
+        pol = BlendedNodes(self._range_pre(), stack).action(name, "all-in")
+        if pol is None:
+            return SHOVE_PRIOR[0]
+        w = np.array([n_combos(h) for h in HANDS], float)
+        return float(np.clip((np.asarray(pol, float) * w).sum() / w.sum(), 0.001, 0.999))
+
+    def _range_pre(self):
+        """Preflop policies the range estimator reads: with depth_ranges off, only the 100bb tree (as before)."""
+        if self.depth_ranges:
+            return self.pre
+        if not hasattr(self, "_pre_100"):
+            self._pre_100 = {k: v for k, v in self.pre.items() if k != "by_depth"}
+        return self._pre_100
+
+    def _low_spr_ev(self, d, hero, hole, board, st, rng):
+        from bot import lowspr
+        other = "bb" if hero == "btn" else "btn"
+        # The range they can put us on: the same estimator from their side, our cards unknown, default read of us.
+        mine = potodds.opponent_range(self._range_pre(), st, other, board, [], None, 1.0)
+        b = st.facing(hero)
+        all_in = st.inp[hero] + st.left(hero)
+        can_raise = st.left(other) > EPS and st.left(hero) > b + EPS
+        probs, info = lowspr.decide(list(hole), list(board), st.pot(), b, st.left(hero), st.left(other), rng, mine,
+                                    can_raise, seed=int(self.rng.integers(1 << 30)))
+        opts = {"fold": ("fold", 0), "check": ("check", 0), "call": ("call", min(st.inp[other], all_in)),
+                "all-in": ("raise" if b > EPS else "bet", all_in)}
+        for k in probs:
+            if k.startswith("bet "):
+                opts[k] = ("bet", st.inp[hero] + float(k.split()[1]) * st.pot())
+        self._options = opts
+        best = max(info["ev"], key=info["ev"].get)
+        out = Decision("", 0, probs, d.node + " (low SPR)", "short",
+                       notes=d.notes + [f"low SPR ({st.left(hero):.1f}bb behind, pot {st.pot():.1f}): EV "
+                                        + ", ".join(f"{k} {v:+.2f}" for k, v in info["ev"].items()) + f" -> {best}"])
+        out.diagnostics["short_stack"] = {**info, "price": b / (st.pot() + b) if b > EPS else 0.0,
+                                           "range_combos": len(rng)}
         return out
 
     def set_adaptation(self, nodes, lam, exploit):

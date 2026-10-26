@@ -49,15 +49,18 @@ def _class(c1, c2):
     return RANKS[r1] + RANKS[r2] + ("s" if c1.suit == c2.suit else "o")
 
 
-def preflop_weights(pre, acts, opp):
-    """169 weights for the opponent's preflop line from the solved nodes (missing nodes leave weights alone)."""
-    n = pre["nodes"]
+def preflop_weights(pre, acts, opp, stack=100.0):
+    """169 weights for the opponent's preflop line from the solved nodes (missing nodes leave weights alone).
+    Experiment 49: read at the effective stack (bot/depth.py blend of the solved depths), the same policies the
+    engine plays from, so a 12bb opponent's shove or open range is a 12bb range."""
+    from bot.depth import BlendedNodes
+    n = BlendedNodes(pre, stack) if pre.get("by_depth") else pre["nodes"]
     w = np.ones(len(HANDS))
     seen = []
     for a in acts:
         if a.player == opp and a.kind != "fold":
-            node, act = _node(seen, a, opp)
-            pol = n.get(node, {}).get(act) if node else None
+            node, act = _node(seen, a, opp, stack)
+            pol = (n.action(node, act) if hasattr(n, "action") else n.get(node, {}).get(act)) if node else None
             if pol is not None:
                 w = w * np.asarray(pol, float)
         seen.append((a.player, a.kind, a.to))
@@ -67,9 +70,9 @@ def preflop_weights(pre, acts, opp):
     return (1 - FLOOR) * w + FLOOR * 0.25          # a floor: a quarter-weight for everything
 
 
-def _node(seen, a, opp):
+def _node(seen, a, opp, stack=100.0):
     kinds = [(p, k) for p, k, _ in seen if k != "post"]
-    jam = a.to is not None and a.to >= 60
+    jam = a.to is not None and a.to >= 0.6 * stack - 1e-6     # same all-in rule as the engine (JAM_FRACTION)
     if opp == "btn" and not kinds:
         return "btn_root", {"call": "limp", "raise": "all-in" if jam else "raise"}.get(a.kind)
     if opp == "bb" and kinds == [("btn", "call")]:
@@ -219,7 +222,7 @@ def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_v
     """The opponent's weighted combos given everything they did in the hand so far."""
     opp = "bb" if hero == "btn" else "btn"
     dead = set(hole) | set(board)
-    rng = combos(preflop_weights(pre, st.history[0], opp), dead)
+    rng = combos(preflop_weights(pre, st.history[0], opp, st.stack), dead)
     from bot.reads import approved_nodes
     nodes = approved_nodes(prof)
     barrels = 0

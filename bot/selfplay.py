@@ -20,12 +20,14 @@ DECK = [eval7.Card(r + s) for r in "23456789TJQKA" for s in "cdhs"]
 
 
 class EngineAgent:
-    def __init__(self, engine, name="engine"):
-        self.engine, self.name = engine, name
+    def __init__(self, engine, name="engine", stack=STACK):
+        self.engine, self.name, self.stack = engine, name, stack
         self.sources = {}
 
     def act(self, seat, hole, board, history, facing):
-        d = self.engine.decide(seat, hole, board, history)
+        # The effective stack must reach the engine: without it every self-play hand was decided as if 100bb deep
+        # (experiment 49 found this while testing short stacks).
+        d = self.engine.decide(seat, hole, board, history, stack=self.stack)
         self.sources[d.source] = self.sources.get(d.source, 0) + 1
         return d.action, d.to
 
@@ -56,7 +58,7 @@ class Aggro:
         self.engine, self.rate, self.rng = engine, rate, np.random.default_rng(seed)
 
     def act(self, seat, hole, board, history, facing):
-        d = self.engine.decide(seat, hole, board, history)
+        d = self.engine.decide(seat, hole, board, history, stack=getattr(self, "stack", STACK))
         st = State(history)
         rate = self.rate if st.street > 0 else 0.25
         if d.action in ("check", "call") and self.rng.random() < rate:
@@ -73,7 +75,7 @@ class ValueHeavy:
         self.engine = engine
 
     def act(self, seat, hole, board, history, facing):
-        d = self.engine.decide(seat, hole, board, history)
+        d = self.engine.decide(seat, hole, board, history, stack=getattr(self, "stack", STACK))
         st = State(history)
         if st.street == 0:
             return d.action, d.to
