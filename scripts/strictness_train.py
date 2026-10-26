@@ -65,37 +65,48 @@ def profile_of(name, deals, seed=5):
             recs.append({"number": k, "opp_pos": o, "hero_pos": "bb" if o == "btn" else "btn", "history": h,
                          "stacks": {"hero": 100, "opp": 100},
                          "shown": {"opp": "".join(str(x) for x in opp_hole)} if showdown else {},
-                         "board": "".join(str(x) for x in c[4:])})
+                         "board": "".join(str(x) for x in c[4:]),
+                         # Identities the read gates (bot/reads.py) require; without them every read failed closed
+                         # and these offline reads silently did nothing (found in experiment 50).
+                         "id": f"sim-{seed}-{k}-{o}", "opp_id": f"sim-{name}", "hero_id": "bot"})
     prof = profile(recs)
     prof["records"] = recs
     return prof
 
 
+def read(name, deals):
+    """The engine's opponent state after `deals` deals of their play, through the live adapter's read path
+    (bot.adapt.read_state: evidence gates, preflop solve, per-street postflop scales, strictness, bluff model)."""
+    from bot.adapt import BASELINE, Preflop, read_state
+    state, _, _ = read_state(profile_of(name, deals)["records"], json.load(open(BASELINE)), Preflop())
+    return state
+
+
 def setup(job):
-    """Profile and preflop adaptation for one (opponent, history): shared by every strictness value."""
+    """The read for one (opponent, history): shared by every strictness value. Sent between processes, so the
+    size scale (a local function) is rebuilt in apply()."""
     name, hist = job
-    from bot.adapt import Preflop, postflop_exploit
-    base = json.load(open(ROOT / "output" / "match" / "baseline_profile.json"))
-    prof = profile_of(name, hist)
-    pre = Preflop().adapt(prof)
-    return (name, hist), {"prof": prof, "pre": pre, "post": postflop_exploit(prof, base)}
+    state = read(name, hist)
+    state.pop("size_value")
+    return (name, hist), state
+
+
+def apply(e, state, s="evidence"):
+    """Load a read into the engine as bot.adapt.Adapter.apply does; s overrides the read's strictness."""
+    from bot.adapt import size_value
+    e.set_adaptation(state["nodes"], state["lam"], state["post"])
+    e.opp_profile, e.size_value = state["profile"], size_value(state["profile"])[0]
+    e.bluff_model = state["bluff_model"]
+    e.strict = state["strict"] if s == "evidence" else s
+    e.read_evidence = state["evidence"]
 
 
 def play(job):
-    (name, hist), s, ctx, deals = job
-    from bot.adapt import size_value
+    (name, hist), s, state, deals = job
     from bot.engine import Engine
     from bot.selfplay import EngineAgent, match
     e = Engine(exact_required=False, seed=1, pot_odds=True)
-    if ctx["pre"]:
-        e.set_adaptation(ctx["pre"]["nodes"], ctx["pre"]["lam"], ctx["post"])
-    from bot import bluffmodel
-    from bot.adapt import evidence_strictness
-    e.opp_profile, e.size_value = ctx["prof"], size_value(ctx["prof"])[0]
-    bm, n = bluffmodel.for_opponent(ctx["prof"]["records"])
-    e.bluff_model = bm
-    base = json.load(open(ROOT / "output" / "match" / "baseline_profile.json"))
-    e.strict = evidence_strictness(ctx["prof"]["records"], ctx["prof"], base) if s == "evidence" else s
+    apply(e, state, s)
     r = match(EngineAgent(e), make(name), deals, seed=3)
     return (name, hist, s), float(r.mean() / 2 * 100), float(r.std(ddof=1) / np.sqrt(len(r)) / 2 * 100)
 
@@ -114,9 +125,7 @@ def main():
             m, se = res[(name, hist, x)]
             tot[x].append(m)
             cells.append(f"{m:+6.0f} ± {se:3.0f}")
-        from bot.adapt import evidence_strictness
-        base = json.load(open(ROOT / "output" / "match" / "baseline_profile.json"))
-        sv = evidence_strictness(c["prof"]["records"], c["prof"], base)
+        sv = c["strict"]
         print(f"   {name:12} history {hist:3d}: " + " | ".join(cells) + f"   (evidence s = {sv:.2f})")
     for x in S_GRID:
         v = tot[x]

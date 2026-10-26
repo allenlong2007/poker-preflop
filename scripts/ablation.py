@@ -69,25 +69,17 @@ class Agent:
 
 def read(job):
     """Opponent state from `deals` deals of its play (other deals than the match), through the live adapter's
-    evidence gates (bot.adapt.read_state)."""
+    read path (scripts/strictness_train.read -> bot.adapt.read_state)."""
     import strictness_train as stt
-    from bot.adapt import BASELINE, Preflop, read_state
     from bot.heldout import make
     opp, deals = job
     stt.make = make
-    recs = stt.profile_of(opp, deals)["records"]
-    for i, r in enumerate(recs):              # identities the gates require (they fail closed without them)
-        r.update(id=f"read-{i}", opp_id=f"heldout-{opp}", hero_id="bot")
-    state, pre, _ = read_state(recs, json.load(open(BASELINE)), Preflop())
-    return job, state
+    return job, stt.read(opp, deals)
 
 
 def apply_read(e, st):
-    """As bot.adapt.Adapter loads an opponent's state into the engine before their decisions."""
-    e.set_adaptation(st["nodes"], st["lam"], st["post"])
-    e.opp_profile, e.size_value, e.strict = st["profile"], st["size_value"], st["strict"]
-    e.bluff_model = st["bluff_model"]
-    e.read_evidence = st["evidence"]
+    import strictness_train as stt
+    stt.apply(e, st)
 
 
 def run(job):

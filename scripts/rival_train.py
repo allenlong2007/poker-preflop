@@ -71,7 +71,8 @@ def main():
         ctx = dict(pool.map(setup, jobs))
         res = pool.map(play, [(k, ctx[k], deals) for k in jobs])
     out = {}
-    print(f"bb/100 vs rival bots ({deals} deals each, duplicate): no read | 30-deal read | 200-deal read")
+    print(f"bb/100 vs rival bots ({deals} deals each, duplicate): " +
+          " | ".join("no read" if h == 0 else f"{h}-deal read" for h in HISTORY))
     for n in rivals:
         cells = []
         for h in HISTORY:
