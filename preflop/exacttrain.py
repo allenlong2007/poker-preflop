@@ -19,8 +19,10 @@ from pathlib import Path
 import numpy as np
 
 from preflop.exactgame import Config, State, from_context
+from preflop.exactstore import KEY_TEXT_FLOOR, clone_snapshot, open_store, storage_hash
 
-SCHEMA = 1
+SCHEMA = 2                 # new candidates; schema 1 artifacts stay readable and can be migrated losslessly
+SCHEMAS = (1, 2)
 
 
 def outcome_update(policy, chosen, probability, child, own, opponent, sampled):
@@ -38,6 +40,9 @@ def outcome_update(policy, chosen, probability, child, own, opponent, sampled):
 
 
 def _code_hash():
+    """Training-algorithm fingerprint: game rules and menus, the MCCFR walk/updates and coverage sampling. Node
+    storage (preflop/exactstore.py) is fingerprinted separately, so a verified lossless storage migration does not
+    masquerade as, or hide, an algorithm change."""
     paths = (Path(__file__), Path(__file__).with_name("exactgame.py"), Path(__file__).with_name("exactcoverage.py"))
     return hashlib.sha256(b"".join(p.read_bytes() for p in paths)).hexdigest()
 
@@ -118,7 +123,7 @@ def frozen_artifact(path):
 class Trainer:
     """Single writer; each batch commits nodes, iteration, and RNG state together."""
 
-    def __init__(self, path, config=None, seed=0, focus=None):
+    def __init__(self, path, config=None, seed=0, focus=None, schema=SCHEMA, key_text_floor=KEY_TEXT_FLOOR):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lease = self.path.with_suffix(self.path.suffix + ".lock").open("a")
@@ -129,21 +134,24 @@ class Trainer:
             self.db.execute("PRAGMA journal_mode=WAL")
             self.db.execute("PRAGMA synchronous=FULL")
             self.db.execute("CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
-            self.db.execute("CREATE TABLE IF NOT EXISTS nodes (key TEXT PRIMARY KEY, actions TEXT NOT NULL, "
-                            "regrets TEXT NOT NULL, total TEXT NOT NULL, visits INTEGER NOT NULL, "
-                            "updates INTEGER NOT NULL, street INTEGER NOT NULL)")
             meta = _metadata(self.db)
             if not meta:
+                if schema not in SCHEMAS:
+                    raise ValueError("unknown training schema")
+                self.store = open_store(self.db, schema, key_text_floor)
+                self.store.create(key_text_floor)
                 self.config = config or Config()
                 self.focus = _public_focus(focus)
                 self.rng = np.random.default_rng(seed)
                 for root in self.focus:
                     from_context(self.config, root, np.random.default_rng(0))
-                self._set("schema", SCHEMA)
+                self._set("schema", schema)
                 self._set("algorithm", "outcome_sampling_mccfr")
                 self._set("config", asdict(self.config))
                 self._set("config_sha256", self.config.fingerprint())
-                self._set("training_code_sha256", _code_hash())
+                self._set("algorithm_sha256", _code_hash())
+                self._set("storage_sha256", storage_hash())
+                self._set("key_text_floor", key_text_floor)
                 self._set("runtime", _runtime())
                 self._set("focus", self.focus)
                 self._set("focus_prior", "uniform_compatible_private_combos")
@@ -153,13 +161,19 @@ class Trainer:
                 self._set("rng", self.rng.bit_generator.state)
                 self.db.commit()
             else:
-                if meta.get("schema") != SCHEMA or meta.get("algorithm") != "outcome_sampling_mccfr":
+                if meta.get("schema") not in SCHEMAS or meta.get("algorithm") != "outcome_sampling_mccfr":
                     raise ValueError("incompatible training schema")
+                self.store = open_store(self.db, meta["schema"], meta.get("key_text_floor", KEY_TEXT_FLOOR))
                 self.config = Config(**meta["config"])
                 if config is not None and config.fingerprint() != self.config.fingerprint():
                     raise ValueError("resume configuration mismatch")
-                if meta.get("training_code_sha256") != _code_hash():
+                if "algorithm_sha256" not in meta:
+                    raise ValueError("training code changed; start a new candidate rather than mixing algorithms "
+                                     "(or migrate it with scripts/migrate_exact_storage.py)")
+                if meta["algorithm_sha256"] != _code_hash():
                     raise ValueError("training code changed; start a new candidate rather than mixing algorithms")
+                if meta.get("storage_sha256") != storage_hash():
+                    raise ValueError("storage code changed; resume needs a verified migration record for it")
                 if meta.get("runtime") != _runtime():
                     raise ValueError("training runtime/dependency versions changed")
                 self.focus = meta["focus"]
@@ -167,6 +181,8 @@ class Trainer:
                     raise ValueError("resume focus dataset mismatch")
                 if meta.get("promotion"):
                     raise ValueError("cannot train a promoted serving artifact")
+                if meta.get("ready_export"):
+                    raise ValueError("cannot train a ready-only export (it has no regrets)")
                 self.rng = np.random.default_rng()
                 self.rng.bit_generator.state = meta["rng"]
             self.aggregates = _metadata(self.db)["aggregates"]
@@ -206,12 +222,11 @@ class Trainer:
         if state.terminal:
             return state.utility(updater)
         key, actions = state.key(), state.actions()
-        row = self.db.execute("SELECT actions,regrets,total,visits,updates FROM nodes WHERE key=?", (key,)).fetchone()
+        row = self.store.get(key)
         if row:
-            if tuple(json.loads(row[0])) != actions:
+            if row[0] != actions:
                 raise ValueError("legal action schema changed for an existing information set")
-            regrets, total = np.array(json.loads(row[1])), np.array(json.loads(row[2]))
-            visits, updates = row[3:]
+            regrets, total, visits, updates = row[1], row[2], row[3], row[4]
         else:
             regrets, total, visits, updates = np.zeros(len(actions)), np.zeros(len(actions)), 0, 0
         positive = np.maximum(regrets, 0)
@@ -227,9 +242,7 @@ class Trainer:
             regrets += delta
             total += average
             updates += 1
-        self.db.execute("INSERT OR REPLACE INTO nodes VALUES (?,?,?,?,?,?,?)",
-                        (key, json.dumps(actions), json.dumps(regrets.tolist(), allow_nan=False),
-                         json.dumps(total.tolist(), allow_nan=False), visits + 1, updates, state.street))
+        self.store.put(key, actions, regrets, total, visits + 1, updates, state.street)
         group = self.aggregates["streets"].setdefault(str(state.street), {"infosets": 0, "updates": 0})
         if row is None:
             self.aggregates["infosets"] += 1
@@ -260,6 +273,8 @@ class Trainer:
             self.db.commit()
         except BaseException:
             self.db.rollback()
+            if hasattr(self.store, "rollback"):
+                self.store.rollback()
             self.rng.bit_generator.state = json.loads(original)
             self.aggregates = json.loads(original_counts)
             raise
@@ -269,12 +284,20 @@ class Trainer:
         return {"iterations": meta["iterations"], **meta["aggregates"],
                 "config_sha256": meta["config_sha256"], "focus_roots": len(self.focus)}
 
-    def checkpoint(self, path):
-        """SQLite backup produces a self-contained immutable evaluation snapshot (includes WAL)."""
+    def checkpoint(self, path, clone=False):
+        """Self-contained immutable snapshot. clone=True (between batches, after a TRUNCATE checkpoint) makes an APFS
+        copy-on-write clone that shares unchanged blocks; otherwise, or where cloning is unsupported, an SQLite backup.
+        Returns "clone" or "backup"."""
         destination = Path(path)
         if destination.resolve() == self.path.resolve():
             raise ValueError("checkpoint must differ from the writable candidate")
+        if clone:
+            self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            with artifact_destination(destination):
+                if clone_snapshot(self.path, destination):
+                    return "clone"
         _backup(self.db, destination)
+        return "backup"
 
 
 class ExactPolicy:
@@ -287,8 +310,9 @@ class ExactPolicy:
         self.db = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True, check_same_thread=False)
         try:
             self.meta = _metadata(self.db)
-            if self.meta.get("schema") != SCHEMA or self.meta.get("algorithm") != "outcome_sampling_mccfr":
+            if self.meta.get("schema") not in SCHEMAS or self.meta.get("algorithm") != "outcome_sampling_mccfr":
                 raise ValueError("incompatible exact policy schema")
+            self.store = open_store(self.db, self.meta["schema"], self.meta.get("key_text_floor", KEY_TEXT_FLOOR))
             try:
                 self.config = Config(**self.meta["config"])
                 if self.meta["config_sha256"] != self.config.fingerprint() or \
@@ -299,7 +323,7 @@ class ExactPolicy:
                 promotion = self.meta.get("promotion")
                 if promotion is not None and (not isinstance(promotion, dict) or promotion_errors(promotion)):
                     raise ValueError("invalid promotion metadata")
-                self.db.execute("SELECT key,actions,total,visits,updates FROM nodes LIMIT 0")
+                self.store.validate()
             except (KeyError, TypeError) as error:
                 raise ValueError("invalid exact policy metadata") from error
             self.minimum, self.candidate = min_updates, candidate
@@ -337,7 +361,10 @@ class ExactPolicy:
         keys.append((state.key(), "whole_game"))
         row, undertrained = None, None
         for key, namespace in keys:
-            found = self.db.execute("SELECT actions,total,visits,updates FROM nodes WHERE key=?", (key,)).fetchone()
+            try:
+                found = self.store.served(key)
+            except (ValueError, TypeError):
+                return {**info, "status": "invalid"}
             if found:
                 undertrained = found
                 if found[3] >= self.minimum:
@@ -346,10 +373,13 @@ class ExactPolicy:
                     break
         if row is None:
             return {**info, "status": "insufficient" if undertrained else "unseen"}
-        try:
-            actions, sums = tuple(json.loads(row[0])), np.array(json.loads(row[1]), dtype=float)
-        except (ValueError, TypeError):
-            return {**info, "status": "invalid"}
+        if not row[4]:
+            # Schema 2 keeps literal keys only from key_text_floor updates on; below it a node can't be served. A
+            # ready node without its literal key is never served (a digest match alone is not an exact identity).
+            if row[3] < self.store.floor:
+                return {**info, "status": "insufficient"}
+            return {**info, "status": "invalid", "reason": "unverified exact key"}
+        actions, sums = row[0], np.asarray(row[1], dtype=float)
         info.update({"visits": row[2], "updates": row[3]})
         if actions != state.actions() or sums.shape != (len(actions),) or not np.isfinite(sums).all() or \
                 not math.isfinite(float(sums.sum())) or (sums < 0).any():

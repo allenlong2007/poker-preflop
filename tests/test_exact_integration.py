@@ -14,11 +14,10 @@ from preflop.exacttrain import Trainer
 def test_engine_routes_covered_candidate_without_bucket_overrides(tmp_path):
     path, frozen = tmp_path / "train.sqlite", tmp_path / "snapshot.sqlite"
     config = Config(chip_bb=0.5, stacks_bb=(3,))
-    with Trainer(path, config, seed=21) as trainer:
+    with Trainer(path, config, seed=21, key_text_floor=1) as trainer:
         trainer.train(10)
         trainer.checkpoint(frozen)
-    with sqlite3.connect(frozen) as db:
-        key = db.execute("SELECT key FROM nodes WHERE street=0 AND updates>0 LIMIT 1").fetchone()[0]
+        key = trainer.store.key_items(1, street=0)[0][0]
     obs = json.loads(key)
     history = [[[("btn", "bb")[p], k, to * config.chip_bb] for p, k, to in h] for h in obs["history"]]
     engine = Engine(exact_required=False, seed=1, exact_policy_path=frozen, exact_candidate=True, exact_min_updates=1)

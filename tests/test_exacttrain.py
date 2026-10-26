@@ -11,7 +11,7 @@ from preflop.exacttrain import ExactPolicy, Trainer, outcome_update, promotion_e
 
 def rows(path):
     with sqlite3.connect(path) as db:
-        return db.execute("SELECT * FROM nodes ORDER BY key").fetchall()
+        return db.execute("SELECT * FROM nodes ORDER BY 1").fetchall()
 
 
 def test_outcome_sampling_importance_weights():
@@ -59,13 +59,13 @@ def test_focus_roots_ignore_private_labels_and_reject_changed_dataset(tmp_path):
     cfg = Config(chip_bb=0.5, stacks_bb=(3,))
     public = {"hero_position": "bb", "board": "Kh8d3c", "effective_stack_bb": 3,
               "history": [[["btn", "call", 0], ["bb", "check", 0]]]}
-    with Trainer(tmp_path / "a.sqlite", cfg, seed=7, focus=[{**public, "hero_hole": "AsAd"}]) as a:
+    with Trainer(tmp_path / "a.sqlite", cfg, seed=7, focus=[{**public, "hero_hole": "AsAd"}], key_text_floor=1) as a:
         a.train(10)
-    with Trainer(tmp_path / "b.sqlite", cfg, seed=7, focus=[{**public, "hero_hole": "2s2d"}]) as b:
+        keys = [k for k, _, _ in a.store.key_items(1)]
+    with Trainer(tmp_path / "b.sqlite", cfg, seed=7, focus=[{**public, "hero_hole": "2s2d"}], key_text_floor=1) as b:
         b.train(10)
     assert rows(tmp_path / "a.sqlite") == rows(tmp_path / "b.sqlite")
-    assert any(json.loads(row[0]).get("root_id", "whole_game") != "whole_game"
-               for row in rows(tmp_path / "a.sqlite"))
+    assert any(json.loads(key).get("root_id", "whole_game") != "whole_game" for key in keys)
     with pytest.raises(ValueError, match="focus"):
         Trainer(tmp_path / "a.sqlite", focus=[{**public, "board": "Ks8d3c"}])
 
@@ -73,15 +73,14 @@ def test_focus_roots_ignore_private_labels_and_reject_changed_dataset(tmp_path):
 def test_policy_is_readonly_and_requires_coverage_and_promotion(tmp_path):
     path, frozen = tmp_path / "model.sqlite", tmp_path / "frozen.sqlite"
     cfg = Config(chip_bb=0.5, stacks_bb=(3,))
-    with Trainer(path, cfg, seed=3) as trainer:
+    with Trainer(path, cfg, seed=3, key_text_floor=1) as trainer:
         trainer.train(30)
         trainer.checkpoint(frozen)
     before = frozen.read_bytes()
     with ExactPolicy(frozen, min_updates=1) as policy:
         assert policy.lookup({})["status"] == "unpromoted"
     with ExactPolicy(frozen, min_updates=1, candidate=True) as policy:
-        with sqlite3.connect(frozen) as db:
-            key = db.execute("SELECT key FROM nodes WHERE street=0 AND updates>0 LIMIT 1").fetchone()[0]
+        key = policy.store.key_items(1, street=0)[0][0]
         info = json.loads(key)
         context = {"hero_position": ("btn", "bb")[info["actor"]], "hero_hole": "".join(info["hole"]),
                    "board": "".join(info["board"]), "effective_stack_bb": info["stack"] * cfg.chip_bb,

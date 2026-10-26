@@ -84,7 +84,7 @@ def test_coverage_training_updates_exact_gap_and_resumes(tmp_path):
     c = context(stack=3)
     cfg = Config(chip_bb=.5, stacks_bb=(3,), fractions=(.5, 1))
     path = tmp_path / "targeted.sqlite"
-    with CoverageTrainer(path, cfg, targets=[c], seed=22) as trainer:
+    with CoverageTrainer(path, cfg, targets=[c], seed=22, key_text_floor=5) as trainer:
         trainer.train(20)
         report = trainer.coverage(minimum=5)
         assert report["targets"] == report["trained_targets"] == 1
@@ -156,8 +156,8 @@ def test_update_count_without_average_mass_is_not_covered(tmp_path):
     with CoverageTrainer(tmp_path / "zero.sqlite", cfg, targets=[context(stack=3)]) as trainer:
         trainer.train(20)
         key = trainer.targets[0][0]
-        actions = json.loads(trainer.db.execute("SELECT actions FROM nodes WHERE key=?", (key,)).fetchone()[0])
-        trainer.db.execute("UPDATE nodes SET updates=5000,total=? WHERE key=?", (json.dumps([0] * len(actions)), key))
+        actions, regrets, _, visits, _, street = trainer.store.get(key)
+        trainer.store.put(key, actions, regrets, [0] * len(actions), visits, 5000, street)
         trainer.db.commit()
         assert trainer.coverage(1000)["trained_targets"] == 0
 
@@ -201,15 +201,13 @@ def test_exact_turn_river_and_raise_policies_bypass_every_legacy_path(tmp_path):
     turn = {**context(stack=100), "board": "Kh8d3c2s", "history": context()["history"][:2] + [[["bb", "check", 0]] , []]}
     cfg = Config(chip_bb=.5, stacks_bb=(100,), extra_sizes_bb=(2, 6, 14, 30))
     path = tmp_path / "candidate.sqlite"
-    with CoverageTrainer(path, cfg, targets=[turn, river], seed=22) as trainer:
+    with CoverageTrainer(path, cfg, targets=[turn, river], seed=22, key_text_floor=1) as trainer:
         trainer.train(100)
         # Routing fixture: positive exact averages are supplied explicitly.
         # This test makes no convergence claim for an unreachable historical line.
         for key, _ in trainer.targets:
             actions = trainer.target_actions[key]
-            trainer.db.execute("INSERT OR REPLACE INTO nodes VALUES (?,?,?,?,?,?,?)",
-                               (key, json.dumps(actions), json.dumps([0] * len(actions)),
-                                json.dumps([1] * len(actions)), 10, 10, json.loads(key)["street"]))
+            trainer.store.put(key, actions, [0] * len(actions), [1] * len(actions), 10, 10, json.loads(key)["street"])
         trainer.db.commit()
         trainer.checkpoint(tmp_path / "frozen.sqlite")
     e = Engine(exact_policy_path=tmp_path / "frozen.sqlite", exact_candidate=True, exact_min_updates=1)

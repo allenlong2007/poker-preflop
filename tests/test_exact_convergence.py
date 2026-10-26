@@ -43,12 +43,12 @@ class Kuhn:
 
 
 def test_sampled_mccfr_reduces_kuhn_exploitability(tmp_path, monkeypatch):
-    with Trainer(tmp_path / "kuhn.sqlite", Config(chip_bb=0.5, stacks_bb=(3,)), seed=211) as trainer:
+    with Trainer(tmp_path / "kuhn.sqlite", Config(chip_bb=0.5, stacks_bb=(3,)), seed=211, key_text_floor=1) as trainer:
         monkeypatch.setattr(trainer, "_root", lambda: Kuhn(tuple(trainer.rng.choice(3, 2, replace=False))))
         trainer.train(10000)
         policy = {}
-        for key, total in trainer.db.execute("SELECT key,total FROM nodes"):
-            values = np.array(json.loads(total))
+        for key, _street, _updates in trainer.store.key_items(1):
+            values = np.asarray(trainer.store.get(key)[2])
             policy[key] = values / values.sum() if values.sum() else np.array([0.5, 0.5])
 
     def value(state, br_player, plan):
@@ -58,7 +58,7 @@ def test_sampled_mccfr_reduces_kuhn_exploitability(tmp_path, monkeypatch):
         if state.actor == br_player:
             probabilities = np.eye(2)[plan[key]]
         else:
-            probabilities = policy[key]
+            probabilities = policy.get(key, np.array([0.5, 0.5]))   # never updated: no average mass
         return sum(p * value(state.step(a), br_player, plan) for a, p in zip(state.actions(), probabilities))
 
     best = []

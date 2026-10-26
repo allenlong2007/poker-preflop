@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from preflop.exactgame import Config, SEATS, State
 from preflop.exacttrain import (Trainer, _metadata, _runtime, artifact_destination, file_hash,
                                freeze, frozen_artifact, promotion_errors)
+from preflop.exactstore import allocated_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT = ROOT / "output/exact/candidate.sqlite"
@@ -101,7 +102,8 @@ def _train(args):
         if coverage_mode:
             from preflop.exactcoverage import CoverageTrainer
             trainer_instance = CoverageTrainer(args.path, cfg, seed=args.seed,
-                                               targets=manifest["targets"] if manifest else None)
+                                               targets=manifest["targets"] if manifest else None,
+                                               phase2=args.phase2_unready, min_updates=args.target_min_updates)
         else:
             trainer_instance = Trainer(args.path, cfg, seed=args.seed, focus=focus)
         with trainer_instance as trainer:
@@ -138,20 +140,26 @@ def _train(args):
                         state["coverage"] = trainer.coverage(args.target_min_updates)
                     state.update(trainer.status(), elapsed_seconds=round(time.time() - started, 2),
                                  candidate_bytes=args.path.stat().st_size)
+                    if state.get("infosets"):
+                        state["bytes_per_infoset"] = round(state["candidate_bytes"] / state["infosets"], 1)
+                    if coverage_mode:
+                        state["coverage_phase"] = trainer.phase
                     _write_json(status_path, state)
                     if time.monotonic() - last_print >= 30:
                         print(json.dumps(state), flush=True)
                         last_print = time.monotonic()
                     if args.snapshot_every > 0 and time.monotonic() - last_snapshot >= args.snapshot_every:
                         try:
-                            trainer.checkpoint(args.path.with_name("latest.sqlite"))
+                            state["snapshot_mode"] = trainer.checkpoint(args.path.with_name("latest.sqlite"), clone=True)
+                            state["snapshot_allocated_bytes"] = allocated_bytes(args.path.with_name("latest.sqlite"))
                         except BlockingIOError:
                             state["snapshot_note"] = "latest snapshot leased by an evaluator; skipped"
                         last_snapshot = time.monotonic()
                 if stop:
                     reason = "signal_stopped"
                 try:
-                    trainer.checkpoint(args.path.with_name("latest.sqlite"))
+                    state["snapshot_mode"] = trainer.checkpoint(args.path.with_name("latest.sqlite"), clone=True)
+                    state["snapshot_allocated_bytes"] = allocated_bytes(args.path.with_name("latest.sqlite"))
                 except BlockingIOError:
                     state["snapshot_note"] = "latest snapshot leased; candidate remains committed"
             except BaseException as error:
@@ -290,6 +298,12 @@ def main(argv=None):
     train.add_argument("--focus", type=Path)
     train.add_argument("--max-focus", type=int, default=32)
     train.add_argument("--snapshot-every", type=float, default=900)
+    train.add_argument("--phase2-unready", action="store_true",
+                       help="declared phase 2: guide only targets still below readiness (recorded in metadata)")
+    export = sub.add_parser("export-ready", help="small frozen artifact of ready nodes for evaluation/promotion")
+    export.add_argument("--path", type=Path, required=True)
+    export.add_argument("--output", type=Path, required=True)
+    export.add_argument("--min-updates", type=int, default=1000)
     status = sub.add_parser("status")
     status.add_argument("--path", type=Path, default=DEFAULT)
     snapshot = sub.add_parser("snapshot")
@@ -319,6 +333,9 @@ def main(argv=None):
         print(json.dumps(report, indent=2))
     elif args.command == "promote":
         _promote(args)
+    elif args.command == "export-ready":
+        from preflop.exactmigrate import export_ready
+        print(json.dumps(export_ready(args.path, args.output, args.min_updates), indent=2))
 
 
 if __name__ == "__main__":
