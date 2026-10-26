@@ -62,6 +62,7 @@ class AuditLog:
             "config": {"policy_dir": str(engine.policy_dir), "flops_dir": str(engine.flops_dir),
                        "solver_flops": engine.use_solver_flops, "translate": engine.translate,
                        "pot_odds": engine.pot_odds,
+                       "stages_off": sorted(getattr(engine, "off", ())),
                        **{key: getattr(engine, key, None) for key in
                           ("defend_keep", "river_shift", "river_lead", "river_jam", "exact_required")}},
         }

@@ -362,6 +362,7 @@ class Engine:
                 fallbacks.append("legacy_flop_hand_group_average")
             fallbacks.extend(f"legacy_solver_attempt:{reason}" for reason in lookup.get("solver_attempt_fallbacks", ()))
         d.diagnostics.update(strategy_mode="exact_required" if self.exact_required else "legacy_permitted",
+                             stages_off=sorted(self.off),
                              fallbacks=fallbacks, coverage=self._record_coverage(
                                  context, exact["status"], "exact" if d.source == "exact" else "legacy", fallbacks))
         d.diagnostics.setdefault("adjustments", [])
