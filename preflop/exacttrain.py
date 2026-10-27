@@ -28,6 +28,11 @@ SCHEMAS = (1, 2)
 # average strategy: total variation <= stable_tv between its last two update-count doublings (target_checkpoints).
 # Candidates without the record keep the flat update floor.
 READINESS = {"per_action": 300, "stable_tv": 0.05}
+# Average-strategy weighting. "uniform" weights every update equally, so the near-uniform play of a node's first
+# updates fades only as 1/t: on 2026-10-27, 282 of 357 preflop targets had a stable current strategy (TV 0.004 over
+# ~500 updates) but an average 0.27 away from it after ~30k updates. "linear" weights a node's t-th update by t
+# (linear CFR averaging, per node), so early play fades as 1/t^2. Candidates without the record were uniform.
+AVERAGING = ("uniform", "linear")
 
 
 def required_updates(n_actions, minimum, readiness):
@@ -143,7 +148,8 @@ def frozen_artifact(path):
 class Trainer:
     """Single writer; each batch commits nodes, iteration, and RNG state together."""
 
-    def __init__(self, path, config=None, seed=0, focus=None, schema=SCHEMA, key_text_floor=KEY_TEXT_FLOOR):
+    def __init__(self, path, config=None, seed=0, focus=None, schema=SCHEMA, key_text_floor=KEY_TEXT_FLOOR,
+                 averaging="linear"):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lease = self.path.with_suffix(self.path.suffix + ".lock").open("a")
@@ -158,6 +164,8 @@ class Trainer:
             if not meta:
                 if schema not in SCHEMAS:
                     raise ValueError("unknown training schema")
+                if averaging not in AVERAGING:
+                    raise ValueError("unknown average-strategy weighting")
                 self.store = open_store(self.db, schema, key_text_floor)
                 self.store.create(key_text_floor)
                 self.config = config or Config()
@@ -167,6 +175,7 @@ class Trainer:
                     from_context(self.config, root, np.random.default_rng(0))
                 self._set("schema", schema)
                 self._set("algorithm", "outcome_sampling_mccfr")
+                self._set("averaging", averaging)
                 self._set("config", asdict(self.config))
                 self._set("config_sha256", self.config.fingerprint())
                 self._set("algorithm_sha256", _code_hash())
@@ -206,6 +215,7 @@ class Trainer:
                 self.rng = np.random.default_rng()
                 self.rng.bit_generator.state = meta["rng"]
             self.aggregates = _metadata(self.db)["aggregates"]
+            self.averaging = _metadata(self.db).get("averaging", "uniform")
         except BaseException:
             self.close()
             raise
@@ -260,7 +270,7 @@ class Trainer:
         delta, average, value = outcome_update(strategy, chosen, behavior[chosen], child, own, opponent, sampled)
         if updating:
             regrets += delta
-            total += average
+            total += average * (updates + 1 if self.averaging == "linear" else 1)
             updates += 1
         self.store.put(key, actions, regrets, total, visits + 1, updates, state.street)
         group = self.aggregates["streets"].setdefault(str(state.street), {"infosets": 0, "updates": 0})

@@ -107,3 +107,26 @@ def test_export_and_serving_apply_the_same_gate(tmp_path):
         assert policy.lookup(clean)["status"] == "ready"
     with ExactPolicy(tmp_path / "unstable.sqlite", min_updates=2, candidate=True) as policy:
         assert policy.lookup(clean)["status"] != "ready"
+
+
+def test_linear_averaging_weights_later_updates_more(tmp_path):
+    from preflop.exactcoverage import CoverageTrainer
+    from scripts.prepare_coverage import menu_config
+    target = {"hero_position": "btn", "hero_hole": "AsQd", "board": "", "effective_stack_bb": 3,
+              "history": [[], [], [], []]}
+    cfg = menu_config([target], chip_bb=.5)
+    runs = {}
+    for mode in ("uniform", "linear"):
+        with CoverageTrainer(tmp_path / f"{mode}.sqlite", cfg, targets=[target], key_text_floor=1, seed=5,
+                             averaging=mode) as trainer:
+            trainer.train(40)
+            assert json.loads(trainer.db.execute("SELECT value FROM metadata WHERE key='averaging'").fetchone()[0]) \
+                == mode
+            runs[mode] = {k: trainer.store.get(k) for k, _, _ in trainer.store.key_items()}
+    assert runs["uniform"].keys() == runs["linear"].keys()
+    for key, (actions, regrets, total, visits, n, street) in runs["linear"].items():
+        same = runs["uniform"][key]
+        assert np.array_equal(regrets, same[1]) and (visits, n) == (same[3], same[4])   # the walk is unchanged
+        assert total.sum() >= same[2].sum() - 1e-12                                     # weights t >= 1
+    with pytest.raises(ValueError, match="weighting"):
+        CoverageTrainer(tmp_path / "bad.sqlite", cfg, targets=[target], key_text_floor=1, averaging="square")
