@@ -46,3 +46,14 @@ def test_runs_are_reproducible(monkeypatch):
     a = lce.run_target((3, FLOP, 5, 20, 7))
     b = lce.run_target((3, FLOP, 5, 20, 7))
     assert a == b
+
+
+def test_diagnosis_maps_actions_to_legal_game_labels():
+    import live_context_diagnose as lcd
+    state = from_context(Config(**CONFIG), FLOP, np.random.default_rng(0), known_hole=True)
+    assert lcd._label(state, "check", 0) == "check"                 # nothing to call: a call is a check
+    assert lcd._label(state, "fold", 0) == "fold"
+    big = lcd._label(state, "bet", 1e6)
+    assert big == f"to:{state.cap}" and big in state.actions()      # oversized bets clip to all-in
+    small = lcd._label(state, "bet", 0.01)
+    assert int(small[3:]) == state.minimum

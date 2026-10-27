@@ -211,26 +211,15 @@ def summarise(targets, results, deals, report):
     return report
 
 
-def main(argv=None):
-    p = argparse.ArgumentParser()
-    p.add_argument("--path", type=Path, required=True)
-    p.add_argument("--targets", type=Path, required=True)
-    p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--deals", type=int, default=200)
-    p.add_argument("--draws", type=int, default=2000)
-    p.add_argument("--seed", type=int, default=2_000_003)
-    p.add_argument("--workers", type=int, default=8)
-    p.add_argument("--limit", type=int)
-    args = p.parse_args(argv)
+def load_contexts(path, targets_path, seed):
+    """The candidate's metadata and its coverage targets in canonical form, checked against its manifest hash."""
     import sqlite3
     from contextlib import closing
-    with closing(sqlite3.connect(args.path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+    with closing(sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)) as db:
         meta = _metadata(db)
-    if args.seed == meta["seed"]:
+    if seed == meta["seed"]:
         raise ValueError("use a held-out evaluation seed")
-    fingerprint = file_hash(args.path)
-    manifest = json.loads(args.targets.read_text())
-    targets = [t.get("context", t) for t in manifest["targets"]]
+    targets = [t.get("context", t) for t in json.loads(Path(targets_path).read_text())["targets"]]
     config = Config(**meta["config"])
     # The targets must be the candidate's own coverage manifest (same canonical keys and hash as training).
     canonical = {}
@@ -243,7 +232,23 @@ def main(argv=None):
     digest = hashlib.sha256(json.dumps(sorted(canonical.items())).encode()).hexdigest()
     if digest != meta.get("coverage_manifest"):
         raise ValueError("targets are not this candidate's coverage manifest")
-    contexts = [json.loads(v) for _, v in sorted(canonical.items())][:args.limit]
+    return meta, [json.loads(v) for _, v in sorted(canonical.items())], digest
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser()
+    p.add_argument("--path", type=Path, required=True)
+    p.add_argument("--targets", type=Path, required=True)
+    p.add_argument("--output", type=Path, required=True)
+    p.add_argument("--deals", type=int, default=200)
+    p.add_argument("--draws", type=int, default=2000)
+    p.add_argument("--seed", type=int, default=2_000_003)
+    p.add_argument("--workers", type=int, default=8)
+    p.add_argument("--limit", type=int)
+    args = p.parse_args(argv)
+    meta, contexts, digest = load_contexts(args.path, args.targets, args.seed)
+    contexts = contexts[:args.limit]
+    fingerprint = file_hash(args.path)
     jobs = [(i, c, args.deals, args.draws, args.seed) for i, c in enumerate(contexts)]
     results = {}
     with Pool(args.workers, initializer=_init, initargs=(str(args.path), meta["config"])) as pool:
