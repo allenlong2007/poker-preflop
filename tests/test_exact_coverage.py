@@ -129,7 +129,7 @@ def test_prepare_plan_and_bounded_cli_train_are_reproducible(tmp_path, capsys):
     plan.write_text(json.dumps(result))
     candidate = tmp_path / "coverage.sqlite"
     main(["train", "--path", str(candidate), "--coverage-targets", str(plan), "--iterations", "30",
-          "--batch", "5", "--target-min-updates", "2", "--max-gb", ".1"])
+          "--batch", "5", "--target-min-updates", "2", "--max-gb", ".1", "--flat-readiness"])
     status = json.loads(candidate.with_suffix(".status.json").read_text())
     assert status["coverage"]["trained_targets"] == 1
     assert status["stop_reason"] == "queued_target_floor_reached"

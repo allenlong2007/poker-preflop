@@ -11,7 +11,7 @@ from math import comb
 import numpy as np
 
 from preflop.exactgame import SEATS, State, cards, from_context
-from preflop.exacttrain import Trainer, _metadata
+from preflop.exacttrain import Trainer, _metadata, required_updates, stable
 
 TARGET_SHARE = .8
 HISTORY_SHARE = .9
@@ -28,7 +28,8 @@ def chance_weight(matches: bool, compatible_combos: int) -> float:
 
 
 class CoverageTrainer(Trainer):
-    def __init__(self, path, config=None, targets=None, seed=0, phase2=False, min_updates=1000, **kwargs):
+    def __init__(self, path, config=None, targets=None, seed=0, phase2=False, min_updates=1000, readiness=None,
+                 **kwargs):
         contexts = [r.get("context", r) for r in targets] if targets is not None else None
         super().__init__(path, config, seed=seed, **kwargs)
         try:
@@ -49,6 +50,10 @@ class CoverageTrainer(Trainer):
                 self._set("coverage_manifest", manifest)
                 self._set("coverage_prior", "whole_game_from_blinds_importance_corrected")
                 self._set("coverage_sampling", {"target_share": TARGET_SHARE, "history_share": HISTORY_SHARE, "correction": "p_over_q"})
+                if readiness:
+                    self._set("readiness", readiness)
+                    self.db.execute("CREATE TABLE target_checkpoints (key TEXT PRIMARY KEY, updates INTEGER NOT NULL, "
+                                    "probs TEXT NOT NULL, stability REAL)")
                 self.db.commit()
             stored = self.db.execute("SELECT key,context FROM coverage_targets ORDER BY key").fetchall()
             digest = hashlib.sha256(json.dumps(stored).encode()).hexdigest()
@@ -67,6 +72,9 @@ class CoverageTrainer(Trainer):
             self.target_actions = {key: from_context(self.config, c, np.random.default_rng(0), known_hole=True).actions()
                                    for key, c in self.targets}
             meta = _metadata(self.db)
+            self.readiness = meta.get("readiness")
+            if readiness is not None and readiness != self.readiness:
+                raise ValueError("readiness rule differs from the one recorded with the candidate")
             self._draw = meta["iterations"] * 2
             self.phase = meta.get("coverage_phase", {"phase": 1})
             if phase2 and self.phase["phase"] == 1:
@@ -156,6 +164,26 @@ class CoverageTrainer(Trainer):
             self._rotation = None                           # a rolled-back batch also rolls back its rotation
             raise
 
+    def _before_commit(self):
+        """Checkpoint each target's average strategy at every doubling of its updates; stability is the total
+        variation moved since the previous checkpoint (half the updates or fewer). Commits with the batch."""
+        if not self.readiness:
+            return
+        for key, _ in self.targets:
+            row = self.store.get(key)
+            if row is None or row[4] < 1 or not row[2].sum() > 0:
+                continue
+            probs = row[2] / row[2].sum()
+            cp = self.db.execute("SELECT updates,probs FROM target_checkpoints WHERE key=?", (key,)).fetchone()
+            if cp is None:
+                self.db.execute("INSERT INTO target_checkpoints VALUES (?,?,?,NULL)",
+                                (key, row[4], json.dumps(probs.tolist())))
+            elif row[4] >= 2 * cp[0]:
+                old = np.asarray(json.loads(cp[1]))
+                tv = float(0.5 * np.abs(probs - old).sum()) if old.shape == probs.shape else 1.0
+                self.db.execute("UPDATE target_checkpoints SET updates=?,probs=?,stability=? WHERE key=?",
+                                (row[4], json.dumps(probs.tolist()), tv, key))
+
     @property
     def _contexts(self):
         if not hasattr(self, "_context_map"):
@@ -163,7 +191,8 @@ class CoverageTrainer(Trainer):
         return self._context_map
 
     def _ready(self, key, minimum):
-        """(updates, ready): the unchanged readiness rule, update floor AND a valid positive average strategy."""
+        """(updates, ready): update floor (per action when the candidate records a readiness rule), a stable average
+        strategy under that rule, AND a valid positive average strategy."""
         try:
             row = self.store.get(key)
         except ValueError:
@@ -171,7 +200,8 @@ class CoverageTrainer(Trainer):
         if row is None:
             return 0, False
         labels, sums, n = row[0], np.asarray(row[2], float), row[4]
-        ready = (n >= minimum and labels == self.target_actions[key] and sums.shape == (len(labels),)
+        ready = (n >= required_updates(len(labels), minimum, self.readiness) and stable(self.db, key, self.readiness)
+                 and labels == self.target_actions[key] and sums.shape == (len(labels),)
                  and np.isfinite(sums).all() and (sums >= 0).all() and np.isfinite(sums.sum()) and sums.sum() > 0)
         return n, bool(ready)
 
@@ -186,7 +216,7 @@ class CoverageTrainer(Trainer):
         for key, context in self.targets:
             info = json.loads(key)
             n, ready = self._ready(key, minimum)
-            floor += int(n >= minimum)
+            floor += int(n >= required_updates(len(self.target_actions[key]), minimum, self.readiness))
             trained += int(ready)
             updates.append(n)
             lowest = n if lowest is None else min(lowest, n)
@@ -198,7 +228,7 @@ class CoverageTrainer(Trainer):
                 entry["trained"] += int(ready)
         return {"targets": len(self.targets), "trained_targets": trained, "update_floor_targets": floor, "minimum_updates": minimum,
                 "minimum_observed_updates": lowest or 0, "maximum_observed_updates": max(updates, default=0),
-                "fraction": trained / len(self.targets), "by_street": by_street, "by_stack_bb": by_stack,
+                "fraction": trained / len(self.targets), "readiness": self.readiness, "by_street": by_street, "by_stack_bb": by_stack,
                 "by_prior_raises": by_raises, "full_game_complete": False,
                 "scope": "queued_exact_infosets_only", "live_eligible": False,
                 "reason": "requires_frozen_evaluation_and_promotion"}

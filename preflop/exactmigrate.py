@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 from preflop.exactstore import KEY_TEXT_FLOOR, StoreV1, StoreV2, storage_hash
-from preflop.exacttrain import _code_hash, _metadata, file_hash
+from preflop.exacttrain import _code_hash, _metadata, file_hash, required_updates, stable
 
 ROOT = Path(__file__).resolve().parents[1]
 BATCH = 20000
@@ -162,12 +162,24 @@ def export_ready(source, destination, min_updates=1000):
             dst.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             new = StoreV2(dst, min_updates)
             new.create(min_updates)
+            readiness = meta.get("readiness")
+            if readiness:
+                dst.execute("CREATE TABLE target_checkpoints (key TEXT PRIMARY KEY, updates INTEGER NOT NULL, "
+                            "probs TEXT NOT NULL, stability REAL)")
             kept = 0
             for key, street, updates in old.key_items(min_updates):
                 actions, _, total, visits, n, _street = old.get(key)
                 sums = np.asarray(total, float)
                 if not (np.isfinite(sums).all() and (sums >= 0).all() and sums.sum() > 0) or not old.served(key)[4]:
                     continue
+                # A candidate with a readiness rule exports only nodes it would serve: the per-action floor and a
+                # stable average strategy; the checkpoint row travels with the node so the reader can re-check it.
+                if n < required_updates(len(actions), min_updates, readiness) or not stable(src, key, readiness):
+                    continue
+                if readiness:
+                    checkpoint = src.execute("SELECT updates,probs,stability FROM target_checkpoints WHERE key=?",
+                                             (key,)).fetchone()
+                    dst.execute("INSERT INTO target_checkpoints VALUES (?,?,?,?)", (key, *checkpoint))
                 new.put(key, actions, np.zeros(len(actions)), sums, visits, n, street)
                 kept += 1
             carried = {k: v for k, v in meta.items() if k not in ("schema", "training_code_sha256")}

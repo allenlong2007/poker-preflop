@@ -21,7 +21,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from preflop.exactgame import Config, SEATS, State
-from preflop.exacttrain import (Trainer, _metadata, _runtime, artifact_destination, file_hash,
+from preflop.exacttrain import (READINESS, Trainer, _metadata, _runtime, artifact_destination, file_hash,
                                freeze, frozen_artifact, promotion_errors)
 from preflop.exactstore import allocated_bytes
 
@@ -101,9 +101,13 @@ def _train(args):
     try:
         if coverage_mode:
             from preflop.exactcoverage import CoverageTrainer
+            # A new candidate records its readiness rule; a resumed one keeps whatever it recorded.
+            readiness = None if existing or args.flat_readiness else \
+                {"per_action": args.ready_per_action, "stable_tv": args.stable_tv}
             trainer_instance = CoverageTrainer(args.path, cfg, seed=args.seed,
                                                targets=manifest["targets"] if manifest else None,
-                                               phase2=args.phase2_unready, min_updates=args.target_min_updates)
+                                               phase2=args.phase2_unready, min_updates=args.target_min_updates,
+                                               readiness=readiness)
         else:
             trainer_instance = Trainer(args.path, cfg, seed=args.seed, focus=focus)
         with trainer_instance as trainer:
@@ -298,6 +302,11 @@ def main(argv=None):
     train.add_argument("--focus", type=Path)
     train.add_argument("--max-focus", type=int, default=32)
     train.add_argument("--snapshot-every", type=float, default=900)
+    train.add_argument("--ready-per-action", type=int, default=READINESS["per_action"],
+                       help="new coverage candidates: updates required per legal action at a served node")
+    train.add_argument("--stable-tv", type=float, default=READINESS["stable_tv"],
+                       help="new coverage candidates: max average-strategy change over the last update doubling")
+    train.add_argument("--flat-readiness", action="store_true", help="new candidate with the old flat update floor")
     train.add_argument("--phase2-unready", action="store_true",
                        help="declared phase 2: guide only targets still below readiness (recorded in metadata)")
     export = sub.add_parser("export-ready", help="small frozen artifact of ready nodes for evaluation/promotion")

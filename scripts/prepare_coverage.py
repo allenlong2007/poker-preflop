@@ -12,9 +12,48 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from bot.coverage import CoverageStore, canonical_context, identity
-from preflop.exactgame import Config, DECK, cards, from_context
+from preflop.exactgame import Config, DECK, State, cards, from_context
 
 FRACTIONS = (.1, .2, .25, 1 / 3, .4, .5, .6, .75, 1., 1.25, 1.5, 2., 3., 4.)
+# Node menus (2026-10-26 diagnosis): 14 fractions plus every observed size at every node gave ~57-action menus that
+# 1000 updates left near uniform (92% bets). Three fractions, the min-raise and all-in everywhere; an observed live
+# size only at the betting node it was seen at.
+NODE_FRACTIONS = (1 / 3, .75, 1.5)
+
+
+def node_sizes(targets, chip_bb):
+    """((node_id, sizes_bb), ...): each observed bet/raise total at the public node it was made from."""
+    base = Config(chip_bb=chip_bb)
+    nodes = {}
+    for c in targets:
+        state = State.deal(base, np.random.default_rng(0), stack_bb=c["effective_stack_bb"], board=c.get("board", ""))
+        for street, actions in enumerate(c["history"]):
+            for _, kind, to in actions:
+                if kind in ("bet", "raise"):
+                    nodes.setdefault(state.node_id(), set()).add(float(to))
+                label = f"to:{base.chips(to)}" if kind in ("bet", "raise") else kind
+                state = state.step(label, observed=True)
+    return tuple((k, tuple(sorted(v))) for k, v in sorted(nodes.items()))
+
+
+def menu_config(targets, chip_bb, menu="node"):
+    stacks = tuple(sorted({c["effective_stack_bb"] for c in targets}))
+    if menu == "node":
+        return Config(chip_bb=chip_bb, fractions=NODE_FRACTIONS, stacks_bb=stacks,
+                      node_sizes_bb=node_sizes(targets, chip_bb))
+    sizes = sorted({float(to) for c in targets for st in c["history"] for _, kind, to in st if kind in ("bet", "raise")})
+    return Config(chip_bb=chip_bb, fractions=FRACTIONS, stacks_bb=stacks, extra_sizes_bb=tuple(sizes))
+
+
+def rebuild(previous, menu="node"):
+    """The same targets as an earlier plan under a different menu (no queue or archive access)."""
+    targets = previous["targets"]
+    config = menu_config(targets, previous["config"]["chip_bb"], menu)
+    for c in targets:
+        from_context(config, c, np.random.default_rng(0), known_hole=True)
+    payload = {"config": asdict(config), "targets": targets}
+    return {**previous, **payload, "menu": menu, "rebuilt_from_manifest": previous["manifest_sha256"],
+            "manifest_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()}
 
 
 def hand_contexts(record):
@@ -32,7 +71,7 @@ def hand_contexts(record):
                    "history": history[:street] + [actions[:i]] + [[] for _ in range(3 - street)]}
 
 
-def prepare(queue, decision_files, hand_files, chip_bb=.001, expand_private=False):
+def prepare(queue, decision_files, hand_files, chip_bb=.001, expand_private=False, menu="node"):
     errors, candidates, sources = Counter(), {}, {}
     with CoverageStore(queue) as store:
         for row in store.targets():
@@ -89,13 +128,10 @@ def prepare(queue, decision_files, hand_files, chip_bb=.001, expand_private=Fals
             raise ValueError(f"no supported exact targets: {dict(errors)}")
         for key, c in valid.items():
             store.enqueue(c, "archive_gap", import_key=f"prepare:{key}")
-    sizes = sorted({float(to) for c in valid.values() for st in c["history"] for _, kind, to in st
-                    if kind in ("bet", "raise")})
-    config = Config(chip_bb=chip_bb, fractions=FRACTIONS,
-                    stacks_bb=tuple(sorted({c["effective_stack_bb"] for c in valid.values()})), extra_sizes_bb=tuple(sizes))
     targets = [valid[key] for key in sorted(valid)]
+    config = menu_config(targets, chip_bb, menu)
     payload = {"config": asdict(config), "targets": targets}
-    return {**payload, "schema_version": 1, "manifest_sha256": hashlib.sha256(
+    return {**payload, "schema_version": 1, "menu": menu, "manifest_sha256": hashlib.sha256(
                 json.dumps(payload, sort_keys=True).encode()).hexdigest(),
             "sources_sha256": sources, "rejected_or_missing": dict(errors), "full_game_complete": False,
             "scope": "all_compatible_private_combos_at_requested_public_roots" if expand_private else "queued_and_archived_exact_cells",
@@ -110,10 +146,15 @@ def main():
     parser.add_argument("--hands", type=Path, default=Path("output/pokernow/hands"))
     parser.add_argument("--chip-bb", type=float, default=.001)
     parser.add_argument("--expand-private", action="store_true")
+    parser.add_argument("--menu", choices=("node", "global"), default="node")
+    parser.add_argument("--rebuild-from", type=Path, help="re-menu an earlier plan's targets instead of importing")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    plan = prepare(args.queue, [args.decisions] if args.decisions.exists() else [],
-                   sorted(args.hands.glob("*.jsonl")), args.chip_bb, args.expand_private)
+    if args.rebuild_from:
+        plan = rebuild(json.loads(args.rebuild_from.read_text()), args.menu)
+    else:
+        plan = prepare(args.queue, [args.decisions] if args.decisions.exists() else [],
+                       sorted(args.hands.glob("*.jsonl")), args.chip_bb, args.expand_private, args.menu)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(plan, indent=2) + "\n")
     print(json.dumps({k: v for k, v in plan.items() if k not in ("targets", "sources_sha256")}, indent=2))

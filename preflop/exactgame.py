@@ -2,6 +2,7 @@
 
 No textures, strength buckets, opponent cards, or future runouts enter information keys.
 Default action menus are configurable abstractions; exhaustive mode uses every legal chip total.
+Observed live sizes either join every menu (extra_sizes_bb) or only the betting node they were seen at (node_sizes_bb).
 """
 import hashlib
 import json
@@ -34,6 +35,7 @@ class Config:
     exhaustive: bool = False
     exploration: float = 0.6
     extra_sizes_bb: tuple = ()
+    node_sizes_bb: tuple = ()      # ((node_id, (chip totals in bb, ...)), ...): sizes added at that node only
 
     def __post_init__(self):
         if not math.isfinite(self.chip_bb) or self.chip_bb <= 0 or self.chip_bb > 0.5:
@@ -51,6 +53,13 @@ class Config:
             raise ValueError("extra sizes must be positive finite chip totals")
         for amount in self.extra_sizes_bb:
             self.chips(amount)
+        nodes = {}
+        for node, amounts in self.node_sizes_bb:
+            nodes.setdefault(str(node), set()).update(float(a) for a in amounts)
+        if any(not math.isfinite(a) or a <= 0 for v in nodes.values() for a in v):
+            raise ValueError("node sizes must be positive finite chip totals")
+        object.__setattr__(self, "node_sizes_bb", tuple((k, tuple(sorted(v))) for k, v in sorted(nodes.items())))
+        object.__setattr__(self, "_node_chips", {k: frozenset(self.chips(a) for a in v) for k, v in nodes.items()})
         self.chips(0.5)
         for stack in self.stacks_bb:
             self.chips(stack)
@@ -65,6 +74,8 @@ class Config:
         values = asdict(self)
         if not self.extra_sizes_bb:
             values.pop("extra_sizes_bb")  # retain existing immutable artifact fingerprints
+        if not self.node_sizes_bb:
+            values.pop("node_sizes_bb")
         return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
 
 
@@ -141,10 +152,15 @@ class State:
             # Raises are increments over the call, as a fraction of the pot after calling.
             sizes = {high + round(f * (self.pot + self.facing)) for f in self.config.fractions}
             sizes.update(self.config.chips(v) for v in self.config.extra_sizes_bb)
+            sizes.update(self.config._node_chips.get(self.node_id(), ()))
             sizes.add(self.minimum)
         sizes = {size for size in sizes if self.minimum <= size <= self.cap}
         sizes.add(self.cap)  # includes a short all-in raise, which need not meet the normal minimum
         return tuple(basic + [f"to:{size}" for size in sorted(sizes) if size > high])
+
+    def node_id(self):
+        """The public betting node: effective stack and action history (no cards), for node-specific menus."""
+        return f"{self.stack}|{json.dumps(self.history, separators=(',', ':'))}"
 
     def observation(self, player=None):
         player = self.actor if player is None else player

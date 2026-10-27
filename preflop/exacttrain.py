@@ -23,6 +23,26 @@ from preflop.exactstore import KEY_TEXT_FLOOR, clone_snapshot, open_store, stora
 
 SCHEMA = 2                 # new candidates; schema 1 artifacts stay readable and can be migrated losslessly
 SCHEMAS = (1, 2)
+# Readiness (2026-10-26 diagnosis: 1000 updates over ~57 actions left average strategies near uniform). A candidate
+# created with a readiness record serves a node only with max(minimum, per_action * actions) updates AND a stable
+# average strategy: total variation <= stable_tv between its last two update-count doublings (target_checkpoints).
+# Candidates without the record keep the flat update floor.
+READINESS = {"per_action": 300, "stable_tv": 0.05}
+
+
+def required_updates(n_actions, minimum, readiness):
+    return max(minimum, (readiness or {}).get("per_action", 0) * n_actions)
+
+
+def stable(db, key, readiness):
+    """True when the node's last checkpointed doubling moved the average strategy by at most stable_tv."""
+    if not readiness or readiness.get("stable_tv") is None:
+        return True
+    try:
+        row = db.execute("SELECT stability FROM target_checkpoints WHERE key=?", (key,)).fetchone()
+    except sqlite3.OperationalError:
+        return False
+    return row is not None and row[0] is not None and row[0] <= readiness["stable_tv"]
 
 
 def outcome_update(policy, chosen, probability, child, own, opponent, sampled):
@@ -270,6 +290,7 @@ class Trainer:
             self._set("iterations", completed)
             self._set("rng", self.rng.bit_generator.state)
             self._set("aggregates", self.aggregates)
+            self._before_commit()
             self.db.commit()
         except BaseException:
             self.db.rollback()
@@ -278,6 +299,9 @@ class Trainer:
             self.rng.bit_generator.state = json.loads(original)
             self.aggregates = json.loads(original_counts)
             raise
+
+    def _before_commit(self):
+        """Hook for state that must commit atomically with a batch."""
 
     def status(self):
         meta = _metadata(self.db)
@@ -327,6 +351,7 @@ class ExactPolicy:
             except (KeyError, TypeError) as error:
                 raise ValueError("invalid exact policy metadata") from error
             self.minimum, self.candidate = min_updates, candidate
+            self.readiness = self.meta.get("readiness")
             if promotion and not candidate:
                 self.minimum = max(min_updates, promotion.get("min_updates", 1000))
             self.focus_states = [from_context(self.config, root, np.random.default_rng(0))
@@ -367,7 +392,8 @@ class ExactPolicy:
                 return {**info, "status": "invalid"}
             if found:
                 undertrained = found
-                if found[3] >= self.minimum:
+                if found[3] >= required_updates(len(found[0]), self.minimum, self.readiness) and \
+                        stable(self.db, key, self.readiness):
                     row = found
                     info["root_id"] = namespace
                     break
@@ -384,7 +410,7 @@ class ExactPolicy:
         if actions != state.actions() or sums.shape != (len(actions),) or not np.isfinite(sums).all() or \
                 not math.isfinite(float(sums.sum())) or (sums < 0).any():
             return {**info, "status": "invalid"}
-        if row[3] < self.minimum or sums.sum() <= 0:
+        if row[3] < required_updates(len(actions), self.minimum, self.readiness) or sums.sum() <= 0:
             return {**info, "status": "insufficient"}
         return {**info, "status": "ready", "probs": dict(zip(actions, map(float, sums / sums.sum()))),
                 "options": state.engine_options()}
