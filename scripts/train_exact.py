@@ -107,9 +107,9 @@ def _train(args):
             trainer_instance = CoverageTrainer(args.path, cfg, seed=args.seed,
                                                targets=manifest["targets"] if manifest else None,
                                                phase2=args.phase2_unready, min_updates=args.target_min_updates,
-                                               readiness=readiness)
+                                               readiness=readiness, baseline=not args.no_baseline)
         else:
-            trainer_instance = Trainer(args.path, cfg, seed=args.seed, focus=focus)
+            trainer_instance = Trainer(args.path, cfg, seed=args.seed, focus=focus, baseline=not args.no_baseline)
         with trainer_instance as trainer:
             initial = trainer.status()["iterations"]
             state = {"state": "running", "pid": os.getpid(), "started_at": started,
@@ -307,6 +307,8 @@ def main(argv=None):
     train.add_argument("--stable-tv", type=float, default=READINESS["stable_tv"],
                        help="new coverage candidates: max average-strategy change over the last update doubling")
     train.add_argument("--flat-readiness", action="store_true", help="new candidate with the old flat update floor")
+    train.add_argument("--no-baseline", action="store_true",
+                       help="new candidate without variance-reduction baselines (a resumed one keeps its record)")
     train.add_argument("--phase2-unready", action="store_true",
                        help="declared phase 2: guide only targets still below readiness (recorded in metadata)")
     export = sub.add_parser("export-ready", help="small frozen artifact of ready nodes for evaluation/promotion")

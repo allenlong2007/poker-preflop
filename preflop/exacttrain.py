@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 
 from preflop.exactgame import Config, State, from_context
-from preflop.exactstore import KEY_TEXT_FLOOR, clone_snapshot, open_store, storage_hash
+from preflop.exactstore import KEY_TEXT_FLOOR, clone_snapshot, digest, open_store, pack, storage_hash, unpack
 
 SCHEMA = 2                 # new candidates; schema 1 artifacts stay readable and can be migrated losslessly
 SCHEMAS = (1, 2)
@@ -33,6 +33,13 @@ READINESS = {"per_action": 300, "stable_tv": 0.05}
 # ~500 updates) but an average 0.27 away from it after ~30k updates. "linear" weights a node's t-th update by t
 # (linear CFR averaging, per node), so early play fades as 1/t^2. Candidates without the record were uniform.
 AVERAGING = ("uniform", "linear")
+# Variance reduction (VR-MCCFR, Schmid et al. 2019). On 2026-10-27, 301/357 preflop targets kept swinging (TV 0.24 per
+# update doubling at ~16k updates; current strategies like A4o BTN jamming 25%): one sampled hand's value below a
+# preflop node is too noisy. With a baseline b(I, a) per information set, the sampled action is valued
+# b + (u - b) / q and every unsampled action b, which stays unbiased for any b fixed before the sample. b tracks
+# the sampled action values by an exponential moving average and is stored in player-0 terms (the game is
+# zero-sum). Candidates without the record use no baseline.
+BASELINE = {"kind": "infoset_ema", "decay": 0.05}
 
 
 def required_updates(n_actions, minimum, readiness):
@@ -50,12 +57,13 @@ def stable(db, key, readiness):
     return row is not None and row[0] is not None and row[0] <= readiness["stable_tv"]
 
 
-def outcome_update(policy, chosen, probability, child, own, opponent, sampled):
-    """Unbiased sampled action values; compensate for exploration and prefix reach."""
+def outcome_update(policy, chosen, probability, child, own, opponent, sampled, baseline=None):
+    """Unbiased sampled action values; compensate for exploration and prefix reach. With a baseline, unsampled
+    actions take their baseline value and the sampled one its baseline-corrected value."""
     if probability <= 0 or sampled <= 0:
         raise FloatingPointError("sampling reach underflow")
-    action_values = np.zeros(len(policy))
-    action_values[chosen] = child / probability
+    action_values = np.zeros(len(policy)) if baseline is None else np.array(baseline, dtype=float)
+    action_values[chosen] += (child - action_values[chosen]) / probability
     value = float(policy @ action_values)
     regret = (opponent / sampled) * (action_values - value)
     average = (own / sampled) * policy
@@ -149,7 +157,7 @@ class Trainer:
     """Single writer; each batch commits nodes, iteration, and RNG state together."""
 
     def __init__(self, path, config=None, seed=0, focus=None, schema=SCHEMA, key_text_floor=KEY_TEXT_FLOOR,
-                 averaging="linear"):
+                 averaging="linear", baseline=True):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lease = self.path.with_suffix(self.path.suffix + ".lock").open("a")
@@ -176,6 +184,9 @@ class Trainer:
                 self._set("schema", schema)
                 self._set("algorithm", "outcome_sampling_mccfr")
                 self._set("averaging", averaging)
+                self._set("baseline", BASELINE if baseline else None)
+                if baseline:
+                    self.db.execute("CREATE TABLE baselines (digest BLOB PRIMARY KEY, value BLOB) WITHOUT ROWID")
                 self._set("config", asdict(self.config))
                 self._set("config_sha256", self.config.fingerprint())
                 self._set("algorithm_sha256", _code_hash())
@@ -216,6 +227,11 @@ class Trainer:
                 self.rng.bit_generator.state = meta["rng"]
             self.aggregates = _metadata(self.db)["aggregates"]
             self.averaging = _metadata(self.db).get("averaging", "uniform")
+            if self.averaging not in AVERAGING:
+                raise ValueError("unknown average-strategy weighting")
+            self.baseline = _metadata(self.db).get("baseline")
+            if self.baseline not in (None, BASELINE):
+                raise ValueError("unknown variance-reduction baseline")
         except BaseException:
             self.close()
             raise
@@ -267,7 +283,17 @@ class Trainer:
         child = self._walk(state.step(actions[chosen]), updater,
                            own * strategy[chosen] if updating else own,
                            opponent if updating else opponent * strategy[chosen], sampled * behavior[chosen])
-        delta, average, value = outcome_update(strategy, chosen, behavior[chosen], child, own, opponent, sampled)
+        if self.baseline:
+            d = digest(key)
+            stored = self.db.execute("SELECT value FROM baselines WHERE digest=?", (d,)).fetchone()
+            base = unpack(stored[0], len(actions)) if stored else np.zeros(len(actions))
+            sign = 1.0 if updater == 0 else -1.0
+            delta, average, value = outcome_update(strategy, chosen, behavior[chosen], child, own, opponent, sampled,
+                                                   sign * base)
+            base[chosen] += self.baseline["decay"] * (sign * child - base[chosen])
+            self.db.execute("INSERT OR REPLACE INTO baselines VALUES (?,?)", (d, pack(base)))
+        else:
+            delta, average, value = outcome_update(strategy, chosen, behavior[chosen], child, own, opponent, sampled)
         if updating:
             regrets += delta
             total += average * (updates + 1 if self.averaging == "linear" else 1)

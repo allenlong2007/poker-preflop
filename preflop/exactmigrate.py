@@ -71,6 +71,11 @@ def migrate(source, destination, key_text_floor=KEY_TEXT_FLOOR, source_commit=No
                     dst.execute("CREATE TABLE coverage_targets (key TEXT PRIMARY KEY, context TEXT NOT NULL)")
                     dst.executemany("INSERT INTO coverage_targets VALUES (?,?)",
                                     src.execute("SELECT key,context FROM coverage_targets ORDER BY key"))
+                if src.execute("SELECT name FROM sqlite_master WHERE name='baselines'").fetchone():
+                    # Variance-reduction baselines are keyed by the same digest in both schemas; copied verbatim.
+                    dst.execute("CREATE TABLE baselines (digest BLOB PRIMARY KEY, value BLOB) WITHOUT ROWID")
+                    dst.executemany("INSERT INTO baselines VALUES (?,?)",
+                                    src.execute("SELECT digest,value FROM baselines ORDER BY digest"))
                 rows = 0
                 dst.execute("BEGIN")
                 for key, actions, regrets, total, visits, updates, street in src.execute(
@@ -139,6 +144,10 @@ def verify(src, dst, key_text_floor, progress=None):
     targets_dst = dst.execute("SELECT key,context FROM coverage_targets ORDER BY key").fetchall() if targets_src else []
     if targets_src != targets_dst:
         raise ValueError("coverage targets differ after migration")
+    if src.execute("SELECT name FROM sqlite_master WHERE name='baselines'").fetchone():
+        if src.execute("SELECT digest,value FROM baselines ORDER BY digest").fetchall() != \
+                dst.execute("SELECT digest,value FROM baselines ORDER BY digest").fetchall():
+            raise ValueError("variance-reduction baselines differ after migration")
     return {"rows": rows, "keyed_rows": keyed, "targets": len(targets_src), "bit_identical": True}
 
 

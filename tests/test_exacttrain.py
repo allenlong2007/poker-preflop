@@ -123,3 +123,12 @@ def test_resume_rejects_changed_dependency_runtime(tmp_path, monkeypatch):
     monkeypatch.setattr(training, "_runtime", lambda: {"python": "different"})
     with pytest.raises(ValueError, match="runtime"):
         Trainer(path)
+
+
+def test_baseline_values_unsampled_actions_and_corrects_the_sampled_one():
+    regret, _, value = outcome_update(np.array([0.25, 0.75]), 0, 0.5, 2.0, 1.0, 1.0, 1.0, baseline=[1.0, 3.0])
+    # sampled: 1 + (2 - 1) / 0.5 = 3; unsampled: its baseline 3; value 0.25*3 + 0.75*3
+    assert value == pytest.approx(3.0) and regret == pytest.approx([0.0, 0.0])
+    plain = outcome_update(np.array([0.25, 0.75]), 0, 0.5, 2.0, 1.0, 1.0, 1.0)
+    zero = outcome_update(np.array([0.25, 0.75]), 0, 0.5, 2.0, 1.0, 1.0, 1.0, baseline=[0.0, 0.0])
+    assert np.array_equal(plain[0], zero[0]) and plain[2] == zero[2]                # a zero baseline changes nothing
