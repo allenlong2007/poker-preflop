@@ -78,6 +78,8 @@ def _train(args):
         raise ValueError("coverage manifest configuration mismatch on resume")
     base = Config(**existing["config"]) if existing else Config(**manifest["config"]) if manifest else Config()
     coverage_mode = bool(manifest or existing.get("coverage_manifest"))
+    if args.depth_limit and not coverage_mode:
+        raise ValueError("--depth-limit needs coverage targets")
     if args.target_min_updates < 1:
         raise ValueError("target minimum updates must be positive")
     changes = {}
@@ -101,15 +103,21 @@ def _train(args):
     try:
         if coverage_mode:
             from preflop.exactcoverage import CoverageTrainer
+            targets = manifest["targets"] if manifest else None
+            if args.depth_limit or existing.get("continuation"):
+                # Exact preflop, legacy engine from the flop on: the candidate holds the manifest's preflop targets.
+                from preflop.exactdepth import DepthLimitedTrainer as CoverageTrainer
+                if targets is not None:
+                    targets = [t for t in targets if not t.get("context", t).get("board")]
             # A new candidate records its readiness rule; a resumed one keeps whatever it recorded.
             readiness = None if existing or args.flat_readiness else \
                 {"per_action": args.ready_per_action, "stable_tv": args.stable_tv}
             trainer_instance = CoverageTrainer(args.path, cfg, seed=args.seed,
-                                               targets=manifest["targets"] if manifest else None,
+                                               targets=targets,
                                                phase2=args.phase2_unready, min_updates=args.target_min_updates,
-                                               readiness=readiness, baseline=not args.no_baseline)
+                                               readiness=readiness, baseline=args.baseline)
         else:
-            trainer_instance = Trainer(args.path, cfg, seed=args.seed, focus=focus, baseline=not args.no_baseline)
+            trainer_instance = Trainer(args.path, cfg, seed=args.seed, focus=focus, baseline=args.baseline)
         with trainer_instance as trainer:
             initial = trainer.status()["iterations"]
             state = {"state": "running", "pid": os.getpid(), "started_at": started,
@@ -307,8 +315,10 @@ def main(argv=None):
     train.add_argument("--stable-tv", type=float, default=READINESS["stable_tv"],
                        help="new coverage candidates: max average-strategy change over the last update doubling")
     train.add_argument("--flat-readiness", action="store_true", help="new candidate with the old flat update floor")
-    train.add_argument("--no-baseline", action="store_true",
-                       help="new candidate without variance-reduction baselines (a resumed one keeps its record)")
+    train.add_argument("--baseline", action="store_true",
+                       help="new candidate with VR-MCCFR baselines (a resumed one keeps its record)")
+    train.add_argument("--depth-limit", choices=("flop",),
+                       help="exact preflop only; the legacy engine plays from the flop on (preflop/exactdepth.py)")
     train.add_argument("--phase2-unready", action="store_true",
                        help="declared phase 2: guide only targets still below readiness (recorded in metadata)")
     export = sub.add_parser("export-ready", help="small frozen artifact of ready nodes for evaluation/promotion")

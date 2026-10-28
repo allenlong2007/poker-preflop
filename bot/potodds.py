@@ -18,6 +18,8 @@ opponent is. Here, facing a bet, the bot estimates the opponent's range and its 
 The price is call / (pot after calling). Clearly better (+4 points): the bot calls (the fold moves to call). On the
 river the price decides both ways (3 points either side; experiment 40). Raises are left alone.
 """
+import functools
+
 import numpy as np
 import eval7
 
@@ -90,6 +92,12 @@ def _node(seen, a, opp, stack=100.0):
     return None, None
 
 
+@functools.lru_cache(maxsize=1 << 18)
+def _draw(c1, c2, board):
+    """fg._has_draw memoised (pure): ranges are re-narrowed on the same boards at every decision of a hand."""
+    return fg._has_draw((c1, c2), list(board))
+
+
 def combos(weights, dead):
     out = []
     for i, c1 in enumerate(DECK):
@@ -113,8 +121,9 @@ def _strength(rng, board):
     cum = np.empty(len(vals))
     cum[order] = (np.cumsum(w[order]) - w[order] / 2) / max(w.sum(), 1e-12)
     if len(board) < 5:
+        key = tuple(board)
         for k, (c1, c2, _) in enumerate(rng):
-            if fg._has_draw((c1, c2), board):
+            if _draw(c1, c2, key):
                 cum[k] = max(cum[k], 0.55)
     return cum
 
@@ -138,7 +147,8 @@ def narrow(rng, board, kind, frac, f_bet, aggression, p_bluff=None, strict=1.0, 
         f = float(np.clip(f_bet, 0.05, 0.95))
         v_cut = 1 - f * (1 - beta)                 # value: everything above this percentile
         b_cut = f * beta                           # bluffs: the weakest b_cut (by weight), draws count as weak here
-        draw = np.array([len(board) < 5 and fg._has_draw((c1, c2), board) for c1, c2, _ in rng])
+        key = tuple(board)
+        draw = np.array([len(board) < 5 and _draw(c1, c2, key) for c1, c2, _ in rng])
         bluff_pct = np.where(draw, 0.0, pct)       # draws are the first bluffs
         value = np.clip((pct - v_cut) / 0.08 + 0.5, 0, 1)
         # Absolute floor (experiment 40): a value raise needs two pair or better beyond the board, a value bet of
@@ -191,13 +201,13 @@ def equity(hole, board, rng, rng_seed=0):
         return win / tot
     if len(board) == 4:
         rest = [c for c in DECK if c not in dead]
+        mine = [eval7.evaluate(list(hole) + board + [r]) for r in rest]      # ours depends on the river only
         win = tot = 0.0
         for c1, c2, w in rng:
-            for r in rest:
+            for r, m in zip(rest, mine):
                 if r is c1 or r is c2 or r == c1 or r == c2:
                     continue
-                b = board + [r]
-                m, v = eval7.evaluate(list(hole) + b), eval7.evaluate([c1, c2] + b)
+                v = eval7.evaluate([c1, c2] + board + [r])
                 win += w * (1.0 if m > v else 0.5 if m == v else 0.0)
                 tot += w
         return win / tot
@@ -209,7 +219,10 @@ def equity(hole, board, rng, rng_seed=0):
     win = 0.0
     for k in picks:
         c1, c2, _ = rng[k]
-        left = [c for c in rest if c != c1 and c != c2]
+        left = rest.copy()                         # rest without the combo's cards, in the same order
+        for c in (c1, c2):
+            if c in left:
+                left.remove(c)
         i, j = g.choice(len(left), size=2, replace=False)
         b = board + [left[i], left[j]]
         m, v = eval7.evaluate(list(hole) + b), eval7.evaluate([c1, c2] + b)

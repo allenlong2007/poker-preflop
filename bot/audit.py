@@ -42,24 +42,30 @@ def _git_commit(root: Path) -> str | None:
 def _finite(x):
     return x if x is None or math.isfinite(x) else None
 
+def policy_files(engine, root: Path = ROOT) -> list[Path]:
+    """Every data file the engine's decisions depend on (its build identity together with the source files)."""
+    policies = list(engine.policy_dir.glob("*.npz"))
+    preflop = root / "output" / "match" / "policy" / "preflop.json"
+    if preflop.exists():
+        policies.append(preflop)
+    policies.extend(p for p in (root / "output" / "match" / "bluff_prior.json",
+                                root / "output" / "match" / "baseline_profile.json",
+                                root / "data" / "equity_matrix.npz") if p.exists())
+    if engine.use_solver_flops:
+        policies.extend(engine.flops_dir.glob("*.json"))
+    exact_path = getattr(engine, "exact_path", None)
+    if exact_path is not None and exact_path.exists():
+        policies.append(exact_path)
+    return policies
+
+
 class AuditLog:
     """One server run; retain decision links across restarts without relabeling old hands."""
 
     def __init__(self, directory: Path, engine, root: Path = ROOT):
         self.directory = Path(directory)
         sources = [p for folder in ("bot", "preflop", "scripts") for p in (root / folder).rglob("*.py")]
-        policies = list(engine.policy_dir.glob("*.npz"))
-        preflop = root / "output" / "match" / "policy" / "preflop.json"
-        if preflop.exists():
-            policies.append(preflop)
-        policies.extend(p for p in (root / "output" / "match" / "bluff_prior.json",
-                                    root / "output" / "match" / "baseline_profile.json",
-                                    root / "data" / "equity_matrix.npz") if p.exists())
-        if engine.use_solver_flops:
-            policies.extend(engine.flops_dir.glob("*.json"))
-        exact_path = getattr(engine, "exact_path", None)
-        if exact_path is not None and exact_path.exists():
-            policies.append(exact_path)
+        policies = policy_files(engine, root)
         self.run = {
             "schema_version": SCHEMA_VERSION, "run_id": uuid.uuid4().hex,
             "started_at": time.time(), "bot_version": VERSION, "bot_name": NAME,

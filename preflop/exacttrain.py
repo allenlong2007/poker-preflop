@@ -38,7 +38,9 @@ AVERAGING = ("uniform", "linear")
 # preflop node is too noisy. With a baseline b(I, a) per information set, the sampled action is valued
 # b + (u - b) / q and every unsampled action b, which stays unbiased for any b fixed before the sample. b tracks
 # the sampled action values by an exponential moving average and is stored in player-0 terms (the game is
-# zero-sum). Candidates without the record use no baseline.
+# zero-sum). Candidates without the record use no baseline. Opt-in (--baseline): a 45-minute A/B on 2026-10-27 showed
+# no preflop gain (TV 0.220 vs 0.216), 25% fewer iterations and 50% more disk, since most infosets below a preflop
+# node are never revisited and keep a zero baseline.
 BASELINE = {"kind": "infoset_ema", "decay": 0.05}
 
 
@@ -76,7 +78,8 @@ def _code_hash():
     """Training-algorithm fingerprint: game rules and menus, the MCCFR walk/updates and coverage sampling. Node
     storage (preflop/exactstore.py) is fingerprinted separately, so a verified lossless storage migration does not
     masquerade as, or hide, an algorithm change."""
-    paths = (Path(__file__), Path(__file__).with_name("exactgame.py"), Path(__file__).with_name("exactcoverage.py"))
+    paths = (Path(__file__), Path(__file__).with_name("exactgame.py"), Path(__file__).with_name("exactcoverage.py"),
+             Path(__file__).with_name("exactdepth.py"))
     return hashlib.sha256(b"".join(p.read_bytes() for p in paths)).hexdigest()
 
 
@@ -155,9 +158,10 @@ def frozen_artifact(path):
 
 class Trainer:
     """Single writer; each batch commits nodes, iteration, and RNG state together."""
+    depth_limited = False               # preflop/exactdepth.py: the walk stops at the flop
 
     def __init__(self, path, config=None, seed=0, focus=None, schema=SCHEMA, key_text_floor=KEY_TEXT_FLOOR,
-                 averaging="linear", baseline=True):
+                 averaging="linear", baseline=False):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lease = self.path.with_suffix(self.path.suffix + ".lock").open("a")
@@ -212,6 +216,8 @@ class Trainer:
                                      "(or migrate it with scripts/migrate_exact_storage.py)")
                 if meta["algorithm_sha256"] != _code_hash():
                     raise ValueError("training code changed; start a new candidate rather than mixing algorithms")
+                if meta.get("continuation") and not self.depth_limited:
+                    raise ValueError("depth-limited candidate: resume it with its depth limit (--depth-limit flop)")
                 if meta.get("storage_sha256") != storage_hash():
                     raise ValueError("storage code changed; resume needs a verified migration record for it")
                 if meta.get("runtime") != _runtime():
