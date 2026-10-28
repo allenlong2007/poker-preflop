@@ -27,7 +27,10 @@ SCHEMAS = (1, 2)
 # created with a readiness record serves a node only with max(minimum, per_action * actions) updates AND a stable
 # average strategy: total variation <= stable_tv between its last two update-count doublings (target_checkpoints).
 # Candidates without the record keep the flat update floor.
-READINESS = {"per_action": 300, "stable_tv": 0.05}
+# "stability": "coarse" (2026-10-28) measures that change over fold / call-check / raise / all-in, so probability sliding
+# between neighbouring exact raise sizes (near-equal EV) does not hold a node back: about half of the flat preflop TV
+# (0.18 full menu vs 0.10 coarse) was that. Exact sizes are still trained and served. Records without it are "full".
+READINESS = {"per_action": 300, "stable_tv": 0.05, "stability": "coarse"}
 # Average-strategy weighting. "uniform" weights every update equally, so the near-uniform play of a node's first
 # updates fades only as 1/t: on 2026-10-27, 282 of 357 preflop targets had a stable current strategy (TV 0.004 over
 # ~500 updates) but an average 0.27 away from it after ~30k updates. "linear" weights a node's t-th update by t

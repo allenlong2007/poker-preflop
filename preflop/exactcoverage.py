@@ -21,6 +21,11 @@ HISTORY_SHARE = .9
 PHASE2_REFRESH = 100
 
 
+def action_groups(actions, cap):
+    """fold 0, call/check 1, raise below all-in 2, all-in 3 (coarse readiness)."""
+    return [0 if a == "fold" else 1 if a in ("call", "check") else 3 if a == f"to:{cap}" else 2 for a in actions]
+
+
 def chance_weight(matches: bool, compatible_combos: int) -> float:
     p = 1 / compatible_combos
     q = (TARGET_SHARE if matches else 0) + (1 - TARGET_SHARE) * p
@@ -69,8 +74,11 @@ class CoverageTrainer(Trainer):
                     requested.add(state.key())
                 if requested != {key for key, _ in self.targets}:
                     raise ValueError("coverage target manifest changed")
-            self.target_actions = {key: from_context(self.config, c, np.random.default_rng(0), known_hole=True).actions()
-                                   for key, c in self.targets}
+            self.target_actions, self.target_groups = {}, {}
+            for key, c in self.targets:
+                state = from_context(self.config, c, np.random.default_rng(0), known_hole=True)
+                self.target_actions[key] = state.actions()
+                self.target_groups[key] = action_groups(state.actions(), state.cap)
             meta = _metadata(self.db)
             self.readiness = meta.get("readiness")
             if readiness is not None and readiness != self.readiness:
@@ -166,7 +174,8 @@ class CoverageTrainer(Trainer):
 
     def _before_commit(self):
         """Checkpoint each target's average strategy at every doubling of its updates; stability is the total
-        variation moved since the previous checkpoint (half the updates or fewer). Commits with the batch."""
+        variation moved since the previous checkpoint (half the updates or fewer), over the coarse action groups when
+        the readiness rule says so. Commits with the batch."""
         if not self.readiness:
             return
         for key, _ in self.targets:
@@ -180,7 +189,13 @@ class CoverageTrainer(Trainer):
                                 (key, row[4], json.dumps(probs.tolist())))
             elif row[4] >= 2 * cp[0]:
                 old = np.asarray(json.loads(cp[1]))
-                tv = float(0.5 * np.abs(probs - old).sum()) if old.shape == probs.shape else 1.0
+                if old.shape != probs.shape:
+                    tv = 1.0
+                elif self.readiness.get("stability", "full") == "coarse":
+                    groups = self.target_groups[key]
+                    tv = float(0.5 * np.abs(np.bincount(groups, probs, 4) - np.bincount(groups, old, 4)).sum())
+                else:
+                    tv = float(0.5 * np.abs(probs - old).sum())
                 self.db.execute("UPDATE target_checkpoints SET updates=?,probs=?,stability=? WHERE key=?",
                                 (row[4], json.dumps(probs.tolist()), tv, key))
 

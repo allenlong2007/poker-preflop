@@ -113,7 +113,7 @@ def _train(args):
                     targets = [t for t in targets if not t.get("context", t).get("board")]
             # A new candidate records its readiness rule; a resumed one keeps whatever it recorded.
             readiness = None if existing or args.flat_readiness else \
-                {"per_action": args.ready_per_action, "stable_tv": args.stable_tv}
+                {"per_action": args.ready_per_action, "stable_tv": args.stable_tv, "stability": args.stability}
             depth = {"sampling": args.depth_sampling, "leaf_runouts": args.leaf_runouts} \
                 if args.depth_limit or existing.get("continuation") else {}
             trainer_instance = CoverageTrainer(args.path, cfg, seed=args.seed,
@@ -318,6 +318,8 @@ def main(argv=None):
                        help="new coverage candidates: updates required per legal action at a served node")
     train.add_argument("--stable-tv", type=float, default=READINESS["stable_tv"],
                        help="new coverage candidates: max average-strategy change over the last update doubling")
+    train.add_argument("--stability", choices=("coarse", "full"), default=READINESS["stability"],
+                       help="new coverage candidates: measure that change over fold/call/raise/all-in, or every action")
     train.add_argument("--flat-readiness", action="store_true", help="new candidate with the old flat update floor")
     train.add_argument("--baseline", action="store_true",
                        help="new candidate with VR-MCCFR baselines (a resumed one keeps its record)")

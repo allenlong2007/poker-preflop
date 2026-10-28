@@ -130,3 +130,24 @@ def test_linear_averaging_weights_later_updates_more(tmp_path):
         assert total.sum() >= same[2].sum() - 1e-12                                     # weights t >= 1
     with pytest.raises(ValueError, match="weighting"):
         CoverageTrainer(tmp_path / "bad.sqlite", cfg, targets=[target], key_text_floor=1, averaging="square")
+
+
+def test_coarse_stability_ignores_mass_moving_between_raise_sizes(tmp_path):
+    import numpy as np
+    from preflop.exactcoverage import action_groups
+    assert action_groups(["fold", "call", "to:4", "to:6", "to:200"], 200) == [0, 1, 2, 2, 3]
+    with _trainer(tmp_path, {"per_action": 1, "stable_tv": 0.05, "stability": "coarse"}) as trainer:
+        key = trainer.targets[0][0]
+        trainer.train(1)
+        actions, regrets, total, visits, n, street = trainer.store.get(key)
+        groups = trainer.target_groups[key]
+        raises = [i for i, g in enumerate(groups) if g == 2]
+        assert len(raises) >= 2
+        old, new = np.full(len(actions), 1.0), np.full(len(actions), 1.0)
+        old[raises[0]], new[raises[1]] = 5.0, 5.0                         # same raise mass, different size
+        trainer.db.execute("UPDATE target_checkpoints SET updates=1,probs=?,stability=NULL WHERE key=?",
+                           (json.dumps((old / old.sum()).tolist()), key))
+        trainer.store.put(key, actions, regrets, new, visits, 4, street)
+        trainer._before_commit()
+        tv = trainer.db.execute("SELECT stability FROM target_checkpoints WHERE key=?", (key,)).fetchone()[0]
+        assert tv < 1e-9                                                    # full-menu TV here would be 4/(n+4)
