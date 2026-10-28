@@ -77,3 +77,35 @@ def test_potodds_speedups_keep_the_same_results():
                 tot += w
         assert potodds.equity(hole, board, rng) == win / tot
         assert all(potodds._draw(c1, c2, tuple(board[:3])) == fg._has_draw((c1, c2), board[:3]) for c1, c2, _ in rng)
+
+
+def test_external_sampling_walks_every_updater_action_and_records_it(tmp_path):
+    with _trainer(tmp_path / "e.sqlite", sampling="external", leaf_runouts=3) as trainer:
+        trainer.train(10)
+        recorded = json.loads(trainer.db.execute("SELECT value FROM metadata WHERE key='depth_sampling'").fetchone()[0])
+        assert recorded == {"kind": "external", "leaf_runouts": 3}
+        assert trainer.aggregates["leaf_rollouts"] % 3 == 0
+        root = trainer.store.get(trainer.targets[0][0])
+        assert 0 < root[4] <= 10                                     # at most one update per traversal
+    with pytest.raises(ValueError, match="sampling differs"):
+        _trainer(tmp_path / "e.sqlite", sampling="outcome")
+    with _trainer(tmp_path / "e.sqlite") as trainer:                 # a resume keeps the recorded sampling
+        assert trainer.sampling["kind"] == "external"
+
+
+def test_external_sampling_is_reproducible(tmp_path):
+    dumps = []
+    for name in ("a", "b"):
+        with _trainer(tmp_path / f"{name}.sqlite", sampling="external", leaf_runouts=2) as trainer:
+            trainer.train(5)
+            dumps.append(trainer.store.dump())
+    assert dumps[0] == dumps[1]
+
+
+def test_old_candidates_default_to_outcome_sampling(tmp_path):
+    path = tmp_path / "o.sqlite"
+    with _trainer(path) as trainer:
+        trainer.train(3)
+        assert trainer.sampling == {"kind": "outcome", "leaf_runouts": 1}
+    with pytest.raises(ValueError, match="sampling differs"):
+        _trainer(path, sampling="external")

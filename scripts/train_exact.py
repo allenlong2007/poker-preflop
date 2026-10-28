@@ -80,6 +80,8 @@ def _train(args):
     coverage_mode = bool(manifest or existing.get("coverage_manifest"))
     if args.depth_limit and not coverage_mode:
         raise ValueError("--depth-limit needs coverage targets")
+    if (args.depth_sampling or args.leaf_runouts) and not args.depth_limit and not existing.get("continuation"):
+        raise ValueError("--depth-sampling/--leaf-runouts need --depth-limit")
     if args.target_min_updates < 1:
         raise ValueError("target minimum updates must be positive")
     changes = {}
@@ -112,10 +114,12 @@ def _train(args):
             # A new candidate records its readiness rule; a resumed one keeps whatever it recorded.
             readiness = None if existing or args.flat_readiness else \
                 {"per_action": args.ready_per_action, "stable_tv": args.stable_tv}
+            depth = {"sampling": args.depth_sampling, "leaf_runouts": args.leaf_runouts} \
+                if args.depth_limit or existing.get("continuation") else {}
             trainer_instance = CoverageTrainer(args.path, cfg, seed=args.seed,
                                                targets=targets,
                                                phase2=args.phase2_unready, min_updates=args.target_min_updates,
-                                               readiness=readiness, baseline=args.baseline)
+                                               readiness=readiness, baseline=args.baseline, **depth)
         else:
             trainer_instance = Trainer(args.path, cfg, seed=args.seed, focus=focus, baseline=args.baseline)
         with trainer_instance as trainer:
@@ -319,6 +323,10 @@ def main(argv=None):
                        help="new candidate with VR-MCCFR baselines (a resumed one keeps its record)")
     train.add_argument("--depth-limit", choices=("flop",),
                        help="exact preflop only; the legacy engine plays from the flop on (preflop/exactdepth.py)")
+    train.add_argument("--depth-sampling", choices=("outcome", "external"),
+                       help="depth-limited walk: external = every action at the updater's preflop nodes (new candidate)")
+    train.add_argument("--leaf-runouts", type=int,
+                       help="depth-limited walk: rollouts averaged per flop leaf, each on a fresh runout (new candidate)")
     train.add_argument("--phase2-unready", action="store_true",
                        help="declared phase 2: guide only targets still below readiness (recorded in metadata)")
     export = sub.add_parser("export-ready", help="small frozen artifact of ready nodes for evaluation/promotion")

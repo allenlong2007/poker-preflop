@@ -273,16 +273,7 @@ class Trainer:
     def _walk(self, state, updater, own=1.0, opponent=1.0, sampled=1.0):
         if state.terminal:
             return state.utility(updater)
-        key, actions = state.key(), state.actions()
-        row = self.store.get(key)
-        if row:
-            if row[0] != actions:
-                raise ValueError("legal action schema changed for an existing information set")
-            regrets, total, visits, updates = row[1], row[2], row[3], row[4]
-        else:
-            regrets, total, visits, updates = np.zeros(len(actions)), np.zeros(len(actions)), 0, 0
-        positive = np.maximum(regrets, 0)
-        strategy = positive / positive.sum() if positive.sum() > 0 else np.full(len(actions), 1 / len(actions))
+        key, actions, row, strategy = self._node(state)
         updating = state.actor == updater
         behavior = self._behavior(state, updater, strategy, actions)
         chosen = int(self.rng.choice(len(actions), p=behavior))
@@ -300,6 +291,24 @@ class Trainer:
             self.db.execute("INSERT OR REPLACE INTO baselines VALUES (?,?)", (d, pack(base)))
         else:
             delta, average, value = outcome_update(strategy, chosen, behavior[chosen], child, own, opponent, sampled)
+        self._record(state, key, actions, row, delta, average, updating)
+        return value
+
+    def _node(self, state):
+        """(key, actions, stored row or None, current regret-matching strategy)."""
+        key, actions = state.key(), state.actions()
+        row = self.store.get(key)
+        if row and row[0] != actions:
+            raise ValueError("legal action schema changed for an existing information set")
+        positive = np.maximum(row[1], 0) if row else np.zeros(len(actions))
+        strategy = positive / positive.sum() if positive.sum() > 0 else np.full(len(actions), 1 / len(actions))
+        return key, actions, row, strategy
+
+    def _record(self, state, key, actions, row, delta, average, updating):
+        if row:
+            regrets, total, visits, updates = row[1], row[2], row[3], row[4]
+        else:
+            regrets, total, visits, updates = np.zeros(len(actions)), np.zeros(len(actions)), 0, 0
         if updating:
             regrets += delta
             total += average * (updates + 1 if self.averaging == "linear" else 1)
@@ -312,7 +321,6 @@ class Trainer:
         if updating:
             self.aggregates["updates"] += 1
             group["updates"] += 1
-        return value
 
     def _sample(self, updater):
         return self._root(), 1.0

@@ -12,17 +12,24 @@ continuation, not for an opponent who deviates after the flop (not an exploitabi
 
 The continuation (engine settings, bot/preflop source and policy-file fingerprints) is recorded when the candidate is
 created; resuming with a different continuation raises.
+
+Sampling (2026-10-28): the outcome-sampling walk stayed flat (preflop TV 0.21 from 512 to 2048 updates per target, 9/357
+ready after ~3h). Option "external" walks every action at the updating player's preflop nodes (the opponent and chance
+stay sampled, so no 1/q weight on the updater's own action) and values each leaf by the mean of leaf_runouts rollouts,
+each over a freshly drawn runout (chance below the leaf, so still unbiased). Recorded as meta "depth_sampling".
 """
 import json
+from dataclasses import replace
 
 import numpy as np
 
 from preflop.exactcoverage import CoverageTrainer
-from preflop.exactgame import SEATS
+from preflop.exactgame import DECK, SEATS
 from preflop.exacttrain import _metadata
 
 LEAF_STREET = 1                                    # the flop: the first postflop decision is the legacy engine's
 ENGINE = {"exact_required": False, "pot_odds": True, "exact_policy_path": False}
+SAMPLING = ("outcome", "external")
 
 
 def continuation_fingerprint(engine):
@@ -50,7 +57,7 @@ def _label(state, action, to):
 class DepthLimitedTrainer(CoverageTrainer):
     depth_limited = True
 
-    def __init__(self, path, config=None, targets=None, **kwargs):
+    def __init__(self, path, config=None, targets=None, sampling=None, leaf_runouts=None, **kwargs):
         if targets is not None and any((t.get("context", t)).get("board") for t in targets):
             raise ValueError("depth-limited training takes preflop targets only")
         from bot.engine import Engine
@@ -69,24 +76,61 @@ class DepthLimitedTrainer(CoverageTrainer):
                                  "start a new candidate")
             if any(json.loads(text)["board"] for (text,) in self.db.execute("SELECT context FROM coverage_targets")):
                 raise ValueError("depth-limited candidate holds postflop targets")
+            requested = None if sampling is None and leaf_runouts is None else \
+                {"kind": sampling or "outcome", "leaf_runouts": leaf_runouts or 1}
+            recorded = meta.get("depth_sampling")
+            if recorded is None:
+                if meta["iterations"] and requested not in (None, {"kind": "outcome", "leaf_runouts": 1}):
+                    raise ValueError("cannot change the sampling of a candidate that already trained")
+                recorded = requested or {"kind": "outcome", "leaf_runouts": 1}
+                if recorded["kind"] not in SAMPLING or int(recorded["leaf_runouts"]) < 1:
+                    raise ValueError("unknown depth-limited sampling")
+                self._set("depth_sampling", recorded)
+                self.db.commit()
+            elif requested is not None and requested != recorded:
+                raise ValueError("depth-limited sampling differs from the one recorded with the candidate")
+            self.sampling = recorded
         except BaseException:
             self.close()
             raise
 
     def _walk(self, state, updater, own=1.0, opponent=1.0, sampled=1.0):
-        if not state.terminal and state.street >= LEAF_STREET:
+        if state.terminal:
+            return state.utility(updater)
+        if state.street >= LEAF_STREET:
             return self._leaf(state, updater)
-        return super()._walk(state, updater, own, opponent, sampled)
+        if self.sampling["kind"] == "outcome" or state.actor != updater:
+            return super()._walk(state, updater, own, opponent, sampled)
+        # External sampling at the updater's own node: every action's value, no importance weight for this choice.
+        key, actions, row, strategy = self._node(state)
+        values = np.array([self._walk(state.step(a), updater, own * strategy[i], opponent, sampled)
+                           for i, a in enumerate(actions)])
+        value = float(strategy @ values)
+        delta, average = (opponent / sampled) * (values - value), (own / sampled) * strategy
+        if not np.isfinite(delta).all() or not np.isfinite(average).all():
+            raise FloatingPointError("non-finite importance weighted update; batch rolled back")
+        self._record(state, key, actions, row, delta, average, True)
+        return value
 
     def _leaf(self, state, updater):
-        """One rollout of the legacy engine for both seats to the end of the deal's runout (updater's result)."""
-        seed = int(self.rng.integers(2 ** 63 - 1))
-        for engine in self._engines:
-            engine.rng = np.random.default_rng(seed)
-        while not state.terminal:
-            d = self._engines[state.actor].decide(SEATS[state.actor], "".join(state.holes[state.actor]),
-                                                  "".join(state.board), _history(state),
-                                                  stack=state.stack * state.config.chip_bb)
-            state = state.step(_label(state, d.action, d.to), observed=True)
-        self.aggregates["leaf_rollouts"] = self.aggregates.get("leaf_rollouts", 0) + 1
-        return state.utility(updater)
+        """Mean over leaf_runouts rollouts of the legacy engine for both seats (updater's result). With one rollout the
+        deal's own runout is used; with more, each rollout draws a fresh five-card runout (no preflop decision saw the
+        flop, so this is still chance below the leaf)."""
+        n = self.sampling["leaf_runouts"]
+        total = 0.0
+        for _ in range(n):
+            leaf = state
+            if n > 1:
+                rest = [c for c in DECK if c not in set(state.holes[0]) | set(state.holes[1])]
+                leaf = replace(state, runout=tuple(rest[i] for i in self.rng.choice(len(rest), size=5, replace=False)))
+            seed = int(self.rng.integers(2 ** 63 - 1))
+            for engine in self._engines:
+                engine.rng = np.random.default_rng(seed)
+            while not leaf.terminal:
+                d = self._engines[leaf.actor].decide(SEATS[leaf.actor], "".join(leaf.holes[leaf.actor]),
+                                                     "".join(leaf.board), _history(leaf),
+                                                     stack=leaf.stack * leaf.config.chip_bb)
+                leaf = leaf.step(_label(leaf, d.action, d.to), observed=True)
+            total += leaf.utility(updater)
+        self.aggregates["leaf_rollouts"] = self.aggregates.get("leaf_rollouts", 0) + n
+        return total / n
