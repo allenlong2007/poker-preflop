@@ -220,6 +220,8 @@ def load_contexts(path, targets_path, seed):
     if seed == meta["seed"]:
         raise ValueError("use a held-out evaluation seed")
     targets = [t.get("context", t) for t in json.loads(Path(targets_path).read_text())["targets"]]
+    if meta.get("continuation"):                    # depth-limited candidates hold the manifest's preflop targets only
+        targets = [t for t in targets if not t.get("board")]
     config = Config(**meta["config"])
     # The targets must be the candidate's own coverage manifest (same canonical keys and hash as training).
     canonical = {}
