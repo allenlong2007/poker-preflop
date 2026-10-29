@@ -54,6 +54,17 @@ def _label(state, action, to):
     return "fold"
 
 
+def legacy_rollout(engines, state, seed):
+    """Both seats play the legacy engine (reseeded with `seed`) from `state` to the end; returns the terminal state."""
+    for engine in engines:
+        engine.rng = np.random.default_rng(seed)
+    while not state.terminal:
+        d = engines[state.actor].decide(SEATS[state.actor], "".join(state.holes[state.actor]), "".join(state.board),
+                                        _history(state), stack=state.stack * state.config.chip_bb)
+        state = state.step(_label(state, d.action, d.to), observed=True)
+    return state
+
+
 class DepthLimitedTrainer(CoverageTrainer):
     depth_limited = True
 
@@ -123,14 +134,6 @@ class DepthLimitedTrainer(CoverageTrainer):
             if n > 1:
                 rest = [c for c in DECK if c not in set(state.holes[0]) | set(state.holes[1])]
                 leaf = replace(state, runout=tuple(rest[i] for i in self.rng.choice(len(rest), size=5, replace=False)))
-            seed = int(self.rng.integers(2 ** 63 - 1))
-            for engine in self._engines:
-                engine.rng = np.random.default_rng(seed)
-            while not leaf.terminal:
-                d = self._engines[leaf.actor].decide(SEATS[leaf.actor], "".join(leaf.holes[leaf.actor]),
-                                                     "".join(leaf.board), _history(leaf),
-                                                     stack=leaf.stack * leaf.config.chip_bb)
-                leaf = leaf.step(_label(leaf, d.action, d.to), observed=True)
-            total += leaf.utility(updater)
+            total += legacy_rollout(self._engines, leaf, int(self.rng.integers(2 ** 63 - 1))).utility(updater)
         self.aggregates["leaf_rollouts"] = self.aggregates.get("leaf_rollouts", 0) + n
         return total / n

@@ -78,6 +78,9 @@ def _train(args):
         raise ValueError("coverage manifest configuration mismatch on resume")
     base = Config(**existing["config"]) if existing else Config(**manifest["config"]) if manifest else Config()
     coverage_mode = bool(manifest or existing.get("coverage_manifest"))
+    grid_mode = bool(args.preflop_game or existing.get("preflop_game"))
+    if grid_mode and (coverage_mode or args.focus):
+        raise ValueError("--preflop-game trains the whole preflop grid; no coverage targets or focus")
     if args.depth_limit and not coverage_mode:
         raise ValueError("--depth-limit needs coverage targets")
     if (args.depth_sampling or args.leaf_runouts) and not args.depth_limit and not existing.get("continuation"):
@@ -103,7 +106,11 @@ def _train(args):
         signal.signal(sig, lambda number, frame: stop.append(number))
     status_path = args.path.with_suffix(".status.json")
     try:
-        if coverage_mode:
+        if grid_mode:
+            from preflop.exactpreflop import PreflopGameTrainer, grid_config
+            trainer_instance = PreflopGameTrainer(args.path, None if existing else grid_config(), seed=args.seed,
+                                                  leaf=args.preflop_game)
+        elif coverage_mode:
             from preflop.exactcoverage import CoverageTrainer
             targets = manifest["targets"] if manifest else None
             if args.depth_limit or existing.get("continuation"):
@@ -165,6 +172,8 @@ def _train(args):
                         print(json.dumps(state), flush=True)
                         last_print = time.monotonic()
                     if args.snapshot_every > 0 and time.monotonic() - last_snapshot >= args.snapshot_every:
+                        if grid_mode:
+                            state["grid_coverage"] = trainer.coverage(args.target_min_updates)
                         try:
                             state["snapshot_mode"] = trainer.checkpoint(args.path.with_name("latest.sqlite"), clone=True)
                             state["snapshot_allocated_bytes"] = allocated_bytes(args.path.with_name("latest.sqlite"))
@@ -184,6 +193,8 @@ def _train(args):
                 raise
             if coverage_mode:
                 state["coverage"] = trainer.coverage(args.target_min_updates)
+            if grid_mode:
+                state["grid_coverage"] = trainer.coverage(args.target_min_updates)
             if reason == "budget_complete" and time.monotonic() >= deadline:
                 reason = "time_limit"
             state.update(trainer.status(), state="stopped" if stop else "completed", stop_reason=reason,
@@ -220,12 +231,12 @@ def _play(state, engines, candidate):
     return state.utility(0), counts
 
 
-def evaluate(path, deals, seed, minimum):
+def evaluate(path, deals, seed, minimum, live_stacks=False):
     with frozen_artifact(path) as fingerprint:
-        return _evaluate_frozen(path, deals, seed, minimum, fingerprint)
+        return _evaluate_frozen(path, deals, seed, minimum, fingerprint, live_stacks)
 
 
-def _evaluate_frozen(path, deals, seed, minimum, fingerprint):
+def _evaluate_frozen(path, deals, seed, minimum, fingerprint, live_stacks=False):
     from bot.audit import AuditLog
     from bot.engine import Engine
     if deals < 2 or minimum < 1:
@@ -242,7 +253,11 @@ def _evaluate_frozen(path, deals, seed, minimum, fingerprint):
     results, counts = [], {"exact": 0, "total": 0, "focus_used": 0, "illegal": 0}
     try:
         for _ in range(deals):
-            state = State.deal(cfg, rng)
+            # live_stacks: stacks log-uniform in [10, 100]bb (on the chip grid), off the training stacks, so a
+            # stack-grid candidate is judged with its stack mapping.
+            stack_bb = round(float(np.exp(rng.uniform(np.log(10), np.log(100)))) / cfg.chip_bb) * cfg.chip_bb \
+                if live_stacks else None
+            state = State.deal(cfg, rng, stack_bb=round(stack_bb, 6) if stack_bb else None)
             first, c1 = _play(state, (candidate, baseline), candidate)
             second, c2 = _play(state, (baseline, candidate), candidate)
             results.append(first - second)
@@ -256,7 +271,8 @@ def _evaluate_frozen(path, deals, seed, minimum, fingerprint):
               "config_sha256": meta["config_sha256"], "iterations": meta["iterations"],
               "baseline_policy_sha256": provenance["policy_sha256"],
               "evaluation_source_sha256": provenance["source_sha256"], "seed": seed, "deals": deals,
-              "min_updates": minimum, "bb100": float(values.mean() * 50),
+              "min_updates": minimum, "stacks": "live_log_uniform_10_100" if live_stacks else "config",
+              "bb100": float(values.mean() * 50),
               "se_bb100": float(values.std(ddof=1) / math.sqrt(deals) * 50),
               "coverage": counts["exact"] / max(1, counts["total"]), **counts,
               "interpretation": "frozen candidate vs legacy baseline; not exploitability or equilibrium"}
@@ -325,6 +341,9 @@ def main(argv=None):
                        help="new candidate with VR-MCCFR baselines (a resumed one keeps its record)")
     train.add_argument("--depth-limit", choices=("flop",),
                        help="exact preflop only; the legacy engine plays from the flop on (preflop/exactdepth.py)")
+    train.add_argument("--preflop-game", type=Path, metavar="LEAF_MODEL",
+                       help="new candidate: the whole preflop game on the stack grid, flop leaves valued by this "
+                            "leaf_model.json (preflop/exactpreflop.py)")
     train.add_argument("--depth-sampling", choices=("outcome", "external"),
                        help="depth-limited walk: external = every action at the updater's preflop nodes (new candidate)")
     train.add_argument("--leaf-runouts", type=int,
@@ -346,6 +365,8 @@ def main(argv=None):
     evaluate_parser.add_argument("--deals", type=int, default=2000)
     evaluate_parser.add_argument("--seed", type=int, default=1000003)
     evaluate_parser.add_argument("--min-updates", type=int, default=1000)
+    evaluate_parser.add_argument("--live-stacks", action="store_true",
+                                 help="deal stacks log-uniform in [10, 100]bb instead of the candidate's stacks")
     promote = sub.add_parser("promote")
     promote.add_argument("--path", type=Path, required=True)
     promote.add_argument("--report", type=Path, required=True)
@@ -359,7 +380,7 @@ def main(argv=None):
     elif args.command == "snapshot":
         freeze(args.path, args.output)
     elif args.command == "evaluate":
-        report = evaluate(args.path, args.deals, args.seed, args.min_updates)
+        report = evaluate(args.path, args.deals, args.seed, args.min_updates, args.live_stacks)
         _write_json(args.output, report)
         print(json.dumps(report, indent=2))
     elif args.command == "promote":

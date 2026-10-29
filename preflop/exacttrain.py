@@ -82,7 +82,8 @@ def _code_hash():
     storage (preflop/exactstore.py) is fingerprinted separately, so a verified lossless storage migration does not
     masquerade as, or hide, an algorithm change."""
     paths = (Path(__file__), Path(__file__).with_name("exactgame.py"), Path(__file__).with_name("exactcoverage.py"),
-             Path(__file__).with_name("exactdepth.py"))
+             Path(__file__).with_name("exactdepth.py"), Path(__file__).with_name("exactpreflop.py"),
+             Path(__file__).with_name("leafvalue.py"))
     return hashlib.sha256(b"".join(p.read_bytes() for p in paths)).hexdigest()
 
 
@@ -426,6 +427,22 @@ class ExactPolicy:
         info = {"iterations": self.meta["iterations"], "config_sha256": self.meta["config_sha256"]}
         if not self.candidate and not self.meta.get("promotion"):
             return {**info, "status": "unpromoted"}
+        grid = self.meta.get("preflop_game")
+        if grid:
+            # Whole-preflop grid candidate: nearest grid stack, hand-class keys, live amounts for all-ins and calls.
+            from preflop.exactpreflop import canonical_key, live_options, map_context
+            live_context, live = map_context(context, grid["stack_grid"])
+            if live_context is None:
+                return {**info, "status": "unsupported", "reason": live}
+            try:
+                state = from_context(self.config, live_context, np.random.default_rng(0), known_hole=True)
+            except (ValueError, KeyError, TypeError) as error:
+                return {**info, "status": "unsupported", "reason": str(error)}
+            result = self._served(canonical_key(state), state, info)
+            if result["status"] == "ready":
+                result["options"] = live_options(result["options"], state, live_context, live)
+                result.update(grid_stack_bb=live_context["effective_stack_bb"], root_id="whole_game")
+            return result
         try:
             state = from_context(self.config, context, np.random.default_rng(0), known_hole=True)
         except (ValueError, KeyError, TypeError) as error:
@@ -452,6 +469,21 @@ class ExactPolicy:
                     break
         if row is None:
             return {**info, "status": "insufficient" if undertrained else "unseen"}
+        return self._checked(row, state, info)
+
+    def _served(self, key, state, info):
+        try:
+            found = self.store.served(key)
+        except (ValueError, TypeError):
+            return {**info, "status": "invalid"}
+        if not found:
+            return {**info, "status": "unseen"}
+        if found[3] < required_updates(len(found[0]), self.minimum, self.readiness) or \
+                not stable(self.db, key, self.readiness):
+            return {**info, "status": "insufficient"}
+        return self._checked(found, state, info)
+
+    def _checked(self, row, state, info):
         if not row[4]:
             # Schema 2 keeps literal keys only from key_text_floor updates on; below it a node can't be served. A
             # ready node without its literal key is never served (a digest match alone is not an exact identity).
