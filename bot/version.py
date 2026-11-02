@@ -8,6 +8,9 @@ live game). The PokerNow nickname is NAME; bump VERSION and tag the commit (`git
     v4  d9606f0  raise-size-aware river calls, river sizing, short-stack mode, learned bluff model (exp 40-41)
     v5  31471e1  strictness against big bets learned per opponent from showdowns (exp 42)
     v6  (tag)    never just call with the nuts (incl. the nut flush): raise or jam; multi-table; shove-node fixes (exp 43)
+    v7  (tag)    legacy serving restored (exact-only had withheld every decision), exp-40 untrained-cell fallback back,
+                 depth-blended short stacks (exp 49), pot odds only at <= 30bb (exp 50), player-id tracking, audit logs.
+                 Held-out bots vs v6 (paired deals, 2 seeds): +20 bb/100 at 100bb, +2 to +4 at 20bb
 """
-VERSION = 6
+VERSION = 7
 NAME = f"HUBot v{VERSION}"

@@ -601,9 +601,17 @@ class Engine:
             # Experiment 40: a cell the training never reached is uniform (every action alike); then use the same
             # spot's deep-stack cell (line with stack-to-pot >= 4) instead of playing at random.
             flat = lambda d: len(d) > 2 and max(d.values()) - min(d.values()) < 1e-6
+            # v7: restored in legacy mode. ffac880 switched it off everywhere, and without it untrained short-stack
+            # cells played uniformly at random (20bb vs held-out bots: -5.3 bb/100 vs v6 by 76d16af).
             if any(flat(row(c)) for c, _ in cells):
-                notes.append("untrained legacy cell; deep-stack substitution disabled")
                 diagnostics["lookup"]["untrained_fallback"] = True
+                if line % 3 and not self.exact_required:
+                    deep = line - line % 3
+                    cells = [((c[0], deep) + tuple(c[2:]), w) for c, w in cells]
+                    notes.append(f"untrained cell: line {line} -> {deep}")
+                    line = deep
+                else:
+                    notes.append("untrained legacy cell; deep-stack substitution disabled")
             probs = _blend([(row(c), w) for c, w in cells])
             diagnostics["base"] = {"source": source, "node": node, "probs": dict(probs)}
             notes.append(f"pot {pot}, tex {tex}, line {line}, group {fg.BUCKETS[bkt]}")
