@@ -6,6 +6,7 @@ the source.
 """
 import hashlib
 import json
+import math
 import os
 import sqlite3
 import subprocess
@@ -151,10 +152,14 @@ def verify(src, dst, key_text_floor, progress=None):
     return {"rows": rows, "keyed_rows": keyed, "targets": len(targets_src), "bit_identical": True}
 
 
-def export_ready(source, destination, min_updates=1000):
+def export_ready(source, destination, min_updates=1000, value_loss=None):
     """Small frozen serving/evaluation artifact: only nodes that pass the unchanged serving checks (literal key,
     >= min_updates, finite non-negative average with positive mass), average strategy only, no regrets. Everything
-    else is absent, so the reader withholds it exactly as before."""
+    else is absent, so the reader withholds it exactly as before.
+
+    value_loss (bb, preflop-game candidates only): judge readiness by value instead of stability
+    (exactpreflop.VALUE_READINESS); each kept node's loss travels in a value_checks table and the export records the
+    value rule as its readiness."""
     source, destination = Path(source), Path(destination)
     if destination.exists():
         raise FileExistsError("destination exists")
@@ -172,6 +177,15 @@ def export_ready(source, destination, min_updates=1000):
             new = StoreV2(dst, min_updates)
             new.create(min_updates)
             readiness = meta.get("readiness")
+            losses = None
+            if value_loss is not None:
+                from preflop.exactpreflop import VALUE_READINESS, node_losses
+                if "preflop_game" not in meta:
+                    raise ValueError("value readiness needs a preflop-game candidate")
+                losses = node_losses(src, old, meta, min_updates)
+                meta["readiness_trained_under"] = readiness
+                readiness = meta["readiness"] = {**VALUE_READINESS, "max_loss_bb": float(value_loss)}
+                dst.execute("CREATE TABLE value_checks (key TEXT PRIMARY KEY, loss_bb REAL NOT NULL)")
             if readiness:
                 dst.execute("CREATE TABLE target_checkpoints (key TEXT PRIMARY KEY, updates INTEGER NOT NULL, "
                             "probs TEXT NOT NULL, stability REAL)")
@@ -183,9 +197,15 @@ def export_ready(source, destination, min_updates=1000):
                     continue
                 # A candidate with a readiness rule exports only nodes it would serve: the per-action floor and a
                 # stable average strategy; the checkpoint row travels with the node so the reader can re-check it.
-                if n < required_updates(len(actions), min_updates, readiness) or not stable(src, key, readiness):
+                if n < required_updates(len(actions), min_updates, readiness):
                     continue
-                if readiness:
+                if losses is not None:
+                    if losses.get(key, math.inf) > value_loss:
+                        continue
+                    dst.execute("INSERT INTO value_checks VALUES (?,?)", (key, losses[key]))
+                elif not stable(src, key, readiness):
+                    continue
+                if readiness and losses is None:
                     checkpoint = src.execute("SELECT updates,probs,stability FROM target_checkpoints WHERE key=?",
                                              (key,)).fetchone()
                     dst.execute("INSERT INTO target_checkpoints VALUES (?,?,?,?)", (key, *checkpoint))

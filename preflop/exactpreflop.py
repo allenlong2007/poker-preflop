@@ -13,11 +13,13 @@ node of a fixed menu, at a fixed set of stacks:
                 live stack.
 
 Readiness: every node checkpoints its average strategy at each power-of-two update count (from CHECKPOINT_FROM) and
-serves under the candidate's readiness rule (coarse stability by default), as coverage targets do.
+serves under the candidate's readiness rule (coarse stability by default), as coverage targets do. A ready export can
+instead judge nodes by value (node_losses, VALUE_READINESS).
 """
 import hashlib
 import json
 import math
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +33,11 @@ STACK_GRID = (10.0, 15.0, 20.0, 27.0, 35.0, 45.0, 57.0, 70.0, 85.0, 100.0)
 MENU = {"chip_bb": 0.05, "fractions": (0.75, 1.5), "extra_sizes_bb": (2.0, 2.25, 2.5, 3.0, 3.5, 4.0, 5.0)}
 MAX_STACK_RATIO = 1.2           # serve a live stack only within 20% of a grid stack (beyond the grid's ends: none)
 CHECKPOINT_FROM = 64
+# Value readiness (2026-11-01): after 180M iterations 66% of root nodes still failed coarse stability (median TV 0.14
+# per doubling at 32k-131k updates), mostly junk hands at 57-100bb sliding between limp and raise at near-equal value
+# (53o 70bb: TV 0.72, value loss 0.03bb). A node is ready when its average strategy loses at most max_loss_bb against
+# its best action (node_losses), with the same per-action update floor.
+VALUE_READINESS = {"per_action": 300, "stable_tv": None, "stability": "value", "max_loss_bb": 0.05}
 
 
 def grid_config(stacks=STACK_GRID, exploration=0.6):
@@ -216,3 +223,60 @@ def stamp_leaf_model(path):
     record["legacy"] = legacy_fingerprint()
     path.write_text(json.dumps(record))
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def node_losses(db, store, meta, min_updates=1):
+    """{key: bb} for checkpointed nodes with min_updates: how much the node's average strategy loses, per time this
+    hand class plays this node, against the node's best action, read from cumulative regrets.
+
+    Outcome sampling samples the deal exactly and weights the updater's sampled regret by opponent reach / sampled
+    reach, so E[R(a)] = T * cf * mean_t(Q_t(a) - v_t), where T is the iteration count (one walk per player each) and
+    cf = P(stack) * P(hero class) * sum_o P(opp class o | hero class) * reach of o along the history. Opponent reach
+    uses the opponent's average strategy (training used its current strategies). Q(a) = R(a) / (T cf) up to a
+    constant, so the loss is max_a Q(a) - p . Q for the average strategy p. Noisy at low update counts; the update
+    floor still applies."""
+    config = Config(**meta["config"])
+    combos = [class_combos(i) for i in range(169)]
+    p_class = np.array([len(c) for c in combos]) / 1326
+    given = np.zeros((169, 169))
+    for c in range(169):
+        for hole in combos[c]:
+            given[c] += [sum(1 for x in combos[o] if not set(x) & set(hole)) for o in range(169)]
+        given[c] /= given[c].sum()
+    reps = [tuple(sorted(c[0])) for c in combos]
+    reach = {}
+
+    def opponent_reach(stack, history, opponent):
+        cache = (stack, json.dumps(history), opponent)
+        if cache not in reach:
+            state = State.deal(config, np.random.default_rng(0), stack_bb=stack * config.chip_bb)
+            r = np.ones(169)
+            for _, kind, to in history[0]:
+                label = f"to:{to}" if kind in ("bet", "raise") else kind
+                if state.actor == opponent:
+                    for o in range(169):
+                        holes = list(state.holes)
+                        holes[opponent] = reps[o]
+                        row = store.get(canonical_key(replace(state, holes=tuple(holes))))
+                        if row is None or not row[2].sum() > 0:
+                            r[o] = 0.0
+                        else:
+                            r[o] *= row[2][row[0].index(label)] / row[2].sum()
+                state = state.step(label, observed=True)
+            reach[cache] = r
+        return reach[cache]
+
+    losses, iterations = {}, meta["iterations"]
+    for (key,) in db.execute("SELECT key FROM target_checkpoints"):
+        row = store.get(key)
+        if row is None or row[4] < min_updates or not row[2].sum() > 0:
+            continue
+        obs = json.loads(key)
+        c = hand_class(obs["hole"])
+        cf = p_class[c] * float(given[c] @ opponent_reach(obs["stack"], obs["history"], 1 - obs["actor"]))
+        cf /= len(config.stacks_bb)
+        if cf <= 0:
+            continue
+        q = row[1] / (iterations * cf)
+        losses[key] = float(q.max() - (row[2] / row[2].sum()) @ q)
+    return losses

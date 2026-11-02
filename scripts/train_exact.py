@@ -354,6 +354,8 @@ def main(argv=None):
     export.add_argument("--path", type=Path, required=True)
     export.add_argument("--output", type=Path, required=True)
     export.add_argument("--min-updates", type=int, default=1000)
+    export.add_argument("--value-loss", type=float, help="preflop-game candidates: ready = average strategy loses at "
+                        "most this many bb against the best action (instead of stability)")
     status = sub.add_parser("status")
     status.add_argument("--path", type=Path, default=DEFAULT)
     snapshot = sub.add_parser("snapshot")
@@ -387,7 +389,7 @@ def main(argv=None):
         _promote(args)
     elif args.command == "export-ready":
         from preflop.exactmigrate import export_ready
-        print(json.dumps(export_ready(args.path, args.output, args.min_updates), indent=2))
+        print(json.dumps(export_ready(args.path, args.output, args.min_updates, args.value_loss), indent=2))
 
 
 if __name__ == "__main__":

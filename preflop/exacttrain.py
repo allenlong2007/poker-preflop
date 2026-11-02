@@ -52,7 +52,14 @@ def required_updates(n_actions, minimum, readiness):
 
 
 def stable(db, key, readiness):
-    """True when the node's last checkpointed doubling moved the average strategy by at most stable_tv."""
+    """True when the node's last checkpointed doubling moved the average strategy by at most stable_tv, or, under
+    value readiness (exactpreflop.VALUE_READINESS), when its recorded value loss is at most max_loss_bb."""
+    if readiness and readiness.get("stability") == "value":
+        try:
+            row = db.execute("SELECT loss_bb FROM value_checks WHERE key=?", (key,)).fetchone()
+        except sqlite3.OperationalError:
+            return False
+        return row is not None and row[0] <= readiness["max_loss_bb"]
     if not readiness or readiness.get("stable_tv") is None:
         return True
     try:

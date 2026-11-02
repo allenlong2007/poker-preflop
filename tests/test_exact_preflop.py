@@ -113,3 +113,28 @@ def test_memoised_menus_match_the_game_rules(tmp_path):
         while not state.terminal and state.street == 0:
             assert state.actions() == State.actions(state)
             state = state.step(state.actions()[int(rng.integers(len(state.actions())))])
+
+
+def test_value_readiness_export_and_serving(tmp_path, monkeypatch):
+    from preflop.exactmigrate import export_ready
+    from preflop.exacttrain import ExactPolicy
+    monkeypatch.setattr(exactpreflop, "CHECKPOINT_FROM", 2)
+    monkeypatch.setattr(exactpreflop, "VALUE_READINESS", {**exactpreflop.VALUE_READINESS, "per_action": 0})
+    with _trainer(tmp_path) as trainer:
+        trainer.train(400)
+        from preflop.exacttrain import _metadata
+        losses = exactpreflop.node_losses(trainer.db, trainer.store, _metadata(trainer.db))
+    assert losses and all(v >= -1e-9 for v in losses.values())
+    roots = [k for k in losses if json.loads(k)["history"] == [[], [], [], []]]
+    assert roots
+    everything = export_ready(tmp_path / "g.sqlite", tmp_path / "all.sqlite", min_updates=1, value_loss=1e9)
+    nothing = export_ready(tmp_path / "g.sqlite", tmp_path / "none.sqlite", min_updates=1, value_loss=-1.0)
+    assert everything["nodes"] == len(losses) and nothing["nodes"] == 0
+    key = roots[0]
+    obs = json.loads(key)
+    live = {"hero_position": "btn", "hero_hole": "".join(obs["hole"]), "board": "", "effective_stack_bb": 10.0,
+            "history": [[], [], [], []]}
+    with ExactPolicy(tmp_path / "all.sqlite", candidate=True, min_updates=1) as policy:
+        assert policy.readiness["stability"] == "value" and policy.lookup(live)["status"] == "ready"
+    with ExactPolicy(tmp_path / "none.sqlite", candidate=True, min_updates=1) as policy:
+        assert policy.lookup(live)["status"] in ("unseen", "insufficient")
