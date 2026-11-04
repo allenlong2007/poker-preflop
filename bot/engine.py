@@ -18,7 +18,7 @@ import eval7
 import numpy as np
 
 from bot import potodds
-from bot.depth import BlendedNodes
+from bot.depth import BlendedNodes, bracket_depths
 from preflop import fullgame as fg
 from preflop.cards import HANDS, INDEX
 from preflop.flopgame import texture as flop_texture
@@ -204,7 +204,8 @@ def size_weights(x, sizes, translate=True):
 class Engine:
     def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
-                 exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True):
+                 exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
+                 postflop_depths=None):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -242,6 +243,8 @@ class Engine:
         self.solved_open = float(meta.get("open", SOLVED_OPEN))
         self.translate = translate
         self._pots, self._flops, self._opts = {}, {}, {}
+        self.postflop_depths = tuple(sorted(set(postflop_depths or ()) - {STACK}))
+        self._depth_pots = {}
         self._solver_flags = set()
         self.rng = np.random.default_rng(seed)
         self.exact_policy = None
@@ -517,6 +520,29 @@ class Engine:
             self._opts[pot] = _opts_from_json(str(d["opts_json"])) if "opts_json" in d else _match_opts()
         return self._opts[pot]
 
+    def _postflop_models(self, pot, stack):
+        base = self._pot(pot)
+        if not self.postflop_depths:
+            return [(STACK, base, 1.0)]
+        models = {STACK: base}
+        for depth in self.postflop_depths:
+            key = (pot, depth)
+            if key not in self._depth_pots:
+                path = self.policy_dir.parent / "policy_depth" / f"{depth:g}" / f"{pot}.npz"
+                model = None
+                if path.exists():
+                    with np.load(path) as data:
+                        model = dict(data)
+                    if _opts_from_json(str(model["opts_json"])) != self.opts(pot):
+                        raise ValueError(f"Depth model has a different action menu: {path}")
+                self._depth_pots[key] = model
+            if self._depth_pots[key] is not None:
+                models[depth] = self._depth_pots[key]
+        lo, hi, w = bracket_depths(sorted(models), stack)
+        if lo == hi:
+            return [(lo, models[lo], 1.0)]
+        return [(lo, models[lo], 1 - w), (hi, models[hi], w)]
+
     def _postflop(self, hero, hole, board, st):
         s = st.street - 1                                   # 0 flop, 1 turn, 2 river
         acts = st.history[st.street]
@@ -596,8 +622,14 @@ class Engine:
                 notes.append(parts[0][0][1])
             diagnostics["lookup"]["solver_attempt_fallbacks"] = sorted(self._solver_flags)
         if probs is None:
-            table = self._pot(pot)[f"sigma_{s}_{kind}"]
-            row = lambda c: dict(zip(labels, map(float, table[c])))
+            models = self._postflop_models(pot, st.stack)
+            if self.postflop_depths:
+                diagnostics["lookup"]["postflop_depths"] = {depth: w for depth, _, w in models}
+            table_key = f"sigma_{s}_{kind}"
+
+            def row(c):
+                return _blend([(dict(zip(labels, map(float, model[table_key][c]))), w)
+                               for _, model, w in models])
             # Experiment 40: a cell the training never reached is uniform (every action alike); then use the same
             # spot's deep-stack cell (line with stack-to-pot >= 4) instead of playing at random.
             flat = lambda d: len(d) > 2 and max(d.values()) - min(d.values()) < 1e-6

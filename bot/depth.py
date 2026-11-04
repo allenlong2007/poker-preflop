@@ -27,7 +27,11 @@ def depths(pre):
 def bracket(pre, stack, nearest=False):
     """(lo, hi, weight of hi) for a stack: the two solved depths around it, weighted in log space. nearest=True
     reproduces the pre-experiment-49 behaviour (the single nearest solved depth) for comparisons."""
-    ds = list(depths(pre))
+    return bracket_depths(list(depths(pre)), stack, nearest)
+
+
+def bracket_depths(ds, stack, nearest=False):
+    """Select bracketing depths from a sorted list of available models."""
     s = max(float(stack), 1e-9)
     if nearest:
         d = min(ds, key=lambda d: abs(math.log(d / max(s, 1.0))))

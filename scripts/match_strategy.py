@@ -213,23 +213,25 @@ def pot_ranges(d, s_main):
 
 # ----------------------------------------------------------------------------- 2. postflop
 
-def train(pot, s, btn, bb, fine=False):
+def train(pot, s, btn, bb, fine=False, *, stack=STACK, folder=None):
     """fine: experiment 30's finer turn / river sizes (OPTS_FINE, 1.6x the batches for the bigger tables)."""
-    opts, folder = (OPTS_FINE, POLICY_FINE) if fine else (OPTS_MATCH, POLICY)
+    opts, default_folder = (OPTS_FINE, POLICY_FINE) if fine else (OPTS_MATCH, POLICY)
+    folder = default_folder if folder is None else folder
+    folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{pot}.npz"
     if path.exists():
         print(f"{pot}: cached")
         return
-    print(f"== {pot}{' (fine sizes)' if fine else ''}: pot {2 * s:g}bb, {STACK - s:g}bb behind", flush=True)
+    print(f"== {pot}{' (fine sizes)' if fine else ''}: pot {2 * s:g}bb, {stack - s:g}bb behind", flush=True)
     t0 = time.time()
     batches = int(BATCHES * 1.6) if fine else BATCHES
-    sigma, _ = fg.learn(btn, bb, opts, s=s, stack=STACK, batches=batches, hands_per_batch=HANDS_PER_BATCH,
-                        seed=1, verbose=False)
+    sigma, _ = fg.learn(btn, bb, opts, s=s, stack=stack, batches=batches, hands_per_batch=HANDS_PER_BATCH,
+                        seed=1, verbose=stack != STACK)
     # Deep-stacked limped pots learn ~2.5x slower per batch with the finer sizes (~75 min); a quarter of the
     # evaluation hands keeps each run under two hours (the bot only needs sigma; this feeds the report).
     print(f"   learned in {(time.time() - t0) / 60:.1f} min; evaluating", flush=True)
     n_eval = EVAL_HANDS // 4 if fine and pot in ("limp", "iso") else EVAL_HANDS
-    value, acc = fg.evaluate(btn, bb, sigma, opts, s=s, stack=STACK, n=n_eval)
+    value, acc = fg.evaluate(btn, bb, sigma, opts, s=s, stack=stack, n=n_eval)
     out = {"value_btn": value, "pot_to": s, "btn_range": btn, "bb_range": bb,
            "opts_json": json.dumps({k: v for k, v in opts.items()})}
     for key in sigma:
@@ -414,6 +416,15 @@ def main():
         info = preflop()
         d = final_solves(info)
         print("main open", info["s_main"], {s: (v["t"], v["r"], round(1000 * v["btn_ev"], 1)) for s, v in d["by_open"].items()})
+    elif cmd == "postflop-depth":
+        depth, pot = sys.argv[2:]
+        if pot != "srp":
+            raise ValueError("The depth pilot supports srp only")
+        pre = json.loads((POLICY / "preflop.json").read_text())
+        stack = float(depth)
+        nodes = pre["by_depth"][f"{stack:g}"]
+        train(pot, pre["open"], np.array(nodes["btn_root"]["raise"]), np.array(nodes["bb_vs_raise"]["call"]),
+              fine=True, stack=stack, folder=OUT / "policy_depth" / f"{stack:g}")
     elif cmd in ("postflop", "postflop-fine"):
         info = preflop()
         d = final_solves(info)
