@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from bot.audit import AuditLog
+from bot.version import VERSION
 
 
 @pytest.fixture
@@ -55,7 +56,7 @@ def test_decisions_have_run_metadata_and_one_manifest(tmp_path, audit_engine):
     assert len(runs) == 1
     assert rows[0]["schema_version"] == 1
     assert rows[0]["run_id"] == runs[0]["run_id"]
-    assert rows[0]["bot_version"] == runs[0]["bot_version"] == 6
+    assert rows[0]["bot_version"] == runs[0]["bot_version"] == VERSION
     assert runs[0]["config"]["pot_odds"] is True
     assert audit.hand_metadata("hand1", "hero1")["decision_ids"] == ["decision1", "decision2"]
 
@@ -126,7 +127,7 @@ def test_server_persists_context_and_links_only_observed_hands(tmp_path, monkeyp
     server._track_locked(msgs, server.parse_hand(msgs, hero_seat=3))
     assert len(stored) == 2
     assert stored[0]["bot_version"] is None
-    assert stored[1]["bot_version"] == 6
+    assert stored[1]["bot_version"] == VERSION
     assert stored[1]["audit"]["decision_ids"] == [row["decision"]["id"]]
 
 
