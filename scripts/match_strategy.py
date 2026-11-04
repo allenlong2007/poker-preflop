@@ -30,6 +30,7 @@ Usage:
     python scripts/match_strategy.py book
 """
 import json
+import math
 import os
 import sys
 import time
@@ -42,7 +43,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
-from open_size_study import OPTS_FINE, OPTS_MATCH
+from open_size_study import OPTS_FINE, OPTS_MATCH, OPTS_WIDE
 from preflop import fullgame as fg
 from preflop.cards import HANDS, n_combos
 from preflop.flopgame import TEXTURES as FLOP_TEXTURES
@@ -213,9 +214,11 @@ def pot_ranges(d, s_main):
 
 # ----------------------------------------------------------------------------- 2. postflop
 
-def train(pot, s, btn, bb, fine=False, *, stack=STACK, folder=None):
+def train(pot, s, btn, bb, fine=False, *, stack=STACK, folder=None, wide=False):
     """fine: experiment 30's finer turn / river sizes (OPTS_FINE, 1.6x the batches for the bigger tables)."""
     opts, default_folder = (OPTS_FINE, POLICY_FINE) if fine else (OPTS_MATCH, POLICY)
+    if wide:
+        opts, default_folder = OPTS_WIDE, OUT / "policy_menu"
     folder = default_folder if folder is None else folder
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{pot}.npz"
@@ -225,8 +228,29 @@ def train(pot, s, btn, bb, fine=False, *, stack=STACK, folder=None):
     print(f"== {pot}{' (fine sizes)' if fine else ''}: pot {2 * s:g}bb, {stack - s:g}bb behind", flush=True)
     t0 = time.time()
     batches = int(BATCHES * 1.6) if fine else BATCHES
+    midpoint_snapshot = None
+    if wide:
+        # Count abstract action edges, including separate responses to each bet and raise.
+        def action_count(menu):
+            total = 0
+            for street in range(3):
+                for kind in fg.NODES:
+                    sizes, actions = fg.n_actions(kind, street, menu)
+                    total += math.prod(sizes) * actions
+            return total
+
+        batches = math.ceil(int(BATCHES * 1.6) * action_count(opts) / action_count(OPTS_FINE))
+        print(f"   wide menu: {action_count(OPTS_FINE)} -> {action_count(opts)} actions, {batches} batches",
+              flush=True)
+        half_path = path.with_suffix(".half.npz")
+
+        def midpoint_snapshot(batch, sigma):
+            np.savez_compressed(half_path, batches=batch, opts_json=json.dumps(opts),
+                                **{f"sigma_{street}_{kind}": row for (street, kind), row in sigma.items()})
+            print(f"   saved midpoint at batch {batch}: {half_path}", flush=True)
+
     sigma, _ = fg.learn(btn, bb, opts, s=s, stack=stack, batches=batches, hands_per_batch=HANDS_PER_BATCH,
-                        seed=1, verbose=stack != STACK)
+                        seed=1, verbose=wide or stack != STACK, midpoint_snapshot=midpoint_snapshot)
     # Deep-stacked limped pots learn ~2.5x slower per batch with the finer sizes (~75 min); a quarter of the
     # evaluation hands keeps each run under two hours (the bot only needs sigma; this feeds the report).
     print(f"   learned in {(time.time() - t0) / 60:.1f} min; evaluating", flush=True)
@@ -238,6 +262,18 @@ def train(pot, s, btn, bb, fine=False, *, stack=STACK, folder=None):
         out[f"sigma_{key[0]}_{key[1]}"] = sigma[key]
         out[f"strat_{key[0]}_{key[1]}"] = acc.strat[key]
         out[f"reach_{key[0]}_{key[1]}"] = acc.reach[key]
+    if wide:
+        with np.load(half_path) as half:
+            print("   midpoint to final total variation (reached rows, weighted mean by street):", flush=True)
+            for street in range(3):
+                movement = [0.5 * np.abs(row - half[f"sigma_{s_idx}_{kind}"]).sum(axis=-1)
+                            for (s_idx, kind), row in sigma.items() if s_idx == street]
+                reach = [acc.reach[key].ravel() for key in sigma if key[0] == street]
+                tv, weights = np.concatenate([m.ravel() for m in movement]), np.concatenate(reach)
+                active = weights > 0
+                if active.any():
+                    print(f"   {STREETS[street]}: {np.average(tv, weights=weights):.4f} weighted mean, "
+                          f"{np.quantile(tv[active], 0.9):.4f} reached-row p90", flush=True)
     np.savez_compressed(path, **out)
     print(f"   BTN net {value - s:+.3f}bb per pot ({(time.time() - t0) / 60:.1f} min)", flush=True)
 
@@ -416,6 +452,11 @@ def main():
         info = preflop()
         d = final_solves(info)
         print("main open", info["s_main"], {s: (v["t"], v["r"], round(1000 * v["btn_ev"], 1)) for s, v in d["by_open"].items()})
+    elif cmd == "postflop-wide":
+        if sys.argv[2:] != ["srp"]:
+            raise ValueError("The wide menu pilot supports srp only")
+        with np.load(POLICY_FINE / "srp.npz") as baseline:
+            train("srp", float(baseline["pot_to"]), baseline["btn_range"], baseline["bb_range"], wide=True)
     elif cmd == "postflop-depth":
         depth, pot = sys.argv[2:]
         if pot != "srp":

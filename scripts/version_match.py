@@ -30,6 +30,8 @@ ROOT = None
 
 def engine():
     from bot.engine import Engine
+    if os.environ.get("SRP_POLICY"):
+        return Engine(exact_required=False, seed=1, pot_odds=True, policy_overrides={"srp": os.environ["SRP_POLICY"]})
     if os.environ.get("POSTFLOP_DEPTHS"):
         depths = [float(s) for s in os.environ["POSTFLOP_DEPTHS"].split(",")]
         return Engine(exact_required=False, seed=1, pot_odds=True, postflop_depths=depths)

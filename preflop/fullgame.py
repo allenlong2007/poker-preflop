@@ -451,7 +451,7 @@ def _pool_map(fn, jobs):
 
 
 def learn(btn_range, bb_range, opts, s=2.25, stack=100, batches=150, hands_per_batch=30_000, seed=0,
-          verbose=True, log_every=25):
+          verbose=True, log_every=25, *, midpoint_snapshot=None):
     """Learn the whole postflop game. Returns the average strategy (dict of arrays) and a history."""
     cw = np.array([n_combos(h) for h in HANDS], dtype=float)
     btn_w, bb_w = cw * btn_range, cw * bb_range
@@ -469,6 +469,8 @@ def learn(btn_range, bb_range, opts, s=2.25, stack=100, batches=150, hands_per_b
                 S[key] += dS[key]
         for key in R:
             R[key] = np.maximum(R[key], 0)              # CFR+
+        if midpoint_snapshot is not None and t == batches // 2:
+            midpoint_snapshot(t, average(S))
         if verbose and (t % log_every == 0 or t == 1):
             avg = average(S)
             lead = avg[(0, "bb_first")][..., 1:].sum(-1).mean() if (0, "bb_first") in avg else 0.0

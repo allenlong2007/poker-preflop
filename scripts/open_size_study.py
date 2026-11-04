@@ -54,6 +54,12 @@ OPTS_FINE = {**OPTS_MATCH, "sizes": (OPTS_MATCH["sizes"][0],
                                      {"lead": (1 / 3, 1 / 2, 3 / 4, 1.0), "bet": (1 / 3, 1 / 2, 3 / 4, 1.0, 1.5)},
                                      {"lead": (1 / 3, 1 / 2, 3 / 4, 1.0, 1.5),
                                       "bet": (1 / 3, 1 / 2, 3 / 4, 1.0, 1.5, 2.0)})}
+OPTS_WIDE = {**OPTS_FINE, "raise_pot": (0.5, 1.0), "sizes": (
+    {"lead": (1 / 4, 1 / 3, 1 / 2), "bet": (1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4, 1.0, 1.25)},
+    {"lead": (1 / 4, 1 / 3, 1 / 2, 3 / 4, 1.0), "bet": (1 / 4, 1 / 3, 1 / 2, 3 / 4, 1.0, 1.5)},
+    {"lead": (1 / 4, 1 / 3, 1 / 2, 3 / 4, 1.0, 1.5),
+     "bet": (1 / 4, 1 / 3, 1 / 2, 3 / 4, 1.0, 1.5, 2.0)},
+)}
 QUICK = os.environ.get("OPEN_STUDY_QUICK") == "1"          # tiny end-to-end test run
 BATCHES, HANDS_PER_BATCH, EVAL_HANDS = (2, 15_000, 3_000) if QUICK else (250, 60_000, 150_000)
 SOLVER_OPEN = 3.0

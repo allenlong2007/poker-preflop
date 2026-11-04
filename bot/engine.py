@@ -205,7 +205,7 @@ class Engine:
     def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
-                 postflop_depths=None):
+                 postflop_depths=None, policy_overrides=None):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -244,7 +244,8 @@ class Engine:
         self.translate = translate
         self._pots, self._flops, self._opts = {}, {}, {}
         self.postflop_depths = tuple(sorted(set(postflop_depths or ()) - {STACK}))
-        self._depth_pots = {}
+        self._depth_pots, self._solver_opts = {}, {}
+        self.policy_overrides = {pot: Path(path) for pot, path in (policy_overrides or {}).items()}
         self._solver_flags = set()
         self.rng = np.random.default_rng(seed)
         self.exact_policy = None
@@ -268,7 +269,7 @@ class Engine:
         if self.exact_required:
             return self
         for pot in POTS:
-            if (self.policy_dir / f"{pot}.npz").exists():
+            if self._pot_path(pot).exists():
                 self._pot(pot)
                 self.opts(pot)
         for t in self.index:
@@ -508,9 +509,13 @@ class Engine:
             return "srp" if abs(math.log(s / self.pre["open"])) <= abs(math.log(s / alt)) else "srp_alt"
         return "3bet"
 
+    def _pot_path(self, name):
+        return self.policy_overrides.get(name, self.policy_dir / f"{name}.npz")
+
     def _pot(self, name):
         if name not in self._pots:
-            self._pots[name] = dict(np.load(self.policy_dir / f"{name}.npz"))
+            with np.load(self._pot_path(name)) as data:
+                self._pots[name] = dict(data)
         return self._pots[name]
 
     def opts(self, pot):
@@ -568,10 +573,10 @@ class Engine:
         aggressive = [a for a in acts if a.kind in ("bet", "raise")]
         seq = "".join("x" if a.kind == "check" else "b" if a.kind in ("bet", "raise") else "c" for a in acts)
         bet_to = lambda frac: min(round(frac * P, 2), behind)
-        raise_to = lambda b: min(round(fg.raise_to(o, raises[0], b, P), 2), st.inp[hero] + hero_left) \
-            if raises else None
+        raise_to = lambda b, r: min(round(fg.raise_to(o, r, b, P), 2), st.inp[hero] + hero_left)
         # Nodes of the whole-hand model; cells(k) is the table cell when facing trained size k.
         weights = [(None, 1.0)]
+        raise_weights = [(0, 1.0)]
         if seq == "":
             kind, cell = "bb_first", (tex, line, bkt)
             labels = ["check"] + [f"lead {f:.2g}" for f in leads]
@@ -588,19 +593,25 @@ class Engine:
             cell = lambda k: (tex, line, bkt, k)
             labels = ["fold", "call"] + [f"raise {r:.2g}" for r in raises]
             opts = {"fold": ("fold", 0), "call": ("call", min(b, st.inp[hero] + hero_left))}
-            opts |= {f"raise {r:.2g}": ("raise", raise_to(b)) for r in raises}
+            opts |= {f"raise {r:.2g}": ("raise", raise_to(b, r)) for r in raises}
         elif seq in ("xbb", "bb"):
             b0, R = aggressive[0].to, aggressive[1].to
             sizes = bets if seq == "xbb" else leads
             weights = size_weights(b0 / P, sizes, self.translate)
             kind = "btn_vs_xr" if seq == "xbb" else "bb_vs_raise"
-            cell = lambda k: (tex, line, bkt, k, 0)
+            if len(raises) > 1:
+                faced_raise = (R - b0) / (P + 2 * b0) if o.get("raise_pot") else R / b0
+                raise_weights = size_weights(faced_raise, raises, self.translate)
+            cell = lambda k, r: (tex, line, bkt, k, r)
             labels = ["fold", "call"]
             opts = {"fold": ("fold", 0), "call": ("call", min(R, st.inp[hero] + hero_left))}
         else:
             return self._rule(hero, bkt, st, acts)
 
-        cells = [(cell(k) if callable(cell) else cell, w) for k, w in weights]
+        if seq in ("xbb", "bb"):
+            cells = [(cell(k, r), w * rw) for k, w in weights for r, rw in raise_weights]
+        else:
+            cells = [(cell(k) if callable(cell) else cell, w) for k, w in weights]
         source, node = "model", f"{fg.STREETS[s]} {kind}"
         probs = None
         notes = []
@@ -611,13 +622,40 @@ class Engine:
             sizes = bets if seq.startswith("x") else leads
             faced = aggressive[0].to / P
             notes.append(f"facing {faced:.2f} pot -> " + " / ".join(f"{sizes[k]:.2f} ({w:.0%})" for k, w in weights))
+        if len(raise_weights) > 1 or raise_weights[0][0] != 0:
+            diagnostics["lookup"]["raise_size_weights"] = dict(raise_weights)
         if s == 0 and pot == "srp" and self.use_solver_flops and abs(st.history[0][0].to - self.solved_open) < 0.26 \
                 and kind in ("bb_first", "btn_vs_check", "bb_vs_bet"):
             self._solver_flags = set()
-            parts = [(self._solver_flop(hole, board, kind, labels, c, bets), w) for c, w in cells]
-            if all(p is not None for (p, _), _ in parts):
+            solver_bets, solver_labels, solver_cells = bets, labels, cells
+            compatible = True
+            if pot in self.policy_overrides:
+                # Keep the v7 solver projection. Its ordered labels refer to the original menu.
+                if pot not in self._solver_opts:
+                    with np.load(self.policy_dir / f"{pot}.npz") as data:
+                        self._solver_opts[pot] = (_opts_from_json(str(data["opts_json"]))
+                                                  if "opts_json" in data else _match_opts())
+                legacy_opts = self._solver_opts[pot]
+                solver_leads, solver_bets = fg.street_sizes(s, legacy_opts)
+                if kind == "bb_vs_bet":
+                    solver_labels = ["fold", "call"] + [f"raise {r:.2g}" for r in fg.raise_sizes(legacy_opts, s)]
+                    compatible = all(fg.raise_to(legacy_opts, r, b, P) == fg.raise_to(o, r, b, P)
+                                     for r in fg.raise_sizes(legacy_opts, s))
+                    solver_cells = [(cell(k), w) for k, w in size_weights(b / P, solver_bets, self.translate)]
+                else:
+                    prefix, sizes = ("lead", solver_leads) if kind == "bb_first" else ("bet", solver_bets)
+                    solver_labels = ["check"] + [f"{prefix} {f:.2g}" for f in sizes]
+                    compatible = set(sizes) <= set(leads if kind == "bb_first" else bets)
+                compatible = compatible and set(solver_labels) <= opts.keys()
+                if not compatible:
+                    self._solver_flags.add("incompatible_override_menu")
+            parts = [(self._solver_flop(hole, board, kind, solver_labels, c, solver_bets), w)
+                     for c, w in solver_cells] if compatible else []
+            if parts and all(p is not None for (p, _), _ in parts):
                 probs = _blend([(p, w) for (p, _), w in parts])
                 source = "solver"
+                if pot in self.policy_overrides:
+                    opts = {label: opts[label] for label in solver_labels}
                 diagnostics["lookup"]["flop_group_average"] = "group_average" in self._solver_flags
                 notes.append(parts[0][0][1])
             diagnostics["lookup"]["solver_attempt_fallbacks"] = sorted(self._solver_flags)
