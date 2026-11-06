@@ -155,3 +155,16 @@ def test_live_review_filters_versions_and_keeps_legacy_unknown(capsys, monkeypat
     live_review.main(["--version", "6", "--run", "run1", "--versions-only"])
     output = capsys.readouterr().out
     assert "\n  unknown" not in output and "+3.0" in output
+
+
+def test_depth_policy_changes_are_recorded_in_build_fingerprint(tmp_path, audit_engine):
+    root, engine = audit_engine
+    depth_policy = engine.policy_dir.parent / "policy_depth" / "40" / "srp.npz"
+    depth_policy.parent.mkdir(parents=True)
+    depth_policy.write_bytes(b"first depth policy")
+    engine.postflop_depths = (40,)
+    first = AuditLog(tmp_path / "logs", engine, root=root)
+    depth_policy.write_bytes(b"second depth policy")
+    changed = AuditLog(tmp_path / "logs", engine, root=root)
+    assert changed.run["policy_sha256"] != first.run["policy_sha256"]
+    assert changed.run["config"]["postflop_depths"] == [40]

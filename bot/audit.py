@@ -45,6 +45,8 @@ def _finite(x):
 def policy_files(engine, root: Path = ROOT) -> list[Path]:
     """Every data file the engine's decisions depend on (its build identity together with the source files)."""
     policies = list(engine.policy_dir.glob("*.npz"))
+    for depth in getattr(engine, "postflop_depths", ()):
+        policies.extend((engine.policy_dir.parent / "policy_depth" / f"{depth:g}").glob("*.npz"))
     preflop = root / "output" / "match" / "policy" / "preflop.json"
     if preflop.exists():
         policies.append(preflop)
@@ -74,6 +76,7 @@ class AuditLog:
             "config": {"policy_dir": str(engine.policy_dir), "flops_dir": str(engine.flops_dir),
                        "solver_flops": engine.use_solver_flops, "translate": engine.translate,
                        "pot_odds": engine.pot_odds,
+                       "postflop_depths": list(getattr(engine, "postflop_depths", ())),
                        "stages_off": sorted(getattr(engine, "off", ())),
                        "pot_odds_max_bb": _finite(getattr(engine, "pot_odds_max_bb", None)),   # None: no limit
                        **{key: getattr(engine, key, None) for key in

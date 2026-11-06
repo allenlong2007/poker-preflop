@@ -272,6 +272,8 @@ class Engine:
             if self._pot_path(pot).exists():
                 self._pot(pot)
                 self.opts(pot)
+                if self.postflop_depths:
+                    self._postflop_models(pot, STACK)
         for t in self.index:
             self._flop(int(t))
         return self

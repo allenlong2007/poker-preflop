@@ -38,7 +38,7 @@ CLIENT = Path(__file__).with_name("client.js")
 LOG_DIR = ROOT / "output" / "pokernow"
 # experiment 39: every call is checked against the price. exact_required=False (v7): no promoted exact policy exists,
 # and exact-only serving (ffac880) withheld every live decision without one; exact nodes still serve once promoted.
-ENGINE = Engine(pot_odds=True, exact_required=False)
+ENGINE = Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100))
 ADAPT = Adapter(ENGINE)            # experiment 37: re-fits the bot to the opponent as hands finish
 DECIDE_LOCK = threading.Lock()
 SEEN_HANDS = set()                 # hand ids already stored this run
