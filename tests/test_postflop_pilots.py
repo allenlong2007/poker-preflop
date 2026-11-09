@@ -113,3 +113,14 @@ def test_nearest_depth_mode_plays_one_model():
     assert [d for d, _, w in near._postflop_models("srp", 80)] == [100]
     blend = Engine(exact_required=False, postflop_depths=(25, 40, 60, 100))
     assert [d for d, _, w in blend._postflop_models("srp", 70)] == [60, 100]
+
+
+def test_bracket_depths_handles_non_finite_and_out_of_range_stacks():
+    from bot.depth import bracket_depths
+    ds = [25.0, 40.0, 60.0, 100.0]
+    for nearest in (False, True):
+        assert bracket_depths(ds, float("inf"), nearest) == (100.0, 100.0, 1.0)
+        assert bracket_depths(ds, float("nan"), nearest) == (100.0, 100.0, 1.0)
+        assert bracket_depths(ds, 0.0, nearest) == (25.0, 25.0, 1.0)
+        assert bracket_depths(ds, 500.0, nearest) == (100.0, 100.0, 1.0)
+    assert bracket_depths(ds, 70.0, True) == (60.0, 60.0, 1.0)

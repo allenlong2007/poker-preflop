@@ -32,9 +32,10 @@ def bracket(pre, stack, nearest=False):
 
 def bracket_depths(ds, stack, nearest=False):
     """Select bracketing depths from a sorted list of available models."""
-    s = max(float(stack), 1e-9)
+    s = float(stack)
+    s = ds[-1] if not math.isfinite(s) else min(max(s, ds[0]), ds[-1])     # inf / nan / out of range: no log error
     if nearest:
-        d = min(ds, key=lambda d: abs(math.log(d / max(s, 1.0))))
+        d = min(ds, key=lambda d: abs(math.log(d / s)))
         return d, d, 1.0
     if s <= ds[0]:
         return ds[0], ds[0], 1.0
