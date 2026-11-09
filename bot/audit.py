@@ -77,6 +77,7 @@ class AuditLog:
                        "solver_flops": engine.use_solver_flops, "translate": engine.translate,
                        "pot_odds": engine.pot_odds,
                        "postflop_depths": list(getattr(engine, "postflop_depths", ())),
+                       "postflop_nearest": bool(getattr(engine, "postflop_depth_nearest", False)),
                        "stages_off": sorted(getattr(engine, "off", ())),
                        "pot_odds_max_bb": _finite(getattr(engine, "pot_odds_max_bb", None)),   # None: no limit
                        **{key: getattr(engine, key, None) for key in

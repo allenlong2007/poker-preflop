@@ -104,3 +104,12 @@ def test_wide_menu_has_unique_labels():
         for sizes in street.values():
             assert len({f"{f:.2g}" for f in sizes}) == len(sizes)
     assert len({f"{f:.2g}" for f in OPTS_WIDE["raise_pot"]}) == len(OPTS_WIDE["raise_pot"])
+
+
+def test_nearest_depth_mode_plays_one_model():
+    from bot.engine import Engine
+    near = Engine(exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True)
+    assert [d for d, _, w in near._postflop_models("srp", 70)] == [60]
+    assert [d for d, _, w in near._postflop_models("srp", 80)] == [100]
+    blend = Engine(exact_required=False, postflop_depths=(25, 40, 60, 100))
+    assert [d for d, _, w in blend._postflop_models("srp", 70)] == [60, 100]

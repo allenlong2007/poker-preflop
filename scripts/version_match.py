@@ -34,7 +34,11 @@ def engine():
         return Engine(exact_required=False, seed=1, pot_odds=True, policy_overrides={"srp": os.environ["SRP_POLICY"]})
     if os.environ.get("POSTFLOP_DEPTHS"):
         depths = [float(s) for s in os.environ["POSTFLOP_DEPTHS"].split(",")]
-        return Engine(exact_required=False, seed=1, pot_odds=True, postflop_depths=depths)
+        e = Engine(exact_required=False, seed=1, pot_odds=True, postflop_depths=depths)
+        if os.environ.get("POSTFLOP_MAX"):
+            e.postflop_depth_max = float(os.environ["POSTFLOP_MAX"])
+        e.postflop_depth_nearest = os.environ.get("POSTFLOP_NEAREST") == "1"
+        return e
     try:
         return Engine(exact_required=False, seed=1, pot_odds=True)      # v7+: legacy serving, as the live server
     except TypeError:                                                   # v6 and older: no exact mode

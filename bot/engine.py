@@ -205,7 +205,7 @@ class Engine:
     def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
-                 postflop_depths=None, policy_overrides=None):
+                 postflop_depths=None, policy_overrides=None, postflop_nearest=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -244,6 +244,12 @@ class Engine:
         self.translate = translate
         self._pots, self._flops, self._opts = {}, {}, {}
         self.postflop_depths = tuple(sorted(set(postflop_depths or ()) - {STACK}))
+        # postflop_nearest: play the depth model nearest the effective stack (log scale) instead of blending the two
+        # around it. Nearest beat the blend on four fresh seeds (2026-11-08): the blend lost at 70 and 90bb, where it
+        # mixes the 60 and 100bb models, and nearest plays exactly v7 from 77.5bb up. postflop_depth_max: above it
+        # the 100bb models play alone (kept for experiments).
+        self.postflop_depth_max = None
+        self.postflop_depth_nearest = postflop_nearest
         self._depth_pots, self._solver_opts = {}, {}
         self.policy_overrides = {pot: Path(path) for pot, path in (policy_overrides or {}).items()}
         self._solver_flags = set()
@@ -529,7 +535,7 @@ class Engine:
 
     def _postflop_models(self, pot, stack):
         base = self._pot(pot)
-        if not self.postflop_depths:
+        if not self.postflop_depths or (self.postflop_depth_max is not None and stack > self.postflop_depth_max):
             return [(STACK, base, 1.0)]
         models = {STACK: base}
         for depth in self.postflop_depths:
@@ -545,7 +551,7 @@ class Engine:
                 self._depth_pots[key] = model
             if self._depth_pots[key] is not None:
                 models[depth] = self._depth_pots[key]
-        lo, hi, w = bracket_depths(sorted(models), stack)
+        lo, hi, w = bracket_depths(sorted(models), stack, nearest=self.postflop_depth_nearest)
         if lo == hi:
             return [(lo, models[lo], 1.0)]
         return [(lo, models[lo], 1 - w), (hi, models[hi], w)]
