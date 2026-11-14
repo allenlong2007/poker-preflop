@@ -183,3 +183,33 @@ def test_runner_refuses_a_shared_or_linked_token(tmp_path):
     with pytest.raises(OSError):
         read_token(link)
     assert read_token(tmp_path / "missing") == ""
+
+
+def test_hand_record_feeds_the_opponent_profile():
+    from bot.chipzen.adapter import hand_record
+    from bot.opponent import profile
+    result = {"hand_number": 3, "payouts": [{"seat": 1, "amount": 1000}],
+              "showdown": [{"seat": 0, "hole_cards": ["Ah", "Kd"]}, {"seat": 1, "hole_cards": ["Qs", "Qc"]}],
+              "action_history": BLINDS + [
+                  {"seat": 0, "action": "raise", "amount": 50, "phase": "preflop"},
+                  {"seat": 1, "action": "raise", "amount": 500, "phase": "preflop"},
+                  {"seat": 0, "action": "call", "amount": 450, "phase": "preflop"}],
+              "stacks": [500, 1500]}
+    r = hand_record(result, 0, "AhKd", "2c7d9sJhTd", "PluriBot", "m1")
+    assert r["hero_pos"] == "btn" and r["opp_pos"] == "bb" and r["bb"] == 20
+    assert r["stacks"] == {"hero": 50.0, "opp": 50.0}
+    assert r["net"]["hero"] == -25.0 and r["shown"] == {"hero": "AhKd", "opp": "QsQc"}
+    assert r["history"][0] == [["btn", "raise", 2.5], ["bb", "raise", 25.0], ["btn", "call", None]] or \
+        r["history"][0][1] == ["bb", "raise", 25.0]
+    prof = profile([r])
+    assert prof["nodes"]["bb_vs_open"]["n"] == 1
+
+
+def test_micro_pushfold_calls_wide_and_shoves_short():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    e = v8_engine()
+    d = e.decide("bb", "7h2h", "", [[Act("btn", "raise", 2.7)]], sample=False, stack=2.7)
+    assert d.action == "call"
+    d = e.decide("btn", "Kd7c", "", [[]], sample=False, stack=4.0)
+    assert d.action == "raise" and d.to >= 3.99

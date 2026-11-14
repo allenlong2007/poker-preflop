@@ -23,7 +23,8 @@ POSTS = ("post_small_blind", "post_big_blind", "post_ante")
 
 def v8_engine():
     """The v8 configuration (same as bot/pokernow/server.py on this branch)."""
-    return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True)
+    return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True,
+                  micro_pushfold=True)
 
 
 def big_blind(history, fallback=None):
@@ -38,15 +39,12 @@ def big_blind(history, fallback=None):
     return level if level > 0 else fallback
 
 
-def translate(state, bb):
-    """GameState -> (hero position, engine history, effective stack in bb). Heads-up only."""
-    if len(state.opponent_stacks) != 1:
-        raise ValueError(f"not heads-up: {len(state.opponent_stacks) + 1} seats")
-    me = state.your_seat
-    pos = lambda seat: "btn" if seat == state.dealer_seat else "bb"      # heads-up: the button is the small blind
+def replay(action_history, dealer_seat, bb):
+    """Chipzen's flat history -> (engine history: 4 per-street lists of Act, chips each seat put in)."""
+    pos = lambda seat: "btn" if seat == dealer_seat else "bb"           # heads-up: the button is the small blind
     history = [[] for _ in PHASES]
     put_in, street_in, raised = {}, {}, {}
-    for a in state.action_history:
+    for a in action_history:
         seat, kind, amt = a["seat"], a["action"], int(a.get("amount") or 0)
         street = PHASES.index(a.get("phase", "preflop"))
         key = (seat, street)
@@ -67,11 +65,45 @@ def translate(state, bb):
             history[street].append(Act(pos(seat), name, round(amt / bb, 4)))
         elif kind in ("check", "fold"):
             history[street].append(Act(pos(seat), kind))
+    return history, put_in
+
+
+def translate(state, bb):
+    """GameState -> (hero position, engine history, effective stack in bb). Heads-up only."""
+    if len(state.opponent_stacks) != 1:
+        raise ValueError(f"not heads-up: {len(state.opponent_stacks) + 1} seats")
+    me = state.your_seat
+    history, put_in = replay(state.action_history, state.dealer_seat, bb)
     opp = next(s for s in put_in if s != me) if any(s != me for s in put_in) else None
     start_me = state.your_stack + put_in.get(me, 0)
     start_opp = state.opponent_stacks[0] + (put_in.get(opp, 0) if opp is not None else 0)
     street = PHASES.index(state.phase)
-    return pos(me), history[:street + 1], min(start_me, start_opp) / bb
+    pos = "btn" if me == state.dealer_seat else "bb"
+    return pos, history[:street + 1], min(start_me, start_opp) / bb
+
+
+def hand_record(result, me, hole, board, opp_name, match_id, fallback_bb=None):
+    """A finished Chipzen hand (round_result) -> a bot/opponent.py style record, from our point of view."""
+    hist = result.get("action_history") or []
+    bb = big_blind(hist, fallback_bb)
+    sb_seat = next((a["seat"] for a in hist if a.get("action") == "post_small_blind"), None)
+    seats = sorted({a["seat"] for a in hist})
+    if not bb or sb_seat is None or len(seats) != 2 or me not in seats:
+        return None
+    opp = next(s for s in seats if s != me)
+    history, put_in = replay(hist, sb_seat, bb)
+    paid = {p["seat"]: int(p["amount"]) for p in result.get("payouts") or []}
+    after = result.get("stacks") or []
+    start = {s: (after[s] if s < len(after) else 0) + put_in.get(s, 0) - paid.get(s, 0) for s in (me, opp)}
+    shown = {("hero" if e["seat"] == me else "opp"): "".join(e["hole_cards"]) for e in result.get("showdown") or []}
+    pos = lambda s: "btn" if s == sb_seat else "bb"
+    return {"id": f"{match_id}:{result.get('hand_number')}", "number": result.get("hand_number"),
+            "match_id": match_id, "hero_id": "hubot", "hero_name": "HUBot_v8", "bot_version": 8,
+            "opp_name": opp_name, "opp_id": f"chipzen:{opp_name}", "hero_pos": pos(me), "opp_pos": pos(opp),
+            "bb": bb, "stacks": {"hero": round(start[me] / bb, 2), "opp": round(start[opp] / bb, 2)},
+            "history": [[[a.player, a.kind, a.to] for a in street] for street in history],
+            "board": board, "hero_hole": hole, "shown": shown,
+            "net": {"hero": round((paid.get(me, 0) - put_in.get(me, 0)) / bb, 2)}}
 
 
 def to_action(d, state, bb):
@@ -127,29 +159,65 @@ class Decider:
             row["error"] = repr(e)
         row.update(action=list(out), ms=round((time.perf_counter() - t0) * 1000, 1))
         if self.log_path:
-            fd = os.open(self.log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-            os.fchmod(fd, 0o600)                                # in case it existed with wider permissions
-            with os.fdopen(fd, "a") as f:
-                f.write(json.dumps(row) + "\n")
+            _append_private(self.log_path, row)
         return out
 
 
+def _append_private(path, row):
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "a") as f:
+        f.write(json.dumps(row) + "\n")
+
+
 def make_bot(log_dir=None, engine=None):
-    """A chipzen.Bot subclass instance wrapping Decider (imports the SDK lazily)."""
+    """A chipzen.Bot subclass instance wrapping Decider (imports the SDK lazily). Every finished hand is stored as
+    an opponent record in <log_dir>/hands.jsonl."""
     from chipzen import Action, Bot
 
     class HUBotChipzen(Bot):
         def __init__(self):
             super().__init__()
             self.decider = Decider(engine=engine, log_dir=log_dir)
+            self.match_id, self.me, self.opp_name = "", None, "unknown"
+            self.hole, self.board = "", ""
 
         def on_match_start(self, match_info):
-            cfg = (match_info or {}).get("game_config") or {}
+            match_info = match_info or {}
+            cfg = match_info.get("game_config") or {}
             if cfg.get("big_blind"):
                 self.decider.last_bb = int(cfg["big_blind"])
-            log.info("match start: %s", {k: cfg.get(k) for k in ("starting_stack", "small_blind", "big_blind", "ante")})
+            self.match_id = match_info.get("match_id", "")
+            self.me = match_info.get("your_seat")
+            others = [s for s in match_info.get("seats") or [] if not s.get("is_self")]
+            self.opp_name = others[0].get("display_name", "unknown") if len(others) == 1 else "multi"
+            log.info("match start vs %s: %s", self.opp_name,
+                     {k: cfg.get(k) for k in ("starting_stack", "small_blind", "big_blind", "ante")})
+
+        def on_round_start(self, message):
+            st = (message or {}).get("state") or {}
+            self.hole, self.board = "".join(st.get("your_hole_cards") or []), ""
+            super().on_round_start(message)
+
+        def on_phase_change(self, message):
+            self.board = "".join(((message or {}).get("state") or {}).get("board") or []) or self.board
+
+        def on_round_result(self, message):
+            try:
+                result = (message or {}).get("result") or {}
+                if self.me is not None and log_dir:
+                    rec = hand_record(result, self.me, self.hole, self.board, self.opp_name, self.match_id,
+                                      self.decider.last_bb)
+                    if rec:
+                        _append_private(Path(log_dir) / "hands.jsonl", rec)
+            except Exception:
+                log.exception("could not record the hand")
+            super().on_round_result(message)
 
         def decide(self, state):
+            self.board = "".join(map(str, state.board)) or self.board
+            if self.me is None:
+                self.me = state.your_seat
             kind, amount = self.decider(state)
             return {"fold": Action.fold, "check": Action.check, "call": Action.call}[kind]() if kind != "raise" \
                 else Action.raise_to(amount)

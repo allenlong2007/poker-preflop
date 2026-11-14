@@ -35,6 +35,7 @@ STACK = 100.0
 EPS = 1e-6
 RANK_CHARS = "23456789TJQKA"              # eval7 rank index order
 SUIT_CHARS = "cdhs"                        # eval7 suit index order
+MICRO_BB = 6.0                             # micro_pushfold: push/fold Nash at or below this effective stack
 JAM_FRACTION = 0.6                         # a preflop raise to >= 60% of the stack is treated as all-in
 # Experiment 35: the whole-hand model's 12 hand groups make the BB fold too much on the turn and river
 # (bluff-catchers share a group with air). Against TexasSolver on the same spots (scripts/bb_turn_compare.py)
@@ -205,7 +206,8 @@ class Engine:
     def __init__(self, policy_dir=None, flops_dir=FLOPS, use_solver_flops=True, translate=True, seed=None,
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
-                 postflop_depths=None, policy_overrides=None, postflop_nearest=False):
+                 postflop_depths=None, policy_overrides=None, postflop_nearest=False,
+                 micro_pushfold=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -250,6 +252,8 @@ class Engine:
         # the 100bb models play alone (kept for experiments).
         self.postflop_depth_max = None
         self.postflop_depth_nearest = postflop_nearest
+        # micro_pushfold: below MICRO_BB (the smallest solved preflop tree) play heads-up push/fold Nash preflop
+        self.micro_pushfold = micro_pushfold
         self._depth_pots, self._solver_opts = {}, {}
         self.policy_overrides = {pot: Path(path) for pot, path in (policy_overrides or {}).items()}
         self._solver_flags = set()
@@ -318,6 +322,8 @@ class Engine:
             d = self._apply(d, "vs_shove", self._vs_shove, hero, hole, st)
             d = self._apply(d, "small_raise", self._small_raise, hero, hole, st)
             d = self._apply(d, "reraise_war", self._vs_reraise_war, hero, hole, st)
+            if self.micro_pushfold:
+                d = self._apply(d, "micro_pushfold", self._micro_pushfold, hero, hole, st)
         else:
             d = self._postflop(hero, hole, board[:2 + st.street], st)
             d.diagnostics.setdefault("base", {"source": d.source, "node": d.node, "probs": dict(d.probs)})
@@ -784,6 +790,40 @@ class Engine:
         probs["bet all-in"] = probs.get("bet all-in", 0.0) + moved
         d.probs = _normalise(probs)
         d.notes.append(f"river jam ({'value' if strong else 'bluff'}): {moved:.0%} of big bets -> all-in")
+        return d
+
+    def _micro_pushfold(self, d, hero, hole, st):
+        """Below MICRO_BB the depth trees are clamped to 6bb and fold too much (Chipzen 2026-11-14: BB folded 72s
+        and 82o to 2.7bb shoves). There, play the push/fold game: first in, the button shoves its Nash range; facing
+        an all-in, call when equity against a Nash shoving range beats the price (the BB facing the button's shove
+        uses its Nash calling range directly)."""
+        if st.stack > MICRO_BB + EPS:
+            return d
+        from bot import pushfold
+        i = INDEX[hand_class(hole)]
+        acts = st.history[0]
+        opp = "bb" if hero == "btn" else "btn"
+        b = st.facing(hero)
+        push, call = pushfold.ranges(st.stack)
+        if hero == "btn" and not acts and {"all-in", "fold"} <= set(self._options):
+            d.probs = _normalise({"all-in": float(push[i]), "fold": 1.0 - float(push[i])})
+            d.notes.append(f"micro push/fold at {st.stack:.1f}bb: shove {push[i]:.0%}")
+            d.diagnostics["micro_pushfold"] = {"stack": st.stack, "push": float(push[i])}
+            return d
+        all_in = b > EPS and (st.left(opp) <= EPS or st.left(hero) <= b + EPS)
+        if not all_in or not {"call", "fold"} <= set(self._options):
+            return d
+        if hero == "bb" and [(a.player, a.kind) for a in acts] == [("btn", "raise")]:
+            p = float(call[i])
+            why = f"Nash call {p:.0%}"
+        else:
+            share = pushfold.push_share(st.stack)
+            eq, need = _equity_vs_top(hole, share), b / (st.pot() + b)
+            p = 1.0 if eq > need else 0.0
+            why = f"equity {eq:.0%} vs top {share:.0%} against price {need:.0%}"
+        d.probs = _normalise({"call": p, "fold": 1.0 - p})
+        d.notes.append(f"micro push/fold at {st.stack:.1f}bb: {why}")
+        d.diagnostics["micro_pushfold"] = {"stack": st.stack, "call": p}
         return d
 
     def _vs_shove(self, d, hero, hole, st):
