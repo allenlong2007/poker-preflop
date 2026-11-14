@@ -38,3 +38,7 @@ output/pokernow/
 output/exact/
 output/match/backup_*/
 output/turn_river_check/raw/
+
+# Chipzen remote bot: token and decision logs (private)
+output/chipzen/
+chipzen.toml
