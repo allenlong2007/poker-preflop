@@ -105,7 +105,8 @@ class Decider:
         self.last_bb = None
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
-            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            os.chmod(self.log_path.parent, 0o700)
 
     def __call__(self, state):
         t0 = time.perf_counter()
@@ -127,6 +128,7 @@ class Decider:
         row.update(action=list(out), ms=round((time.perf_counter() - t0) * 1000, 1))
         if self.log_path:
             fd = os.open(self.log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            os.fchmod(fd, 0o600)                                # in case it existed with wider permissions
             with os.fdopen(fd, "a") as f:
                 f.write(json.dumps(row) + "\n")
         return out
