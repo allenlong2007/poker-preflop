@@ -14,6 +14,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,9 +52,24 @@ def main(argv):
     token = os.environ.get("CHIPZEN_TOKEN") or read_token()
     if not token.startswith("cz_extbot_"):
         sys.exit(f"no token: put it in {TOKEN_FILE} (chmod 600) or $CHIPZEN_TOKEN")
+    try:                                       # python.org builds ship no CA bundle; verification stays on
+        import certifi
+        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+    except ImportError:
+        pass
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    asyncio.run(run_external_bot(lambda: make_bot(log_dir=private_dir(ROOT / "output" / "chipzen")), bot_id=argv[0], env="prod",
-                                 token=token, client_name="hubot", user_agent="hubot/8"))
+    log = logging.getLogger("hubot.chipzen")
+    while True:                                # the SDK gives up after a few failed reconnects; keep the seat alive
+        try:
+            asyncio.run(run_external_bot(lambda: make_bot(log_dir=private_dir(ROOT / "output" / "chipzen")),
+                                         bot_id=argv[0], env="prod", token=token, client_name="hubot",
+                                         user_agent="hubot/8"))
+            log.warning("lobby closed; reconnecting in 15s")
+        except KeyboardInterrupt:
+            raise
+        except Exception:
+            log.exception("runner crashed; reconnecting in 15s")
+        time.sleep(15)
 
 
 if __name__ == "__main__":
