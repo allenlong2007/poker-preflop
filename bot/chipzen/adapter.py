@@ -9,6 +9,7 @@ Only heads-up is supported; at a bigger table the bot checks or folds.
 """
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -125,7 +126,8 @@ class Decider:
             row["error"] = repr(e)
         row.update(action=list(out), ms=round((time.perf_counter() - t0) * 1000, 1))
         if self.log_path:
-            with self.log_path.open("a") as f:
+            fd = os.open(self.log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "a") as f:
                 f.write(json.dumps(row) + "\n")
         return out
 

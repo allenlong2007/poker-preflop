@@ -164,3 +164,22 @@ def test_full_freezeout_with_escalating_blinds_stays_legal(tmp_path):
         button = 1 - button
     rows = (tmp_path / "decisions.jsonl").read_text().splitlines()
     assert rows and not any('"error"' in r for r in rows)
+
+
+def test_runner_refuses_a_shared_or_linked_token(tmp_path):
+    import os
+    import sys
+    sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "scripts"))
+    from chipzen_remote import read_token
+    tok = tmp_path / "token"
+    tok.write_text("cz_extbot_x\n")
+    os.chmod(tok, 0o600)
+    assert read_token(tok) == "cz_extbot_x"
+    os.chmod(tok, 0o644)
+    with pytest.raises(SystemExit):
+        read_token(tok)
+    link = tmp_path / "link"
+    link.symlink_to(tok)
+    with pytest.raises(OSError):
+        read_token(link)
+    assert read_token(tmp_path / "missing") == ""
