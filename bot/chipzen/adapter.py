@@ -46,16 +46,17 @@ def aggression_seen(action_history, seat):
     k = n = 0
     last = {}                                                    # phase -> the previous action on that street
     for a in action_history:
-        if not isinstance(a, dict) or a.get("phase", "preflop") == "preflop":
+        ph = a.get("phase") if isinstance(a, dict) else None
+        if not isinstance(ph, str) or ph not in PHASES[1:]:
             continue
-        prev, last[a.get("phase")] = last.get(a.get("phase")), a
+        prev, last[ph] = last.get(ph), a
         if a.get("seat") == seat or a.get("action") not in ("bet", "raise", "all_in", "check", "call", "fold"):
             continue
-        n += 1
-        # an all-in straight after our bet may only be a call for less: count it as passive (never overstate it)
+        # an all-in straight after our bet may be a raise or only a call for less: leave it out of the read
         if a["action"] == "all_in" and isinstance(prev, dict) and prev.get("seat") == seat \
                 and prev.get("action") in ("bet", "raise", "all_in"):
             continue
+        n += 1
         k += a["action"] in ("bet", "raise", "all_in")
     return k, n
 

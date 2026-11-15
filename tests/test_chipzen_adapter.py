@@ -244,7 +244,9 @@ def test_aggression_read_counts_an_allin_call_as_passive_and_caps_in_session():
     from bot.chipzen.adapter import AGGR_SEED_CAP, Decider, aggression_seen
     hist = [{"seat": 0, "action": "raise", "amount": 400, "phase": "flop"},
             {"seat": 1, "action": "all_in", "amount": 300, "phase": "flop"}]
-    assert aggression_seen(hist, 0) == (0, 1)
+    assert aggression_seen(hist, 0) == (0, 0)
+    assert aggression_seen([{"seat": 1, "action": "raise", "phase": ["flop"]},
+                            {"seat": 1, "action": "raise", "phase": "flop"}], 0) == (1, 1)
     d = Decider()
     d.set_opponent("pid:x")
     bets = [{"seat": 1, "action": "raise", "amount": 100, "phase": "flop"}] * 10
