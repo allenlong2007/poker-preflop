@@ -265,6 +265,7 @@ class Engine:
         self.opp_3bet = (0, 0)
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self.wide3_min_ratio = WIDE3_MIN_RATIO
+        self.short_call_margin = 0.0          # short-stack mode: call only with equity >= price + this (0 = as before)
         self._depth_pots, self._solver_opts = {}, {}
         self.policy_overrides = {pot: Path(path) for pot, path in (policy_overrides or {}).items()}
         self._solver_flags = set()
@@ -1082,8 +1083,9 @@ class Engine:
                 "all-in": ("raise" if b > EPS else "bet", all_in)}
         if b > EPS:
             need = b / (st.pot() + b)
-            probs = ({"all-in": 1.0} if can_raise and eq >= SHORT_JAM else {"call": 1.0}) if eq >= need else {"fold": 1.0}
-            why = f"equity {eq:.0%} vs price {need:.0%}"
+            ok = eq >= need + self.short_call_margin
+            probs = ({"all-in": 1.0} if can_raise and eq >= SHORT_JAM else {"call": 1.0}) if ok else {"fold": 1.0}
+            why = f"equity {eq:.0%} vs price {need:.0%}" + (f" + {self.short_call_margin:.0%}" if self.short_call_margin else "")
         else:
             probs = {"all-in": 1.0} if eq >= SHORT_JAM else {"check": 1.0}
             why = f"equity {eq:.0%} vs jam threshold {SHORT_JAM:.0%}"

@@ -18,7 +18,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT / "output" / "chipzen_sim"
-MATCHUPS = tuple((h, o) for h in ("v8wr", "v8wr20") for o in ("small3", "nitsmall", "shover", "minraiser", "nit", "v8"))
+MATCHUPS = tuple((h, o) for h in ("v8", "v8wr") for o in ("small3", "small3b", "shover", "minraiser", "nit", "v8"))
 SERIES = 1          # matches per seed and seat order
 
 
@@ -37,10 +37,11 @@ class Rule:
     """A simple scripted bot. shove: open-shove range share, call: share that calls an all-in, open: raise share
     (2.5x) at deep stacks, cbet: bets pot postflop with a pair or better, else check/fold."""
 
-    def __init__(self, shove, call, open_, deep_bb, seed, min3=False, x3=3.0):
+    def __init__(self, shove, call, open_, deep_bb, seed, min3=False, x3=3.0, bluff=0.0):
         from bot.engine import INDEX, hand_class, parse_cards as parse
         self.pct, self.INDEX, self.hand_class, self.parse = _strength(), INDEX, hand_class, parse
         self.shove, self.call, self.open, self.deep, self.min3, self.x3 = shove, call, open_, deep_bb, min3, x3
+        self.bluff = bluff
         self.rng = np.random.default_rng(seed)
 
     def __call__(self, s):
@@ -66,7 +67,7 @@ class Rule:
             return ("check", 0) if "check" in valid else ("call", 0)
         cards = [eval7.Card(c) for c in [hole[:2], hole[2:]] + ["".join(map(str, [b])) for b in s.board]]
         made = eval7.handtype(eval7.evaluate(cards)) != "High Card"
-        if made and "raise" in valid:
+        if (made or not s.to_call and self.rng.random() < self.bluff) and "raise" in valid:
             return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, s.pot))
         if made and "call" in valid:
             return "call", 0
@@ -78,10 +79,10 @@ def decider(name, seed):
     from bot.engine import Engine
     if name == "v8":
         e = v8_engine()
-    elif name in ("v8wr", "v8wr20"):               # wide_3bet + reraise_defend; v8wr20: min-3-bet up to 2.0x
-        e = v8_engine(wide_3bet=True, reraise_defend=True)
-        if name == "v8wr20":
-            e.wide3_min_ratio = 2.0
+    elif name.startswith("v8wr"):                  # the live config (wide_3bet + reraise_defend); v8wr+m5: short-stack
+        e = v8_engine(wide_3bet=True, reraise_defend=True)  # calls need 5 points of equity over the price
+        if "+m" in name:
+            e.short_call_margin = int(name.split("+m")[1]) / 100
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity
         e = v8_engine(wide_3bet=True)
         if name[3:]:                               # v8w45m35: 45% vs normal 3-bets, 35% vs min-3-bets
@@ -97,6 +98,8 @@ def decider(name, seed):
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, min3=True)
     elif name == "small3":                         # the shover, 3-betting to 1.8x the open (PluriBot: 2.25 -> 4)
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8)
+    elif name == "small3b":                        # small3 that also bets pot with 40% of its misses when checked to
+        return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4)
     elif name == "nitsmall":                       # the nit, 3-betting to 1.8x: a tight range behind a small size
         return Rule(shove=0.15, call=0.12, open_=0.30, deep_bb=12, seed=seed, x3=1.8)
     elif name == "nit":
