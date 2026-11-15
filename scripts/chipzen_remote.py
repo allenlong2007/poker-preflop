@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from bot.chipzen.adapter import make_bot  # noqa: E402
+from bot.chipzen.adapter import make_bot, v8_engine  # noqa: E402
 
 TOKEN_FILE = ROOT / "output" / "chipzen" / "token"
 
@@ -61,7 +61,8 @@ def main(argv):
     log = logging.getLogger("hubot.chipzen")
     while True:                                # the SDK gives up after a few failed reconnects; keep the seat alive
         try:
-            asyncio.run(run_external_bot(lambda: make_bot(log_dir=private_dir(ROOT / "output" / "chipzen")),
+            asyncio.run(run_external_bot(lambda: make_bot(log_dir=private_dir(ROOT / "output" / "chipzen"),
+                                                                      engine=v8_engine(wide_3bet=True)),
                                          bot_id=argv[0], env="prod", token=token, client_name="hubot",
                                          user_agent="hubot/8"))
             log.warning("lobby closed; reconnecting in 15s")
