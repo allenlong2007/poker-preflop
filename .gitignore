@@ -42,3 +42,4 @@ output/turn_river_check/raw/
 # Chipzen remote bot: token and decision logs (private)
 output/chipzen/
 chipzen.toml
+output/chipzen_sim/

@@ -7,6 +7,7 @@ chipzen = pytest.importorskip("chipzen")
 from chipzen import Card, GameState  # noqa: E402
 
 from bot.chipzen.adapter import Decider, big_blind, to_action, translate  # noqa: E402
+from bot.chipzen.sim import deal_hand  # noqa: E402
 from bot.engine import Decision  # noqa: E402
 
 
@@ -58,96 +59,6 @@ def test_to_action_clamps_and_never_folds_a_free_check():
     assert to_action(Decision("fold", 0, {}, "", ""), free, 20) == ("check", 0)
     short = gs(valid_actions=["fold", "call"])
     assert to_action(Decision("raise", 5.0, {}, "", ""), short, 20) == ("call", 0)
-
-
-def deal_hand(rng, stacks, sb, button, deciders, hand_no):
-    """One heads-up hand with Chipzen semantics (raise = street total, call = chips added). Returns new stacks."""
-    deck = [r + s for r in "23456789TJQKA" for s in "cdhs"]
-    rng.shuffle(deck)
-    hole = {0: deck[:2], 1: deck[2:4]}
-    board_all = deck[4:9]
-    other = 1 - button
-    stack = dict(stacks)
-    hist, put = [], {0: 0, 1: 0}
-    street_in = {0: 0, 1: 0}
-
-    def post(seat, amt, kind):
-        amt = min(amt, stack[seat])
-        stack[seat] -= amt
-        put[seat] += amt
-        street_in[seat] += amt
-        hist.append({"seat": seat, "action": kind, "amount": amt, "phase": "preflop"})
-
-    post(button, sb, "post_small_blind")
-    post(other, 2 * sb, "post_big_blind")
-    folded = None
-    for street, phase in enumerate(("preflop", "flop", "turn", "river")):
-        street_in = street_in if street == 0 else {0: 0, 1: 0}
-        high = 2 * sb if street == 0 else 0                 # the bet to match is the full level
-        last_inc = 2 * sb
-        actor = button if street == 0 else other
-        pending = {s for s in (0, 1) if stack[s] > 0}
-        while pending:
-            if actor not in pending:
-                actor = 1 - actor
-                continue
-            to_call = max(0, high - street_in[actor])
-            if stack[1 - actor] == 0 and to_call == 0:      # nothing left to decide against an all-in
-                pending.discard(actor)
-                continue
-            max_raise = street_in[actor] + stack[actor]
-            valid = ["fold", "call"] if to_call else ["check"]
-            if max_raise > high and stack[1 - actor] > 0:
-                valid.append("raise")
-            state = GameState(hand_number=hand_no, phase=phase, hole_cards=[Card.from_str(c) for c in hole[actor]],
-                              board=[Card.from_str(c) for c in board_all[:(0, 3, 4, 5)[street]]],
-                              pot=sum(put.values()), your_stack=stack[actor], opponent_stacks=[stack[1 - actor]],
-                              your_seat=actor, dealer_seat=button, to_call=to_call, min_raise=high + last_inc,
-                              max_raise=max_raise, valid_actions=valid, action_history=list(hist))
-            kind, amount = deciders[actor](state)
-            assert kind in valid, (kind, valid)
-            pending.discard(actor)
-            if kind == "fold":
-                hist.append({"seat": actor, "action": "fold", "amount": 0, "phase": phase})
-                folded = actor
-                break
-            if kind == "check":
-                hist.append({"seat": actor, "action": "check", "amount": 0, "phase": phase})
-            elif kind == "call":
-                add = min(to_call, stack[actor])
-                stack[actor] -= add
-                put[actor] += add
-                street_in[actor] += add
-                hist.append({"seat": actor, "action": "call", "amount": add, "phase": phase})
-            else:
-                assert min(high + last_inc, max_raise) <= amount <= max_raise, (amount, high, last_inc, max_raise)
-                stack[actor] -= amount - street_in[actor]
-                put[actor] += amount - street_in[actor]
-                street_in[actor] = amount
-                last_inc = max(last_inc, amount - high)
-                high = amount
-                pending = {1 - actor} if stack[1 - actor] > 0 else set()
-                hist.append({"seat": actor, "action": "raise", "amount": amount, "phase": phase})
-            actor = 1 - actor
-        if folded is not None:
-            break
-    # settle: refund uncalled, then pay the pot
-    lo = min(put.values())
-    for s in (0, 1):
-        stack[s] += put[s] - lo
-    pot = 2 * lo
-    if folded is not None:
-        stack[1 - folded] += pot
-    else:
-        import eval7
-        b = [eval7.Card(c) for c in board_all]
-        v = {s: eval7.evaluate([eval7.Card(c) for c in hole[s]] + b) for s in (0, 1)}
-        if v[0] == v[1]:
-            stack[0] += pot // 2
-            stack[1] += pot - pot // 2
-        else:
-            stack[max(v, key=v.get)] += pot
-    return stack
 
 
 def test_full_freezeout_with_escalating_blinds_stays_legal(tmp_path):
@@ -213,3 +124,37 @@ def test_micro_pushfold_calls_wide_and_shoves_short():
     assert d.action == "call"
     d = e.decide("btn", "Kd7c", "", [[]], sample=False, stack=4.0)
     assert d.action == "raise" and d.to >= 3.99
+
+
+
+def test_wide_3bet_is_opt_in_and_reads_min_3bets_as_wide():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    hist = [[Act("btn", "raise", 2.5), Act("bb", "raise", 4.0)]]           # a min-3-bet, no reads yet
+    assert not v8_engine().wide_3bet
+    e = v8_engine(wide_3bet=True)
+    d = e.decide("btn", "KdJc", "", hist, sample=False, stack=100.0)
+    assert d.action == "raise" and d.to > 4.0 and "wide_3bet" in d.diagnostics
+    d = e.decide("btn", "7h2c", "", hist, sample=False, stack=100.0)
+    assert not (d.action == "raise" and d.to > 4.0)                     # trash is not 4-bet
+    normal = [[Act("btn", "raise", 2.5), Act("bb", "raise", 7.5)]]      # a 3x 3-bet starts from a tight prior
+    assert "wide_3bet" not in e.decide("btn", "KdJc", "", normal, sample=False, stack=100.0).diagnostics
+    e.opp_3bet = (16, 20)                                               # 3-bets 80% of our opens
+    assert "wide_3bet" in e.decide("btn", "KdJc", "", normal, sample=False, stack=100.0).diagnostics
+
+
+def test_decider_counts_the_opponents_3bets_per_opponent():
+    from bot.chipzen.adapter import Decider, threebet_seen
+    three = BLINDS + [{"seat": 0, "action": "raise", "amount": 50, "phase": "preflop"},
+                      {"seat": 1, "action": "raise", "amount": 150, "phase": "preflop"}]
+    fold = BLINDS + [{"seat": 0, "action": "raise", "amount": 50, "phase": "preflop"},
+                     {"seat": 1, "action": "fold", "amount": 0, "phase": "preflop"}]
+    assert threebet_seen(three, 0) == (1, 1) and threebet_seen(fold, 0) == (0, 1)
+    assert threebet_seen(three, 1) == (0, 0)                            # only our button opens count
+    d = Decider()
+    d.set_opponent("PluriBot")
+    d.observe({"action_history": three}, 0)
+    d.observe({"action_history": fold}, 0)
+    d.set_opponent("pebble")
+    d.observe({"action_history": fold}, 0)
+    assert d.reads == {"PluriBot": [1, 2], "pebble": [0, 1]}

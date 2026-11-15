@@ -21,10 +21,20 @@ PHASES = ("preflop", "flop", "turn", "river")
 POSTS = ("post_small_blind", "post_big_blind", "post_ante")
 
 
-def v8_engine():
-    """The v8 configuration (same as bot/pokernow/server.py on this branch)."""
+def v8_engine(wide_3bet=False):
+    """The v8 configuration (same as bot/pokernow/server.py on this branch). wide_3bet: the opt-in 3-bet read."""
     return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True,
-                  micro_pushfold=True)
+                  micro_pushfold=True, wide_3bet=wide_3bet)
+
+
+def threebet_seen(action_history, seat):
+    """From a finished hand: (opponent 3-bet?, opponent faced our button open?) as (0/1, 0/1)."""
+    pre = [a for a in action_history if a.get("phase", "preflop") == "preflop"]
+    button = next((a["seat"] for a in pre if a["action"] == "post_small_blind"), None)
+    acts = [a for a in pre if not a["action"].startswith("post")]
+    if button != seat or len(acts) < 2 or acts[0]["seat"] != seat or acts[0]["action"] != "raise":
+        return 0, 0
+    return int(acts[1]["action"] == "raise"), 1
 
 
 def big_blind(history, fallback=None):
@@ -135,6 +145,8 @@ class Decider:
     def __init__(self, engine=None, log_dir=None):
         self.engine = engine or v8_engine()
         self.last_bb = None
+        self.seat, self.opp = None, "unknown"
+        self.reads = {}                                          # opponent name -> [3-bets, our opens they faced]
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -149,6 +161,8 @@ class Decider:
             if not bb:
                 raise ValueError("no big blind found")
             self.last_bb = bb
+            self.seat = state.your_seat
+            self.engine.opp_3bet = tuple(self.reads.get(self.opp, (0, 0)))
             hero, history, eff = translate(state, bb)
             d = self.engine.decide(hero, row["hole"], row["board"], history, stack=eff)
             out = to_action(d, state, bb)
@@ -161,6 +175,21 @@ class Decider:
         if self.log_path:
             _append_private(self.log_path, row)
         return out
+
+
+    def set_opponent(self, name):
+        self.opp = name or "unknown"
+
+    def observe(self, result, seat=None):
+        """A finished hand (Chipzen round result): update this opponent's 3-bet count."""
+        seat = self.seat if seat is None else seat
+        if seat is None:
+            return
+        k, n = threebet_seen(result.get("action_history") or [], seat)
+        if n:
+            r = self.reads.setdefault(self.opp, [0, 0])
+            r[0] += k
+            r[1] += n
 
 
 def _append_private(path, row):
@@ -191,6 +220,7 @@ def make_bot(log_dir=None, engine=None):
             self.me = match_info.get("your_seat")
             others = [s for s in match_info.get("seats") or [] if not s.get("is_self")]
             self.opp_name = others[0].get("display_name", "unknown") if len(others) == 1 else "multi"
+            self.decider.set_opponent(self.opp_name)
             log.info("match start vs %s: %s", self.opp_name,
                      {k: cfg.get(k) for k in ("starting_stack", "small_blind", "big_blind", "ante")})
 
@@ -205,6 +235,7 @@ def make_bot(log_dir=None, engine=None):
         def on_round_result(self, message):
             try:
                 result = (message or {}).get("result") or {}
+                self.decider.observe(result, self.me)
                 if self.me is not None and log_dir:
                     rec = hand_record(result, self.me, self.hole, self.board, self.opp_name, self.match_id,
                                       self.decider.last_bb)

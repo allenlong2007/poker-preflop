@@ -207,7 +207,7 @@ class Engine:
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
                  postflop_depths=None, policy_overrides=None, postflop_nearest=False,
-                 micro_pushfold=False):
+                 micro_pushfold=False, wide_3bet=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -254,6 +254,12 @@ class Engine:
         self.postflop_depth_nearest = postflop_nearest
         # micro_pushfold: below MICRO_BB (the smallest solved preflop tree) play heads-up push/fold Nash preflop
         self.micro_pushfold = micro_pushfold
+        # wide_3bet (Chipzen, 2026-11-14): read the opponent's 3-bets vs our button opens as their observed share
+        # (opp_3bet = (3-bets, opens faced), set by the adapter) instead of the solver's tight range; min-3-bets start
+        # wide. Against a wide 3-bettor: 4-bet the hands that beat their range, call on realised equity, else fold.
+        self.wide_3bet = wide_3bet
+        self.opp_3bet = (0, 0)
+        self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self._depth_pots, self._solver_opts = {}, {}
         self.policy_overrides = {pot: Path(path) for pot, path in (policy_overrides or {}).items()}
         self._solver_flags = set()
@@ -321,6 +327,8 @@ class Engine:
             d.diagnostics.setdefault("base", {"source": d.source, "node": d.node, "probs": dict(d.probs)})
             d = self._apply(d, "vs_shove", self._vs_shove, hero, hole, st)
             d = self._apply(d, "small_raise", self._small_raise, hero, hole, st)
+            if self.wide_3bet:
+                d = self._apply(d, "wide_3bet", self._wide_3bet, hero, hole, st)
             d = self._apply(d, "reraise_war", self._vs_reraise_war, hero, hole, st)
             if self.micro_pushfold:
                 d = self._apply(d, "micro_pushfold", self._micro_pushfold, hero, hole, st)
@@ -920,6 +928,44 @@ class Engine:
                        f"{need:.0%}: {verdict} ({w:.0%} weight, strictness {self.strict:.2f})")
         return d
 
+    def _wide_3bet_share(self, ratio):
+        """The opponent's estimated 3-bet share vs our open: their observed rate shrunk to a prior (tight for normal
+        sizes, wide for min-3-bets, which naive bots make with most hands)."""
+        k, n = self.opp_3bet
+        prior = WIDE3_MIN_PRIOR if ratio <= WIDE3_MIN_RATIO else WIDE3_PRIOR
+        return (k + prior * WIDE3_WEIGHT) / (n + WIDE3_WEIGHT)
+
+    def _wide_3bet(self, d, hero, hole, st):
+        acts = st.history[0]
+        if hero != "btn" or [(a.player, a.kind) for a in acts] != [("btn", "raise"), ("bb", "raise")]:
+            return d
+        opp = "bb"
+        if st.left(opp) <= EPS or acts[1].to >= JAM_FRACTION * st.stack - EPS or "fold" not in self._options:
+            return d                                         # all-ins: _vs_shove and the jam node decide
+        ratio = acts[1].to / max(acts[0].to, EPS)
+        share = self._wide_3bet_share(ratio)
+        if share < WIDE3_ON:
+            return d
+        eq = _equity_vs_top(hole, min(1.0, share))
+        b = st.facing(hero)
+        need = b / (st.pot() + b)
+        four = "4-bet" if "4-bet" in self._options else "all-in"
+        if four in self._options and self._options[four][1] >= JAM_FRACTION * st.stack - EPS:
+            four = "all-in"
+        d.diagnostics["wide_3bet"] = {"share": share, "equity": eq, "price": need, "observed": list(self.opp_3bet)}
+        if eq >= (self.wide3_min_eq if ratio <= WIDE3_MIN_RATIO else self.wide3_eq) and four in self._options:
+            d.probs = {four: 1.0}
+            verdict = four
+        elif eq * WIDE3_REAL > need and "call" in self._options and d.probs.get("fold", 0.0) > 0:
+            probs = dict(d.probs)                            # never fold more than the tree: only fold -> call
+            probs["call"] = probs.get("call", 0.0) + probs.pop("fold")
+            d.probs = probs
+            verdict = "call, not fold"
+        else:
+            return d
+        d.notes.append(f"wide 3-bettor (top {share:.0%}): equity {eq:.0%} vs price {need:.0%}: {verdict}")
+        return d
+
     def _small_raise(self, d, hero, hole, st):
         """Experiment 46: the tree reads any preflop raise as its own (big) size; a min-raise priced at
         SMALL_RAISE_PRICE or less is only folded when the hand's equity against a strong range (top
@@ -1297,6 +1343,13 @@ SMALL_RAISE_RANGE, SMALL_RAISE_REAL = 0.25, 0.75
 REWAR_RANGE = {3: 0.06, 4: 0.035}
 REWAR_REAL, REWAR_JAM_EQ, REWAR_FULL_STRICT = 0.55, 0.48, 0.3
 REWAR_PRIOR_CAP = 0.75      # weight of the check on the population read alone (no hands of this opponent yet)
+WIDE3_PRIOR, WIDE3_MIN_PRIOR = 0.15, 0.45   # wide_3bet: prior 3-bet share for normal / min-3-bet sizes
+WIDE3_MIN_RATIO = 1.6       # a 3-bet to at most this multiple of the open is a min-3-bet
+WIDE3_WEIGHT = 8.0          # prior strength, in opens
+WIDE3_ON = 0.25             # act once the estimated share is at least this
+WIDE3_4BET_EQ = 0.45        # 4-bet with at least this all-in equity vs their 3-bet range (sim sweep: 0.55/0.50/0.45)
+WIDE3_MIN_4BET_EQ = 0.35    # facing a min-3-bet (sim sweep: 0.45/0.40/0.35; calling them lost most postflop)
+WIDE3_REAL = 0.8            # call when realised equity (x this) beats the price
 SMALL_RAISE_MAX_RAISES = 2  # experiment 48: the check applies facing an open / iso or a 3-bet, never a 4-bet+
 SHOVE_MIN_SEEN = 3          # experiment 46: preflop shoves seen at a spot before the read replaces the tree
 SHOVE_PRIOR = (0.03, 5)     # prior shove share and its weight (deals)
