@@ -192,3 +192,15 @@ def test_reraise_defend_prices_calls_after_our_raise_at_any_depth():
     plain = [[Act("btn", "raise", 2.5), Act("bb", "call", None)], [Act("bb", "bet", 3.0)]]  # no bet of ours first
     assert "pot_odds" not in v8_engine(reraise_defend=True).decide(
         "btn", "QhJh", "Qd7c2s", plain, sample=False, stack=100.0).diagnostics
+
+
+def test_load_reads_skips_overlong_lines_without_losing_the_next(tmp_path, monkeypatch):
+    import json
+    from bot.chipzen import adapter
+    monkeypatch.setattr(adapter, "READS_MAX_LINE", 200)
+    good = json.dumps({"opp_key": "pid:p", "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]})
+    (tmp_path / "hands.jsonl").write_text("x" * 5000 + "\n" + good + "\n")
+    assert adapter.load_reads(tmp_path / "hands.jsonl") == {"pid:p": [1, 1]}
+    long_name = adapter.hand_record({"hand_number": 1, "action_history": BLINDS, "stacks": [990, 1010]},
+                                    0, "AhKd", "", "n" * 10_000, "m")
+    assert long_name is None or len(long_name["opp_name"]) <= 64

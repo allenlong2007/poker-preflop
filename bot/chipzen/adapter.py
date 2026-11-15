@@ -112,7 +112,8 @@ def hand_record(result, me, hole, board, opp_name, match_id, fallback_bb=None, o
     pos = lambda s: "btn" if s == sb_seat else "bb"
     return {"id": f"{match_id}:{result.get('hand_number')}", "number": result.get("hand_number"),
             "match_id": match_id, "hero_id": "hubot", "hero_name": "HUBot_v8", "bot_version": 8,
-            "opp_name": opp_name, "opp_id": f"chipzen:{opp_name}", "opp_key": opp_key, "hero_pos": pos(me), "opp_pos": pos(opp),
+            "opp_name": str(opp_name)[:64], "opp_id": f"chipzen:{str(opp_name)[:64]}",
+            "opp_key": str(opp_key)[:128] if opp_key else None, "hero_pos": pos(me), "opp_pos": pos(opp),
             "bb": bb, "stacks": {"hero": round(start[me] / bb, 2), "opp": round(start[opp] / bb, 2)},
             "history": [[[a.player, a.kind, a.to] for a in street] for street in history],
             "board": board, "hero_hole": hole, "shown": shown,
@@ -156,11 +157,15 @@ def load_reads(path):
     try:
         with open(path, encoding="utf-8", errors="replace") as f:
             used = 0
-            for line in f:
-                used += len(line)
-                if used > READS_MAX_BYTES:
+            while used <= READS_MAX_BYTES:
+                line = f.readline(READS_MAX_LINE + 1)            # never holds more than the cap in memory
+                if not line:
                     break
+                used += len(line)
                 if len(line) > READS_MAX_LINE:
+                    while line and not line.endswith("\n") and used <= READS_MAX_BYTES:   # skip the rest of it
+                        line = f.readline(READS_MAX_LINE + 1)
+                        used += len(line)
                     continue
                 try:
                     r = json.loads(line)
@@ -266,9 +271,9 @@ def make_bot(log_dir=None, engine=None):
             self.match_id = match_info.get("match_id", "")
             self.me = match_info.get("your_seat")
             others = [s for s in match_info.get("seats") or [] if not s.get("is_self")]
-            self.opp_name = others[0].get("display_name", "unknown") if len(others) == 1 else "multi"
+            self.opp_name = str(others[0].get("display_name", "unknown"))[:64] if len(others) == 1 else "multi"
             pid = others[0].get("participant_id") if len(others) == 1 else None
-            self.opp_key = f"pid:{pid}" if isinstance(pid, str) and pid else None
+            self.opp_key = f"pid:{pid}" if isinstance(pid, str) and 0 < len(pid) <= 120 else None
             self.decider.set_opponent(self.opp_key)            # no stable id: no carried-over read
             log.info("match start vs %s: %s", self.opp_name,
                      {k: cfg.get(k) for k in ("starting_stack", "small_blind", "big_blind", "ante")})
