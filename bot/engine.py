@@ -264,6 +264,7 @@ class Engine:
         self.reraise_defend = reraise_defend
         self.opp_3bet = (0, 0)
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
+        self.wide3_min_ratio = WIDE3_MIN_RATIO
         self._depth_pots, self._solver_opts = {}, {}
         self.policy_overrides = {pot: Path(path) for pot, path in (policy_overrides or {}).items()}
         self._solver_flags = set()
@@ -937,7 +938,7 @@ class Engine:
         """The opponent's estimated 3-bet share vs our open: their observed rate shrunk to a prior (tight for normal
         sizes, wide for min-3-bets, which naive bots make with most hands)."""
         k, n = self.opp_3bet
-        prior = WIDE3_MIN_PRIOR if ratio <= WIDE3_MIN_RATIO else WIDE3_PRIOR
+        prior = WIDE3_MIN_PRIOR if ratio <= self.wide3_min_ratio else WIDE3_PRIOR
         return (k + prior * WIDE3_WEIGHT) / (n + WIDE3_WEIGHT)
 
     def _wide_3bet(self, d, hero, hole, st):
@@ -958,7 +959,7 @@ class Engine:
         if four in self._options and self._options[four][1] >= JAM_FRACTION * st.stack - EPS:
             four = "all-in"
         d.diagnostics["wide_3bet"] = {"share": share, "equity": eq, "price": need, "observed": list(self.opp_3bet)}
-        if eq >= (self.wide3_min_eq if ratio <= WIDE3_MIN_RATIO else self.wide3_eq) and four in self._options:
+        if eq >= (self.wide3_min_eq if ratio <= self.wide3_min_ratio else self.wide3_eq) and four in self._options:
             d.probs = {four: 1.0}
             verdict = four
         elif eq * WIDE3_REAL > need and "call" in self._options and d.probs.get("fold", 0.0) > 0:
@@ -1349,7 +1350,7 @@ REWAR_RANGE = {3: 0.06, 4: 0.035}
 REWAR_REAL, REWAR_JAM_EQ, REWAR_FULL_STRICT = 0.55, 0.48, 0.3
 REWAR_PRIOR_CAP = 0.75      # weight of the check on the population read alone (no hands of this opponent yet)
 WIDE3_PRIOR, WIDE3_MIN_PRIOR = 0.15, 0.45   # wide_3bet: prior 3-bet share for normal / min-3-bet sizes
-WIDE3_MIN_RATIO = 1.6       # a 3-bet to at most this multiple of the open is a min-3-bet
+WIDE3_MIN_RATIO = 2.0       # a 3-bet to at most this x the open reads as a small 3-bet (PluriBot: 2.25 -> 4; 2.0 beat 1.6 in the sim)
 WIDE3_WEIGHT = 8.0          # prior strength, in opens
 WIDE3_ON = 0.25             # act once the estimated share is at least this
 WIDE3_4BET_EQ = 0.45        # 4-bet with at least this all-in equity vs their 3-bet range (sim sweep: 0.55/0.50/0.45)
