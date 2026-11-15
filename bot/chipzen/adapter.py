@@ -29,10 +29,12 @@ def v8_engine(wide_3bet=False):
 
 def threebet_seen(action_history, seat):
     """From a finished hand: (opponent 3-bet?, opponent faced our button open?) as (0/1, 0/1)."""
-    pre = [a for a in action_history if a.get("phase", "preflop") == "preflop"]
-    button = next((a["seat"] for a in pre if a["action"] == "post_small_blind"), None)
+    pre = [a for a in action_history if isinstance(a, dict) and a.get("phase", "preflop") == "preflop"
+           and isinstance(a.get("action"), str)]
+    button = next((a.get("seat") for a in pre if a["action"] == "post_small_blind"), None)
     acts = [a for a in pre if not a["action"].startswith("post")]
-    if button != seat or len(acts) < 2 or acts[0]["seat"] != seat or acts[0]["action"] != "raise":
+    if button is None or button != seat or len(acts) < 2 or acts[0].get("seat") != seat \
+            or acts[0]["action"] != "raise":
         return 0, 0
     return int(acts[1]["action"] == "raise"), 1
 
@@ -235,7 +237,6 @@ def make_bot(log_dir=None, engine=None):
         def on_round_result(self, message):
             try:
                 result = (message or {}).get("result") or {}
-                self.decider.observe(result, self.me)
                 if self.me is not None and log_dir:
                     rec = hand_record(result, self.me, self.hole, self.board, self.opp_name, self.match_id,
                                       self.decider.last_bb)
@@ -243,6 +244,10 @@ def make_bot(log_dir=None, engine=None):
                         _append_private(Path(log_dir) / "hands.jsonl", rec)
             except Exception:
                 log.exception("could not record the hand")
+            try:                                                 # the 3-bet read never blocks the hand record
+                self.decider.observe((message or {}).get("result") or {}, self.me)
+            except Exception:
+                log.exception("could not update the 3-bet read")
             super().on_round_result(message)
 
         def decide(self, state):
