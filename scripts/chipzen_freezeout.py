@@ -18,7 +18,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT / "output" / "chipzen_sim"
-MATCHUPS = tuple((h, o) for h in ("v8", "v8w") for o in ("shover", "minraiser", "nit", "v8_off")) + (("v8w", "v8"),)
+MATCHUPS = tuple((h, o) for h in ("v8w", "v8wr") for o in ("shover", "minraiser", "nit", "v8")) + (("v8wr", "v8w"),)
 SERIES = 1          # matches per seed and seat order
 
 
@@ -78,6 +78,8 @@ def decider(name, seed):
     from bot.engine import Engine
     if name == "v8":
         e = v8_engine()
+    elif name == "v8wr":                           # wide_3bet + reraise_defend
+        e = v8_engine(wide_3bet=True, reraise_defend=True)
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity
         e = v8_engine(wide_3bet=True)
         if name[3:]:                               # v8w45m35: 45% vs normal 3-bets, 35% vs min-3-bets

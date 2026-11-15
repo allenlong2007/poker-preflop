@@ -207,7 +207,7 @@ class Engine:
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
                  postflop_depths=None, policy_overrides=None, postflop_nearest=False,
-                 micro_pushfold=False, wide_3bet=False):
+                 micro_pushfold=False, wide_3bet=False, reraise_defend=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -258,6 +258,10 @@ class Engine:
         # (opp_3bet = (3-bets, opens faced), set by the adapter) instead of the solver's tight range; min-3-bets start
         # wide. Against a wide 3-bettor: 4-bet the hands that beat their range, call on realised equity, else fold.
         self.wide_3bet = wide_3bet
+        # reraise_defend (Chipzen, 2026-11-14): after we bet or raise a postflop street and get raised, decide the
+        # call by pot odds vs the raiser's range at any depth (the pot-odds check is otherwise off above
+        # POT_ODDS_MAX_BB). Raise-then-fold at a ~22% price gave up the biggest pots, live and in the sim.
+        self.reraise_defend = reraise_defend
         self.opp_3bet = (0, 0)
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self._depth_pots, self._solver_opts = {}, {}
@@ -341,8 +345,9 @@ class Engine:
                 d = self._apply(d, "river_jam", self._river_jam, hero, hole, board[:2 + st.street], st)
             if self._short(st, hero) and "short_stack" not in self.off:     # off: pot-odds check instead
                 d = self._apply(d, "short_stack", self._short_stack, hero, hole, board[:2 + st.street], st)
-            elif self.pot_odds and "pot_odds" not in self.off and st.stack <= self.pot_odds_max_bb \
-                    and st.facing(hero) > EPS:
+            elif self.pot_odds and "pot_odds" not in self.off and st.facing(hero) > EPS and (
+                    st.stack <= self.pot_odds_max_bb or self.reraise_defend and any(
+                        a.player == hero and a.kind in ("bet", "raise") for a in st.history[st.street])):
                 if "fold" in self._options and "call" in self._options:
                     before = dict(d.probs)
                     probs = dict.fromkeys(("fold", "call"), 0.0) | d.probs

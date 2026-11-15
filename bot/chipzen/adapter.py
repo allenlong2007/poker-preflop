@@ -7,6 +7,7 @@ converts one into the other, then turns the engine's Decision back into a legal 
 Blinds escalate during a Chipzen match, so the big blind is read from each hand's own blind posts, never assumed.
 Only heads-up is supported; at a bigger table the bot checks or folds.
 """
+import itertools
 import json
 import logging
 import os
@@ -21,10 +22,10 @@ PHASES = ("preflop", "flop", "turn", "river")
 POSTS = ("post_small_blind", "post_big_blind", "post_ante")
 
 
-def v8_engine(wide_3bet=False):
-    """The v8 configuration (same as bot/pokernow/server.py on this branch). wide_3bet: the opt-in 3-bet read."""
+def v8_engine(wide_3bet=False, reraise_defend=False):
+    """The v8 configuration (same as bot/pokernow/server.py on this branch), plus opt-in Chipzen stages."""
     return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True,
-                  micro_pushfold=True, wide_3bet=wide_3bet)
+                  micro_pushfold=True, wide_3bet=wide_3bet, reraise_defend=reraise_defend)
 
 
 def threebet_seen(action_history, seat):
@@ -94,7 +95,7 @@ def translate(state, bb):
     return pos, history[:street + 1], min(start_me, start_opp) / bb
 
 
-def hand_record(result, me, hole, board, opp_name, match_id, fallback_bb=None):
+def hand_record(result, me, hole, board, opp_name, match_id, fallback_bb=None, opp_key=None):
     """A finished Chipzen hand (round_result) -> a bot/opponent.py style record, from our point of view."""
     hist = result.get("action_history") or []
     bb = big_blind(hist, fallback_bb)
@@ -111,7 +112,7 @@ def hand_record(result, me, hole, board, opp_name, match_id, fallback_bb=None):
     pos = lambda s: "btn" if s == sb_seat else "bb"
     return {"id": f"{match_id}:{result.get('hand_number')}", "number": result.get("hand_number"),
             "match_id": match_id, "hero_id": "hubot", "hero_name": "HUBot_v8", "bot_version": 8,
-            "opp_name": opp_name, "opp_id": f"chipzen:{opp_name}", "hero_pos": pos(me), "opp_pos": pos(opp),
+            "opp_name": opp_name, "opp_id": f"chipzen:{opp_name}", "opp_key": opp_key, "hero_pos": pos(me), "opp_pos": pos(opp),
             "bb": bb, "stacks": {"hero": round(start[me] / bb, 2), "opp": round(start[opp] / bb, 2)},
             "history": [[[a.player, a.kind, a.to] for a in street] for street in history],
             "board": board, "hero_hole": hole, "shown": shown,
@@ -141,25 +142,42 @@ def safe_default(state):
     return ("check", 0) if "check" in state.valid_actions else ("fold", 0)
 
 
+_ANON = itertools.count()
+READS_MAX_BYTES = 20_000_000   # hands.jsonl beyond this is not read (a season is far smaller)
+READS_MAX_LINE = 100_000
+READS_SEED_CAP = 30            # carried-over opens count as at most this many, so the current match still moves it
+
+
 def load_reads(path):
-    """Per-opponent [3-bets, our button opens they faced] from the stored hand records (hands.jsonl), so the read
-    carries across matches and runner restarts. Bad or partial lines are skipped."""
+    """Per-opponent [3-bets, our button opens they faced] from the stored hand records (hands.jsonl), keyed by the
+    platform's participant_id (records without one are ignored), so the read carries across matches and restarts.
+    Bad lines are skipped and any failure gives an empty read."""
     reads = {}
     try:
-        lines = Path(path).read_text().splitlines()
-    except OSError:
-        return reads
-    for line in lines:
-        try:
-            r = json.loads(line)
-            pre = r["history"][0]
-            if r.get("hero_pos") != "btn" or len(pre) < 2 or list(pre[0][:2]) != ["btn", "raise"]:
-                continue
-            c = reads.setdefault(str(r.get("opp_name") or "unknown"), [0, 0])
-            c[0] += int(pre[1][1] == "raise")
-            c[1] += 1
-        except (ValueError, KeyError, IndexError, TypeError):
-            continue
+        with open(path, encoding="utf-8", errors="replace") as f:
+            used = 0
+            for line in f:
+                used += len(line)
+                if used > READS_MAX_BYTES:
+                    break
+                if len(line) > READS_MAX_LINE:
+                    continue
+                try:
+                    r = json.loads(line)
+                    key, pre = r.get("opp_key"), r["history"][0]
+                    if not isinstance(key, str) or not key or r.get("hero_pos") != "btn" or len(pre) < 2 \
+                            or list(pre[0][:2]) != ["btn", "raise"]:
+                        continue
+                    c = reads.setdefault(key, [0, 0])
+                    c[0] += int(pre[1][1] == "raise")
+                    c[1] += 1
+                except Exception:
+                    continue
+    except Exception:
+        return {}
+    for c in reads.values():                                     # scale long histories down, keeping the rate
+        if c[1] > READS_SEED_CAP:
+            c[0], c[1] = c[0] * READS_SEED_CAP / c[1], READS_SEED_CAP
     return reads
 
 
@@ -171,7 +189,10 @@ class Decider:
         self.last_bb = None
         self.seat, self.opp = None, "unknown"
         # opponent name -> [3-bets, our opens they faced], seeded from earlier matches' hand records
-        self.reads = load_reads(Path(log_dir) / "hands.jsonl") if log_dir else {}
+        try:
+            self.reads = load_reads(Path(log_dir) / "hands.jsonl") if log_dir else {}
+        except Exception:                                        # a bad file never stops the bot from starting
+            self.reads = {}
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -202,8 +223,9 @@ class Decider:
         return out
 
 
-    def set_opponent(self, name):
-        self.opp = name or "unknown"
+    def set_opponent(self, key):
+        """The opponent's stable key (pid:<participant_id>). None: a fresh key that nothing else shares."""
+        self.opp = key if key else f"anon:{next(_ANON)}"
 
     def observe(self, result, seat=None):
         """A finished hand (Chipzen round result): update this opponent's 3-bet count."""
@@ -233,7 +255,7 @@ def make_bot(log_dir=None, engine=None):
         def __init__(self):
             super().__init__()
             self.decider = Decider(engine=engine, log_dir=log_dir)
-            self.match_id, self.me, self.opp_name = "", None, "unknown"
+            self.match_id, self.me, self.opp_name, self.opp_key = "", None, "unknown", None
             self.hole, self.board = "", ""
 
         def on_match_start(self, match_info):
@@ -245,7 +267,9 @@ def make_bot(log_dir=None, engine=None):
             self.me = match_info.get("your_seat")
             others = [s for s in match_info.get("seats") or [] if not s.get("is_self")]
             self.opp_name = others[0].get("display_name", "unknown") if len(others) == 1 else "multi"
-            self.decider.set_opponent(self.opp_name)
+            pid = others[0].get("participant_id") if len(others) == 1 else None
+            self.opp_key = f"pid:{pid}" if isinstance(pid, str) and pid else None
+            self.decider.set_opponent(self.opp_key)            # no stable id: no carried-over read
             log.info("match start vs %s: %s", self.opp_name,
                      {k: cfg.get(k) for k in ("starting_stack", "small_blind", "big_blind", "ante")})
 
@@ -262,7 +286,7 @@ def make_bot(log_dir=None, engine=None):
                 result = (message or {}).get("result") or {}
                 if self.me is not None and log_dir:
                     rec = hand_record(result, self.me, self.hole, self.board, self.opp_name, self.match_id,
-                                      self.decider.last_bb)
+                                      self.decider.last_bb, self.opp_key)
                     if rec:
                         _append_private(Path(log_dir) / "hands.jsonl", rec)
             except Exception:

@@ -163,10 +163,32 @@ def test_decider_counts_the_opponents_3bets_per_opponent():
 def test_3bet_reads_persist_across_matches_from_hand_records(tmp_path):
     import json
     from bot.chipzen.adapter import Decider
-    recs = [{"opp_name": "PluriBot", "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]},
-            {"opp_name": "PluriBot", "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "fold", None]]]},
-            {"opp_name": "PluriBot", "hero_pos": "bb", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]},
-            {"opp_name": "pebble", "hero_pos": "btn", "history": [[["btn", "call", 1.0], ["bb", "raise", 4.0]]]}]
-    (tmp_path / "hands.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\nnot json\n")
-    assert Decider(log_dir=tmp_path).reads == {"PluriBot": [1, 2]}
+    k = "pid:p_abc"
+    recs = [{"opp_key": k, "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]},
+            {"opp_key": k, "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "fold", None]]]},
+            {"opp_key": k, "hero_pos": "bb", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]},
+            {"opp_key": "pid:p_x", "hero_pos": "btn", "history": [[["btn", "call", 1.0], ["bb", "raise", 4.0]]]},
+            {"opp_name": "PluriBot", "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]}]
+    (tmp_path / "hands.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\nnot json\n[1]\n")
+    assert Decider(log_dir=tmp_path).reads == {k: [1, 2]}                # records with no stable id are ignored
     assert Decider(log_dir=tmp_path / "empty").reads == {}
+    (tmp_path / "hands.jsonl").write_text("\n".join(json.dumps(recs[0]) for _ in range(90)) + "\n")
+    assert Decider(log_dir=tmp_path).reads == {k: [30, 30]}              # carried-over counts are capped
+    d = Decider()
+    d.set_opponent(None)
+    a = d.opp
+    d.set_opponent(None)
+    assert a != d.opp                                                    # no id: never shares a read
+
+
+def test_reraise_defend_prices_calls_after_our_raise_at_any_depth():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    hist = [[Act("btn", "raise", 2.5), Act("bb", "call", None)],
+            [Act("bb", "check", None), Act("btn", "bet", 1.7), Act("bb", "raise", 6.0)]]
+    off = v8_engine().decide("btn", "QhJh", "Qd7c2s", hist, sample=False, stack=100.0)
+    on = v8_engine(reraise_defend=True).decide("btn", "QhJh", "Qd7c2s", hist, sample=False, stack=100.0)
+    assert "pot_odds" not in off.diagnostics and "pot_odds" in on.diagnostics
+    plain = [[Act("btn", "raise", 2.5), Act("bb", "call", None)], [Act("bb", "bet", 3.0)]]  # no bet of ours first
+    assert "pot_odds" not in v8_engine(reraise_defend=True).decide(
+        "btn", "QhJh", "Qd7c2s", plain, sample=False, stack=100.0).diagnostics
