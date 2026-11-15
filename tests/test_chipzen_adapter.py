@@ -158,3 +158,15 @@ def test_decider_counts_the_opponents_3bets_per_opponent():
     d.set_opponent("pebble")
     d.observe({"action_history": fold}, 0)
     assert d.reads == {"PluriBot": [1, 2], "pebble": [0, 1]}
+
+
+def test_3bet_reads_persist_across_matches_from_hand_records(tmp_path):
+    import json
+    from bot.chipzen.adapter import Decider
+    recs = [{"opp_name": "PluriBot", "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]},
+            {"opp_name": "PluriBot", "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "fold", None]]]},
+            {"opp_name": "PluriBot", "hero_pos": "bb", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]},
+            {"opp_name": "pebble", "hero_pos": "btn", "history": [[["btn", "call", 1.0], ["bb", "raise", 4.0]]]}]
+    (tmp_path / "hands.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\nnot json\n")
+    assert Decider(log_dir=tmp_path).reads == {"PluriBot": [1, 2]}
+    assert Decider(log_dir=tmp_path / "empty").reads == {}

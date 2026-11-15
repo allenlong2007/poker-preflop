@@ -141,6 +141,28 @@ def safe_default(state):
     return ("check", 0) if "check" in state.valid_actions else ("fold", 0)
 
 
+def load_reads(path):
+    """Per-opponent [3-bets, our button opens they faced] from the stored hand records (hands.jsonl), so the read
+    carries across matches and runner restarts. Bad or partial lines are skipped."""
+    reads = {}
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return reads
+    for line in lines:
+        try:
+            r = json.loads(line)
+            pre = r["history"][0]
+            if r.get("hero_pos") != "btn" or len(pre) < 2 or list(pre[0][:2]) != ["btn", "raise"]:
+                continue
+            c = reads.setdefault(str(r.get("opp_name") or "unknown"), [0, 0])
+            c[0] += int(pre[1][1] == "raise")
+            c[1] += 1
+        except (ValueError, KeyError, IndexError, TypeError):
+            continue
+    return reads
+
+
 class Decider:
     """The SDK-free core: GameState in, (action, amount) out, with a JSONL decision log."""
 
@@ -148,7 +170,8 @@ class Decider:
         self.engine = engine or v8_engine()
         self.last_bb = None
         self.seat, self.opp = None, "unknown"
-        self.reads = {}                                          # opponent name -> [3-bets, our opens they faced]
+        # opponent name -> [3-bets, our opens they faced], seeded from earlier matches' hand records
+        self.reads = load_reads(Path(log_dir) / "hands.jsonl") if log_dir else {}
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
