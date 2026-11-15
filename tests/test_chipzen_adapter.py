@@ -204,3 +204,37 @@ def test_load_reads_skips_overlong_lines_without_losing_the_next(tmp_path, monke
     long_name = adapter.hand_record({"hand_number": 1, "action_history": BLINDS, "stacks": [990, 1010]},
                                     0, "AhKd", "", "n" * 10_000, "m")
     assert long_name is None or len(long_name["opp_name"]) <= 64
+
+
+def test_aggro_defend_is_opt_in_and_prices_calls_vs_a_frequent_bettor_at_depth():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    plain = [[Act("btn", "raise", 2.5), Act("bb", "call", None)], [Act("bb", "bet", 3.0)]]
+    off = v8_engine().decide("btn", "QhJh", "Qd7c2s", plain, sample=False, stack=100.0)
+    assert "pot_odds" not in off.diagnostics
+    e = v8_engine(aggro_defend=True)
+    assert "pot_odds" not in e.decide("btn", "QhJh", "Qd7c2s", plain, sample=False, stack=100.0).diagnostics
+    e.opp_aggr = (5, 50)                                # a passive opponent: still off at depth
+    assert "pot_odds" not in e.decide("btn", "QhJh", "Qd7c2s", plain, sample=False, stack=100.0).diagnostics
+    e.opp_aggr = (45, 50)                               # bets or raises 90% of the time
+    on = e.decide("btn", "QhJh", "Qd7c2s", plain, sample=False, stack=100.0)
+    assert "pot_odds" in on.diagnostics and on.probs.get("fold", 0) <= off.probs.get("fold", 0) + 1e-9
+
+
+def test_aggression_reads_count_postflop_bets_and_persist(tmp_path):
+    import json
+    from bot.chipzen.adapter import aggression_seen, load_reads
+    hist = [{"seat": 0, "action": "post_small_blind", "amount": 50, "phase": "preflop"},
+            {"seat": 1, "action": "raise", "amount": 300, "phase": "preflop"},
+            {"seat": 1, "action": "raise", "amount": 400, "phase": "flop"},
+            {"seat": 0, "action": "call", "amount": 400, "phase": "flop"},
+            {"seat": 1, "action": "check", "amount": 0, "phase": "turn"},
+            {"seat": 1, "action": "all_in", "amount": 900, "phase": "river"}, "junk"]
+    assert aggression_seen(hist, 0) == (2, 3)
+    rec = {"opp_key": "pid:p", "hero_pos": "btn",
+           "history": [[["btn", "raise", 2.5], ["bb", "call", None]], [["bb", "bet", 3.0], ["btn", "call", None]],
+                       [["bb", "check", None], ["btn", "check", None]]]}
+    (tmp_path / "hands.jsonl").write_text(json.dumps(rec) + "\n" + json.dumps(rec | {"opp_key": None}) + "\n")
+    aggr = {}
+    load_reads(tmp_path / "hands.jsonl", aggr)
+    assert aggr == {"pid:p": [1, 2]}

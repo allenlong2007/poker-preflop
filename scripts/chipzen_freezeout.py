@@ -18,7 +18,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT / "output" / "chipzen_sim"
-MATCHUPS = tuple((h, o) for h in ("v8", "v8wr") for o in ("small3", "small3b", "shover", "minraiser", "nit", "v8"))
+OPPS = ("small3", "small3b", "shover", "minraiser", "nit", "v8", "station", "maniac", "limper")
+MATCHUPS = tuple((h, o) for h in ("v8wr",) for o in OPPS)
 SERIES = 1          # matches per seed and seat order
 
 
@@ -37,11 +38,15 @@ class Rule:
     """A simple scripted bot. shove: open-shove range share, call: share that calls an all-in, open: raise share
     (2.5x) at deep stacks, cbet: bets pot postflop with a pair or better, else check/fold."""
 
-    def __init__(self, shove, call, open_, deep_bb, seed, min3=False, x3=3.0, bluff=0.0):
+    def __init__(self, shove, call, open_, deep_bb, seed, min3=False, x3=3.0, bluff=0.0, limp=0.0, station=0.0,
+                 aggro=0.0):
         from bot.engine import INDEX, hand_class, parse_cards as parse
         self.pct, self.INDEX, self.hand_class, self.parse = _strength(), INDEX, hand_class, parse
         self.shove, self.call, self.open, self.deep, self.min3, self.x3 = shove, call, open_, deep_bb, min3, x3
         self.bluff = bluff
+        self.limp = limp                # share of button opens that limp instead of raising
+        self.station = station          # postflop: never raises a made hand, calls air this often
+        self.aggro = aggro              # postflop: raises / bets any two cards this often
         self.rng = np.random.default_rng(seed)
 
     def __call__(self, s):
@@ -59,7 +64,7 @@ class Rule:
             if eff <= self.deep:
                 if p <= self.shove and "raise" in valid:
                     return "raise", s.max_raise
-            elif p <= self.open and "raise" in valid:
+            elif p <= self.open and "raise" in valid and not (s.to_call == bb // 2 and self.rng.random() < self.limp):
                 size = 2.5 * bb if s.to_call <= bb // 2 else 0 if self.min3 else self.x3 * (s.to_call + bb)  # x3 or min
                 return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, int(size)))
             if s.to_call and p > self.open:
@@ -67,6 +72,12 @@ class Rule:
             return ("check", 0) if "check" in valid else ("call", 0)
         cards = [eval7.Card(c) for c in [hole[:2], hole[2:]] + ["".join(map(str, [b])) for b in s.board]]
         made = eval7.handtype(eval7.evaluate(cards)) != "High Card"
+        if self.station:
+            if s.to_call:
+                return ("call", 0) if made or self.rng.random() < self.station else ("fold", 0)
+            return "check", 0
+        if self.aggro and self.rng.random() < self.aggro and "raise" in valid:
+            return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, s.pot))
         if (made or not s.to_call and self.rng.random() < self.bluff) and "raise" in valid:
             return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, s.pot))
         if made and "call" in valid:
@@ -80,9 +91,15 @@ def decider(name, seed):
     if name == "v8":
         e = v8_engine()
     elif name.startswith("v8wr"):                  # the live config (wide_3bet + reraise_defend); v8wr+m5: short-stack
-        e = v8_engine(wide_3bet=True, reraise_defend=True)  # calls need 5 points of equity over the price
-        if "+m" in name:
-            e.short_call_margin = int(name.split("+m")[1]) / 100
+        e = v8_engine(wide_3bet=True, reraise_defend=True,  # v8wra: + aggro_defend; v8wra+a50: from a 50% bet share
+                      aggro_defend=name.startswith("v8wra"))
+        for part in name.split("+")[1:]:
+            if part[0] == "m":                       # calls need N points of equity over the price
+                e.short_call_margin = int(part[1:]) / 100
+            elif part == "w":
+                pass
+            elif part[0] == "a":
+                e.aggro_on = int(part[1:]) / 100
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity
         e = v8_engine(wide_3bet=True)
         if name[3:]:                               # v8w45m35: 45% vs normal 3-bets, 35% vs min-3-bets
@@ -102,6 +119,12 @@ def decider(name, seed):
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4)
     elif name == "nitsmall":                       # the nit, 3-betting to 1.8x: a tight range behind a small size
         return Rule(shove=0.15, call=0.12, open_=0.30, deep_bb=12, seed=seed, x3=1.8)
+    elif name == "station":                        # opens wide, limps half, calls down any pair and 50% of air
+        return Rule(shove=0.30, call=0.50, open_=0.90, deep_bb=12, seed=seed, limp=0.5, station=0.5)
+    elif name == "maniac":                         # opens 95%, 3-bets 3x, pot-bets/raises 60% of the time postflop
+        return Rule(shove=0.60, call=0.55, open_=0.95, deep_bb=15, seed=seed, aggro=0.6)
+    elif name == "limper":                         # small3b that limps 70% of its buttons
+        return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, limp=0.7)
     elif name == "nit":
         return Rule(shove=0.15, call=0.12, open_=0.30, deep_bb=12, seed=seed)
     e.rng = np.random.default_rng(seed)
@@ -117,6 +140,8 @@ def run(job):
         for m in range(SERIES):
             s = seed * 10 + m
             d = {0: decider(hero, s * 2 + swap), 1: decider(opp, s * 2 + swap + 7919)}
+            if "+w" in hero:                       # +w: hero first plays a warm-up match vs the same bot type, so its
+                freezeout({0: d[0], 1: decider(opp, s * 2 + swap + 31337)}, s + 10**7, swap=swap)  # reads carry over
             win, hands = freezeout(d, s, swap=swap)
             out.append((hero, opp, seed, swap, m, win, hands))
     return out

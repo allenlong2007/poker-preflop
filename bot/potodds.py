@@ -231,8 +231,9 @@ def equity(hole, board, rng, rng_seed=0):
 
 
 def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_value=None, bluff_model=None,
-                   strict=1.0):
-    """The opponent's weighted combos given everything they did in the hand so far."""
+                   strict=1.0, bet_rate=None):
+    """The opponent's weighted combos given everything they did in the hand so far. bet_rate (Chipzen
+    aggro_defend): their observed postflop bet/raise share, used as how often they bet or raise."""
     opp = "bb" if hero == "btn" else "btn"
     dead = set(hole) | set(board)
     rng = combos(preflop_weights(pre, st.history[0], opp, st.stack), dead)
@@ -256,6 +257,8 @@ def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_v
             else:
                 frac = (a.to / pot) if a.kind == "bet" and pot > 0 else 0.0
                 f_bet = _bet_rate(nodes, name, DEFAULT_BET[s])
+            if bet_rate is not None:
+                f_bet = bet_rate
             agg = aggression * ((1 - strict * (1 - RAISE_BLUFF[s])) if a.kind == "raise" else 1.0)
             if size_value is not None and a.kind in ("bet", "raise"):
                 agg *= size_value(frac)
@@ -296,14 +299,14 @@ def _bet_rate(nodes, street, default, shrink=10):
 
 
 def check(probs, hole, board, st, hero, pre, prof, aggression, notes, size_value=None, bluff_model=None, strict=1.0,
-          diagnostics=None):
+          diagnostics=None, bet_rate=None):
     """Adjust a facing-a-bet decision by pot odds; returns probs."""
     call_amt = st.facing(hero)
     if call_amt <= 1e-9 or "call" not in probs or "fold" not in probs:
         return probs
     pot_after = st.pot() + call_amt
     need = call_amt / pot_after
-    rng = opponent_range(pre, st, hero, board, hole, prof, aggression, size_value, bluff_model, strict)
+    rng = opponent_range(pre, st, hero, board, hole, prof, aggression, size_value, bluff_model, strict, bet_rate)
     eq = equity(list(hole), list(board), rng)
     real = 1.0 if len(board) == 5 else REALIZE["oop" if hero == "bb" else "ip"]
     eff = eq * real

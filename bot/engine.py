@@ -207,7 +207,7 @@ class Engine:
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
                  postflop_depths=None, policy_overrides=None, postflop_nearest=False,
-                 micro_pushfold=False, wide_3bet=False, reraise_defend=False):
+                 micro_pushfold=False, wide_3bet=False, reraise_defend=False, aggro_defend=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -262,6 +262,12 @@ class Engine:
         # call by pot odds vs the raiser's range at any depth (the pot-odds check is otherwise off above
         # POT_ODDS_MAX_BB). Raise-then-fold at a ~22% price gave up the biggest pots, live and in the sim.
         self.reraise_defend = reraise_defend
+        # aggro_defend (Chipzen, 2026-11-15): opp_aggr = (postflop bets/raises, postflop actions) for this opponent,
+        # set by the adapter. Their shrunk share is used as how often they bet in the pot-odds range, and once it
+        # reaches aggro_on the pot-odds check decides calls at any depth (v8 folded too much vs a maniac).
+        self.aggro_defend = aggro_defend
+        self.opp_aggr = (0, 0)
+        self.aggro_on = AGGRO_ON
         self.opp_3bet = (0, 0)
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self.wide3_min_ratio = WIDE3_MIN_RATIO
@@ -349,7 +355,8 @@ class Engine:
                 d = self._apply(d, "short_stack", self._short_stack, hero, hole, board[:2 + st.street], st)
             elif self.pot_odds and "pot_odds" not in self.off and st.facing(hero) > EPS and (
                     st.stack <= self.pot_odds_max_bb or self.reraise_defend and any(
-                        a.player == hero and a.kind in ("bet", "raise") for a in st.history[st.street])):
+                        a.player == hero and a.kind in ("bet", "raise") for a in st.history[st.street])
+                    or (self._aggro_rate() or 0.0) >= self.aggro_on):
                 if "fold" in self._options and "call" in self._options:
                     before = dict(d.probs)
                     probs = dict.fromkeys(("fold", "call"), 0.0) | d.probs
@@ -357,7 +364,7 @@ class Engine:
                     d.probs = _normalise(potodds.check(probs, hole, board[:2 + st.street], st, hero, self._range_pre(),
                                                        self.opp_profile, self._defend(st.street), d.notes,
                                                        self.size_value, self._bluffs(), self.strict,
-                                                       diagnostics=evidence))
+                                                       diagnostics=evidence, bet_rate=self._aggro_rate()))
                     d.diagnostics["pot_odds"] = evidence
                     _trace(d.diagnostics, "pot_odds", before, d.probs)
         d.diagnostics.update({
@@ -935,6 +942,15 @@ class Engine:
                        f"{need:.0%}: {verdict} ({w:.0%} weight, strictness {self.strict:.2f})")
         return d
 
+    def _aggro_rate(self):
+        """aggro_defend: the opponent's shrunk postflop bet/raise share, or None when off or nothing seen."""
+        if not self.aggro_defend:
+            return None
+        k, n = self.opp_aggr
+        if n < AGGRO_MIN_N:
+            return None
+        return (k + AGGRO_PRIOR * AGGRO_WEIGHT) / (n + AGGRO_WEIGHT)
+
     def _wide_3bet_share(self, ratio):
         """The opponent's estimated 3-bet share vs our open: their observed rate shrunk to a prior (tight for normal
         sizes, wide for min-3-bets, which naive bots make with most hands)."""
@@ -1351,6 +1367,8 @@ SMALL_RAISE_RANGE, SMALL_RAISE_REAL = 0.25, 0.75
 REWAR_RANGE = {3: 0.06, 4: 0.035}
 REWAR_REAL, REWAR_JAM_EQ, REWAR_FULL_STRICT = 0.55, 0.48, 0.3
 REWAR_PRIOR_CAP = 0.75      # weight of the check on the population read alone (no hands of this opponent yet)
+AGGRO_PRIOR, AGGRO_WEIGHT, AGGRO_MIN_N = 0.35, 20.0, 10   # aggro_defend: prior bet share, its weight, min actions
+AGGRO_ON = 0.6                 # aggro_defend: pot-odds calls at any depth from this shrunk bet share
 WIDE3_PRIOR, WIDE3_MIN_PRIOR = 0.15, 0.45   # wide_3bet: prior 3-bet share for normal / min-3-bet sizes
 WIDE3_MIN_RATIO = 2.0       # a 3-bet to at most this x the open reads as a small 3-bet (PluriBot: 2.25 -> 4; 2.0 beat 1.6 in the sim)
 WIDE3_WEIGHT = 8.0          # prior strength, in opens
