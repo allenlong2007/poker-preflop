@@ -238,3 +238,16 @@ def test_aggression_reads_count_postflop_bets_and_persist(tmp_path):
     aggr = {}
     load_reads(tmp_path / "hands.jsonl", aggr)
     assert aggr == {"pid:p": [1, 2]}
+
+
+def test_aggression_read_counts_an_allin_call_as_passive_and_caps_in_session():
+    from bot.chipzen.adapter import AGGR_SEED_CAP, Decider, aggression_seen
+    hist = [{"seat": 0, "action": "raise", "amount": 400, "phase": "flop"},
+            {"seat": 1, "action": "all_in", "amount": 300, "phase": "flop"}]
+    assert aggression_seen(hist, 0) == (0, 1)
+    d = Decider()
+    d.set_opponent("pid:x")
+    bets = [{"seat": 1, "action": "raise", "amount": 100, "phase": "flop"}] * 10
+    for _ in range(20):
+        d.observe({"action_history": bets}, 0)
+    assert d.aggr["pid:x"][1] == AGGR_SEED_CAP and abs(d.aggr["pid:x"][0] - AGGR_SEED_CAP) < 1e-9

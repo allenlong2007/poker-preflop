@@ -44,11 +44,18 @@ def threebet_seen(action_history, seat):
 def aggression_seen(action_history, seat):
     """From a finished hand: (opponent postflop bets/raises, opponent postflop actions)."""
     k = n = 0
+    last = {}                                                    # phase -> the previous action on that street
     for a in action_history:
-        if not isinstance(a, dict) or a.get("phase", "preflop") == "preflop" or a.get("seat") == seat \
-                or a.get("action") not in ("bet", "raise", "all_in", "check", "call", "fold"):
+        if not isinstance(a, dict) or a.get("phase", "preflop") == "preflop":
+            continue
+        prev, last[a.get("phase")] = last.get(a.get("phase")), a
+        if a.get("seat") == seat or a.get("action") not in ("bet", "raise", "all_in", "check", "call", "fold"):
             continue
         n += 1
+        # an all-in straight after our bet may only be a call for less: count it as passive (never overstate it)
+        if a["action"] == "all_in" and isinstance(prev, dict) and prev.get("seat") == seat \
+                and prev.get("action") in ("bet", "raise", "all_in"):
+            continue
         k += a["action"] in ("bet", "raise", "all_in")
     return k, n
 
@@ -278,6 +285,8 @@ class Decider:
             r = self.aggr.setdefault(self.opp, [0, 0])
             r[0] += k
             r[1] += n
+            if r[1] > AGGR_SEED_CAP:                             # a sliding read: recent play counts, old play fades
+                r[0], r[1] = r[0] * AGGR_SEED_CAP / r[1], AGGR_SEED_CAP
 
 
 def _append_private(path, row):
