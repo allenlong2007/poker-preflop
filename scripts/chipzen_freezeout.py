@@ -111,6 +111,10 @@ def decider(name, seed):
                 e.deepjam_borrow_frac = int(part[1:]) / 100
             elif part[0] == "a":
                 e.aggro_on = int(part[1:]) / 100
+            elif part[0] == "r":                     # +r60: call a wide 3-bet when 60% of equity beats the price
+                e.wide3_real = int(part[1:]) / 100
+            elif part[0] == "e":                     # +e40: 4-bet a wide (normal-size) 3-bet at 40% equity
+                e.wide3_eq = int(part[1:]) / 100
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity
         e = v8_engine(wide_3bet=True)
         if name[3:]:                               # v8w45m35: 45% vs normal 3-bets, 35% vs min-3-bets

@@ -278,6 +278,7 @@ class Engine:
         self.opp_3bet = (0, 0)
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self.wide3_min_ratio = WIDE3_MIN_RATIO
+        self.wide3_real = WIDE3_REAL
         self.short_call_margin = 0.0          # short-stack mode: call only with equity >= price + this (0 = as before)
         self._depth_pots, self._solver_opts = {}, {}
         self.policy_overrides = {pot: Path(path) for pot, path in (policy_overrides or {}).items()}
@@ -1017,7 +1018,7 @@ class Engine:
         if eq >= (self.wide3_min_eq if ratio <= self.wide3_min_ratio else self.wide3_eq) and four in self._options:
             d.probs = {four: 1.0}
             verdict = four
-        elif eq * WIDE3_REAL > need and "call" in self._options and d.probs.get("fold", 0.0) > 0:
+        elif eq * self.wide3_real > need and "call" in self._options and d.probs.get("fold", 0.0) > 0:
             probs = dict(d.probs)                            # never fold more than the tree: only fold -> call
             probs["call"] = probs.get("call", 0.0) + probs.pop("fold")
             d.probs = probs
