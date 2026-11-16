@@ -274,6 +274,7 @@ class Engine:
         # equity vs their jam range: the top share given by opp_jams = (deep preflop jams, deep preflop actions).
         self.deep_jam = deep_jam
         self.opp_jams = (0, 0)
+        self.deepjam_borrow_frac = DEEPJAM_BORROW_FRAC   # 0: only true all-ins (the f59703f behaviour)
         self.opp_3bet = (0, 0)
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self.wide3_min_ratio = WIDE3_MIN_RATIO
@@ -955,16 +956,27 @@ class Engine:
             return d
         opp = "bb" if hero == "btn" else "btn"
         b = st.facing(hero)
-        if st.left(opp) > EPS and st.left(hero) > b + EPS:
-            return d                                         # not an all-in (theirs or ours by calling)
+        if b <= EPS:
+            return d
+        allin = st.left(opp) <= EPS or st.left(hero) <= b + EPS
+        # A big raise short of all-in can also borrow a shallow tree's all-in node (a 4-bet to 30 at 50bb used the
+        # 25bb node and called 17 of 20 test hands): price those as if all the chips go in.
+        borrow = (d.diagnostics.get("lookup") or {}).get("depth_node_borrow") or []
+        shallow = bool(borrow) and all(x[1] <= self.deepjam_borrow_frac * st.stack for x in borrow)
+        if not (allin or shallow):
+            return d
         k, n = self.opp_jams
         base = DEEPJAM_PRIOR / DEEPJAM_RANGE_SCALE          # the prior jam rate per deep action
         share = float(min(1.0, max(DEEPJAM_PRIOR, (k + base * DEEPJAM_WEIGHT) / (n + DEEPJAM_WEIGHT)
                                    * DEEPJAM_RANGE_SCALE)))
-        eq, need = _equity_vs_top(hole, share), b / (st.pot() + b)
+        add = b + max(0.0, min(st.left(hero) - b, st.left(opp)))  # our chips in if it all goes in
+        opp_add = min(st.left(opp), max(0.0, st.left(hero) - b))
+        eq, need = _equity_vs_top(hole, share), add / (st.pot() + add + opp_add)
         call = eq >= need + DEEPJAM_MARGIN
-        d.probs = {"call": 1.0} if call else {"fold": 1.0}
-        d.diagnostics["deep_jam"] = {"share": share, "equity": eq, "price": need, "observed": list(self.opp_jams)}
+        go = "call" if allin or "all-in" not in self._options else "all-in"
+        d.probs = {go: 1.0} if call else {"fold": 1.0}
+        d.diagnostics["deep_jam"] = {"share": share, "equity": eq, "price": need, "observed": list(self.opp_jams),
+                                     "all_in": allin, "borrowed": borrow}
         d.notes.append(f"deep jam: {eq:.0%} vs top {share:.0%} for a {need:.0%} price: {'call' if call else 'fold'}")
         return d
 
@@ -1397,6 +1409,7 @@ DEEPJAM_MIN_BB = 30.0          # deep_jam: only deeper than this (the 25bb trees
 DEEPJAM_PRIOR, DEEPJAM_WEIGHT = 0.08, 10.0   # their jam range starts as the top 8%; prior weight in actions
 DEEPJAM_RANGE_SCALE = 3.0      # jam share per deep preflop action -> range share in a facing-jam spot
 DEEPJAM_MARGIN = 0.02
+DEEPJAM_BORROW_FRAC = 0.75     # a node borrowed from a tree this much shallower than the stack counts as a jam node
 AGGRO_PRIOR, AGGRO_WEIGHT, AGGRO_MIN_N = 0.35, 20.0, 10   # aggro_defend: prior bet share, its weight, min actions
 AGGRO_ON = 0.6                 # aggro_defend: pot-odds calls at any depth from this shrunk bet share
 WIDE3_PRIOR, WIDE3_MIN_PRIOR = 0.15, 0.45   # wide_3bet: prior 3-bet share for normal / min-3-bet sizes

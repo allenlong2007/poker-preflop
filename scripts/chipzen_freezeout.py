@@ -39,7 +39,7 @@ class Rule:
     (2.5x) at deep stacks, cbet: bets pot postflop with a pair or better, else check/fold."""
 
     def __init__(self, shove, call, open_, deep_bb, seed, min3=False, x3=3.0, bluff=0.0, limp=0.0, station=0.0,
-                 aggro=0.0, jam=0.0, jam_any=0.0):
+                 aggro=0.0, jam=0.0, jam_any=0.0, big=0.0):
         from bot.engine import INDEX, hand_class, parse_cards as parse
         self.pct, self.INDEX, self.hand_class, self.parse = _strength(), INDEX, hand_class, parse
         self.shove, self.call, self.open, self.deep, self.min3, self.x3 = shove, call, open_, deep_bb, min3, x3
@@ -49,6 +49,7 @@ class Rule:
         self.aggro = aggro              # postflop: raises / bets any two cards this often
         self.jam = jam                  # preflop at any depth: re-raises all-in with the top `jam` share
         self.jam_any = jam_any          # preflop at any depth: re-raises (or opens) all-in with any two this often
+        self.big = big                  # preflop: re-raises to 60% of its stack (not all-in) with the top `big` share
         self.rng = np.random.default_rng(seed)
 
     def __call__(self, s):
@@ -64,6 +65,9 @@ class Rule:
             if "raise" in valid and not allin_vs and (s.to_call > bb // 2 and p <= self.jam
                                                        or self.jam_any and self.rng.random() < self.jam_any):
                 return "raise", s.max_raise
+            if "raise" in valid and not allin_vs and s.to_call > bb // 2 and p <= self.big:
+                size = int(0.6 * (s.your_stack + (s.max_raise - s.your_stack)))  # 60% of what it started the street with
+                return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise - 1, size))
             if allin_vs or s.to_call > 4 * bb:
                 return ("call", 0) if p <= self.call else ("fold", 0)
             if eff <= self.deep:
@@ -103,6 +107,8 @@ def decider(name, seed):
                 e.short_call_margin = int(part[1:]) / 100
             elif part == "w":
                 pass
+            elif part[0] == "b":                     # +b0: deep_jam on true all-ins only
+                e.deepjam_borrow_frac = int(part[1:]) / 100
             elif part[0] == "a":
                 e.aggro_on = int(part[1:]) / 100
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity
@@ -134,6 +140,8 @@ def decider(name, seed):
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, jam=0.12)
     elif name == "chaos":                          # small3b that jams any two cards 25% of the time, calls jams 50%
         return Rule(shove=0.55, call=0.50, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, jam_any=0.25)
+    elif name == "bigraiser":                      # small3b that re-raises to 60% of its stack with its top 15%
+        return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, big=0.15)
     elif name == "nit":
         return Rule(shove=0.15, call=0.12, open_=0.30, deep_bb=12, seed=seed)
     e.rng = np.random.default_rng(seed)

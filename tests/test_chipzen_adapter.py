@@ -286,3 +286,16 @@ def test_jam_seen_counts_deep_preflop_jams():
     assert jam_seen(rec) == (1, 2)
     assert jam_seen(rec | {"stacks": {"hero": 20.0, "opp": 104.0}}) == (0, 0)
     assert jam_seen({"junk": 1}) == (0, 0)
+
+
+def test_deep_jam_prices_a_big_4bet_that_borrowed_a_shallow_node():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    hist = [[Act("btn", "raise", 2.25), Act("bb", "raise", 7.5), Act("btn", "raise", 30.0)]]   # 30 of 50: not all-in
+    assert v8_engine().decide("bb", "KcTd", "", hist, sample=False, stack=50.0).action == "call"   # the old leak
+    e = v8_engine(deep_jam=True)
+    d = e.decide("bb", "KcTd", "", hist, sample=False, stack=50.0)
+    assert d.action == "fold" and d.diagnostics["deep_jam"]["borrowed"]
+    assert e.decide("bb", "KsKd", "", hist, sample=False, stack=50.0).action != "fold"
+    e.deepjam_borrow_frac = 0.0                          # true all-ins only: the old behaviour here
+    assert e.decide("bb", "KcTd", "", hist, sample=False, stack=50.0).action == "call"
