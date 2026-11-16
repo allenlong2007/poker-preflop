@@ -253,3 +253,12 @@ def test_aggression_read_counts_an_allin_call_as_passive_and_caps_in_session():
     for _ in range(20):
         d.observe({"action_history": bets}, 0)
     assert d.aggr["pid:x"][1] == AGGR_SEED_CAP and abs(d.aggr["pid:x"][0] - AGGR_SEED_CAP) < 1e-9
+
+
+def test_name_keys_skip_possibly_truncated_names(tmp_path):
+    import json
+    from bot.chipzen.adapter import load_reads
+    rec = {"hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]}
+    (tmp_path / "hands.jsonl").write_text(json.dumps(rec | {"opp_name": "x" * 64}) + "\n"
+                                          + json.dumps(rec | {"opp_name": "ok"}) + "\n")
+    assert load_reads(tmp_path / "hands.jsonl") == {"name:ok": [1, 1]}

@@ -193,8 +193,8 @@ def load_reads(path, aggr=None):
                     r = json.loads(line)
                     key, name = r.get("opp_key"), r.get("opp_name")
                     if (not isinstance(key, str) or key.startswith("pid:")) and isinstance(name, str) \
-                            and name and name not in ("unknown", "multi"):
-                        key = f"name:{name[:64]}"                # older records: per-match pid, so key on the name
+                            and 0 < len(name) < 64 and name not in ("unknown", "multi"):
+                        key = f"name:{name}"                     # older records: per-match pid, so key on the name
                     if aggr is not None and isinstance(key, str) and key and r.get("hero_pos") in ("btn", "bb"):
                         opp = "bb" if r["hero_pos"] == "btn" else "btn"
                         acts = [a for street in r["history"][1:] for a in street if a[0] == opp]
@@ -324,7 +324,8 @@ def make_bot(log_dir=None, engine=None):
             # participant_id turned out to be per match (PluriBot had a new one in each of 4 matches, 2026-11-15),
             # so reads key on the bot's display name; the 30-open / 60-action caps bound what a name clash can do.
             name = others[0].get("display_name") if len(others) == 1 else None
-            self.opp_key = f"name:{name}" if isinstance(name, str) and 0 < len(name) <= 64 else None
+            self.opp_key = f"name:{name}" if isinstance(name, str) and 0 < len(name) < 64 else None  # < 64: the
+            # records store opp_name cut to 64, so a 64-char stored name may be a longer one; neither path keys it
             self.decider.set_opponent(self.opp_key)            # no usable name: no carried-over read
             if len(others) == 1:
                 log.info("opponent seat fields: %s", sorted(str(k)[:32] for k in others[0])[:20])
