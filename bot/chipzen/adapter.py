@@ -191,7 +191,10 @@ def load_reads(path, aggr=None):
                     continue
                 try:
                     r = json.loads(line)
-                    key = r.get("opp_key")
+                    key, name = r.get("opp_key"), r.get("opp_name")
+                    if (not isinstance(key, str) or key.startswith("pid:")) and isinstance(name, str) \
+                            and name and name not in ("unknown", "multi"):
+                        key = f"name:{name[:64]}"                # older records: per-match pid, so key on the name
                     if aggr is not None and isinstance(key, str) and key and r.get("hero_pos") in ("btn", "bb"):
                         opp = "bb" if r["hero_pos"] == "btn" else "btn"
                         acts = [a for street in r["history"][1:] for a in street if a[0] == opp]
@@ -318,9 +321,13 @@ def make_bot(log_dir=None, engine=None):
             self.me = match_info.get("your_seat")
             others = [s for s in match_info.get("seats") or [] if not s.get("is_self")]
             self.opp_name = str(others[0].get("display_name", "unknown"))[:64] if len(others) == 1 else "multi"
-            pid = others[0].get("participant_id") if len(others) == 1 else None
-            self.opp_key = f"pid:{pid}" if isinstance(pid, str) and 0 < len(pid) <= 120 else None
-            self.decider.set_opponent(self.opp_key)            # no stable id: no carried-over read
+            # participant_id turned out to be per match (PluriBot had a new one in each of 4 matches, 2026-11-15),
+            # so reads key on the bot's display name; the 30-open / 60-action caps bound what a name clash can do.
+            name = others[0].get("display_name") if len(others) == 1 else None
+            self.opp_key = f"name:{name}" if isinstance(name, str) and 0 < len(name) <= 64 else None
+            self.decider.set_opponent(self.opp_key)            # no usable name: no carried-over read
+            if len(others) == 1:
+                log.info("opponent seat fields: %s", sorted(str(k)[:32] for k in others[0])[:20])
             log.info("match start vs %s: %s", self.opp_name,
                      {k: cfg.get(k) for k in ("starting_stack", "small_blind", "big_blind", "ante")})
 

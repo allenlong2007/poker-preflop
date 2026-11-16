@@ -170,7 +170,7 @@ def test_3bet_reads_persist_across_matches_from_hand_records(tmp_path):
             {"opp_key": "pid:p_x", "hero_pos": "btn", "history": [[["btn", "call", 1.0], ["bb", "raise", 4.0]]]},
             {"opp_name": "PluriBot", "hero_pos": "btn", "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5]]]}]
     (tmp_path / "hands.jsonl").write_text("\n".join(json.dumps(r) for r in recs) + "\nnot json\n[1]\n")
-    assert Decider(log_dir=tmp_path).reads == {k: [1, 2]}                # records with no stable id are ignored
+    assert Decider(log_dir=tmp_path).reads == {k: [1, 2], "name:PluriBot": [1, 1]}   # a name keys old records
     assert Decider(log_dir=tmp_path / "empty").reads == {}
     (tmp_path / "hands.jsonl").write_text("\n".join(json.dumps(recs[0]) for _ in range(90)) + "\n")
     assert Decider(log_dir=tmp_path).reads == {k: [30, 30]}              # carried-over counts are capped
