@@ -22,11 +22,11 @@ PHASES = ("preflop", "flop", "turn", "river")
 POSTS = ("post_small_blind", "post_big_blind", "post_ante")
 
 
-def v8_engine(wide_3bet=False, reraise_defend=False, aggro_defend=False):
+def v8_engine(wide_3bet=False, reraise_defend=False, aggro_defend=False, deep_jam=False):
     """The v8 configuration (same as bot/pokernow/server.py on this branch), plus opt-in Chipzen stages."""
     return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True,
                   micro_pushfold=True, wide_3bet=wide_3bet, reraise_defend=reraise_defend,
-                  aggro_defend=aggro_defend)
+                  aggro_defend=aggro_defend, deep_jam=deep_jam)
 
 
 def threebet_seen(action_history, seat):
@@ -59,6 +59,27 @@ def aggression_seen(action_history, seat):
         n += 1
         k += a["action"] in ("bet", "raise", "all_in")
     return k, n
+
+
+JAM_MIN_BB = 25.0
+
+
+def jam_seen(rec):
+    """From a hand record: (opponent preflop all-ins, opponent preflop actions), both only while 25bb+ deep."""
+    k = n = 0
+    try:
+        opp = rec.get("opp_pos") or ("bb" if rec["hero_pos"] == "btn" else "btn")
+        st = rec["stacks"]
+        if min(float(st["hero"]), float(st["opp"])) < JAM_MIN_BB:
+            return 0, 0
+        for a in rec["history"][0]:
+            if a[0] != opp:
+                continue
+            n += 1
+            k += a[1] in ("raise", "bet") and a[2] is not None and float(a[2]) >= 0.95 * float(st["opp"])
+    except Exception:
+        return 0, 0
+    return int(k), n
 
 
 def big_blind(history, fallback=None):
@@ -171,7 +192,7 @@ AGGR_SEED_CAP = 60             # the same for carried-over postflop actions (agg
 READS_SEED_CAP = 30            # carried-over opens count as at most this many, so the current match still moves it
 
 
-def load_reads(path, aggr=None):
+def load_reads(path, aggr=None, jams=None):
     """Per-opponent [3-bets, our button opens they faced] from the stored hand records (hands.jsonl), keyed by the
     platform's participant_id (records without one are ignored), so the read carries across matches and restarts.
     Bad lines are skipped and any failure gives an empty read."""
@@ -201,6 +222,12 @@ def load_reads(path, aggr=None):
                         c = aggr.setdefault(key, [0, 0])
                         c[0] += sum(a[1] in ("bet", "raise") for a in acts)
                         c[1] += len(acts)
+                    if jams is not None and isinstance(key, str) and key and not key.startswith("pid:"):
+                        jk, jn = jam_seen(r)
+                        if jn:
+                            c = jams.setdefault(key, [0, 0])
+                            c[0] += jk
+                            c[1] += jn
                     pre = r["history"][0]
                     if not isinstance(key, str) or not key or r.get("hero_pos") != "btn" or len(pre) < 2 \
                             or list(pre[0][:2]) != ["btn", "raise"]:
@@ -211,12 +238,16 @@ def load_reads(path, aggr=None):
                 except Exception:
                     continue
     except Exception:
-        if aggr is not None:
-            aggr.clear()
+        for x in (aggr, jams):
+            if x is not None:
+                x.clear()
         return {}
     for c in reads.values():                                     # scale long histories down, keeping the rate
         if c[1] > READS_SEED_CAP:
             c[0], c[1] = c[0] * READS_SEED_CAP / c[1], READS_SEED_CAP
+    for c in (jams or {}).values():
+        if c[1] > AGGR_SEED_CAP:
+            c[0], c[1] = c[0] * AGGR_SEED_CAP / c[1], AGGR_SEED_CAP
     for key in [k for k, c in (aggr or {}).items() if not c[1]]:
         del aggr[key]
     for c in (aggr or {}).values():
@@ -234,11 +265,11 @@ class Decider:
         self.seat, self.opp = None, "unknown"
         # opponent name -> [3-bets, our opens they faced], seeded from earlier matches' hand records
         # opponent -> [postflop bets/raises, postflop actions] (aggro_defend), from the same records
-        self.aggr = {}
+        self.aggr, self.jams = {}, {}                             # + [deep preflop jams, deep preflop actions]
         try:
-            self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr) if log_dir else {}
+            self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams) if log_dir else {}
         except Exception:                                        # a bad file never stops the bot from starting
-            self.reads, self.aggr = {}, {}
+            self.reads, self.aggr, self.jams = {}, {}, {}
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -256,6 +287,7 @@ class Decider:
             self.seat = state.your_seat
             self.engine.opp_3bet = tuple(self.reads.get(self.opp, (0, 0)))
             self.engine.opp_aggr = tuple(self.aggr.get(self.opp, (0, 0)))
+            self.engine.opp_jams = tuple(self.jams.get(self.opp, (0, 0)))
             hero, history, eff = translate(state, bb)
             d = self.engine.decide(hero, row["hole"], row["board"], history, stack=eff)
             out = to_action(d, state, bb)
@@ -290,6 +322,14 @@ class Decider:
             r[0] += k
             r[1] += n
             if r[1] > AGGR_SEED_CAP:                             # a sliding read: recent play counts, old play fades
+                r[0], r[1] = r[0] * AGGR_SEED_CAP / r[1], AGGR_SEED_CAP
+        rec = hand_record(result, seat, "", "", "", "", self.last_bb)
+        k, n = jam_seen(rec) if rec else (0, 0)
+        if n:
+            r = self.jams.setdefault(self.opp, [0, 0])
+            r[0] += k
+            r[1] += n
+            if r[1] > AGGR_SEED_CAP:
                 r[0], r[1] = r[0] * AGGR_SEED_CAP / r[1], AGGR_SEED_CAP
 
 

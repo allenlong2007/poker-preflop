@@ -207,7 +207,8 @@ class Engine:
                  defend_keep=None, river_lead=None, pot_odds=False, exact_policy_path=None,
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
                  postflop_depths=None, policy_overrides=None, postflop_nearest=False,
-                 micro_pushfold=False, wide_3bet=False, reraise_defend=False, aggro_defend=False):
+                 micro_pushfold=False, wide_3bet=False, reraise_defend=False, aggro_defend=False,
+                 deep_jam=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -268,6 +269,11 @@ class Engine:
         self.aggro_defend = aggro_defend
         self.opp_aggr = (0, 0)
         self.aggro_on = AGGRO_ON
+        # deep_jam (Chipzen, 2026-11-15): facing a preflop all-in deeper than DEEPJAM_MIN_BB, the 60/100bb trees have no
+        # all-in node and borrow the 25bb one, which called a 100bb 4-bet jam with 97s/KTo/A7o. Instead call only with
+        # equity vs their jam range: the top share given by opp_jams = (deep preflop jams, deep preflop actions).
+        self.deep_jam = deep_jam
+        self.opp_jams = (0, 0)
         self.opp_3bet = (0, 0)
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self.wide3_min_ratio = WIDE3_MIN_RATIO
@@ -342,6 +348,8 @@ class Engine:
             if self.wide_3bet:
                 d = self._apply(d, "wide_3bet", self._wide_3bet, hero, hole, st)
             d = self._apply(d, "reraise_war", self._vs_reraise_war, hero, hole, st)
+            if self.deep_jam:
+                d = self._apply(d, "deep_jam", self._deep_jam, hero, hole, st)
             if self.micro_pushfold:
                 d = self._apply(d, "micro_pushfold", self._micro_pushfold, hero, hole, st)
         else:
@@ -942,6 +950,24 @@ class Engine:
                        f"{need:.0%}: {verdict} ({w:.0%} weight, strictness {self.strict:.2f})")
         return d
 
+    def _deep_jam(self, d, hero, hole, st):
+        if "call" not in self._options or "fold" not in self._options or st.stack <= DEEPJAM_MIN_BB:
+            return d
+        opp = "bb" if hero == "btn" else "btn"
+        b = st.facing(hero)
+        if st.left(opp) > EPS and st.left(hero) > b + EPS:
+            return d                                         # not an all-in (theirs or ours by calling)
+        k, n = self.opp_jams
+        base = DEEPJAM_PRIOR / DEEPJAM_RANGE_SCALE          # the prior jam rate per deep action
+        share = float(min(1.0, max(DEEPJAM_PRIOR, (k + base * DEEPJAM_WEIGHT) / (n + DEEPJAM_WEIGHT)
+                                   * DEEPJAM_RANGE_SCALE)))
+        eq, need = _equity_vs_top(hole, share), b / (st.pot() + b)
+        call = eq >= need + DEEPJAM_MARGIN
+        d.probs = {"call": 1.0} if call else {"fold": 1.0}
+        d.diagnostics["deep_jam"] = {"share": share, "equity": eq, "price": need, "observed": list(self.opp_jams)}
+        d.notes.append(f"deep jam: {eq:.0%} vs top {share:.0%} for a {need:.0%} price: {'call' if call else 'fold'}")
+        return d
+
     def _aggro_rate(self):
         """aggro_defend: the opponent's shrunk postflop bet/raise share, or None when off or nothing seen."""
         if not self.aggro_defend:
@@ -1367,6 +1393,10 @@ SMALL_RAISE_RANGE, SMALL_RAISE_REAL = 0.25, 0.75
 REWAR_RANGE = {3: 0.06, 4: 0.035}
 REWAR_REAL, REWAR_JAM_EQ, REWAR_FULL_STRICT = 0.55, 0.48, 0.3
 REWAR_PRIOR_CAP = 0.75      # weight of the check on the population read alone (no hands of this opponent yet)
+DEEPJAM_MIN_BB = 30.0          # deep_jam: only deeper than this (the 25bb trees handle shallower jams)
+DEEPJAM_PRIOR, DEEPJAM_WEIGHT = 0.08, 10.0   # their jam range starts as the top 8%; prior weight in actions
+DEEPJAM_RANGE_SCALE = 3.0      # jam share per deep preflop action -> range share in a facing-jam spot
+DEEPJAM_MARGIN = 0.02
 AGGRO_PRIOR, AGGRO_WEIGHT, AGGRO_MIN_N = 0.35, 20.0, 10   # aggro_defend: prior bet share, its weight, min actions
 AGGRO_ON = 0.6                 # aggro_defend: pot-odds calls at any depth from this shrunk bet share
 WIDE3_PRIOR, WIDE3_MIN_PRIOR = 0.15, 0.45   # wide_3bet: prior 3-bet share for normal / min-3-bet sizes

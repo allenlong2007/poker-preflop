@@ -18,7 +18,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 OUT = ROOT / "output" / "chipzen_sim"
-OPPS = ("small3", "small3b", "shover", "minraiser", "nit", "v8", "station", "maniac", "limper")
+OPPS = ("small3", "small3b", "shover", "minraiser", "nit", "v8", "station", "maniac", "limper", "jammer", "chaos")
 MATCHUPS = tuple((h, o) for h in ("v8wr",) for o in OPPS)
 SERIES = 1          # matches per seed and seat order
 
@@ -39,7 +39,7 @@ class Rule:
     (2.5x) at deep stacks, cbet: bets pot postflop with a pair or better, else check/fold."""
 
     def __init__(self, shove, call, open_, deep_bb, seed, min3=False, x3=3.0, bluff=0.0, limp=0.0, station=0.0,
-                 aggro=0.0):
+                 aggro=0.0, jam=0.0, jam_any=0.0):
         from bot.engine import INDEX, hand_class, parse_cards as parse
         self.pct, self.INDEX, self.hand_class, self.parse = _strength(), INDEX, hand_class, parse
         self.shove, self.call, self.open, self.deep, self.min3, self.x3 = shove, call, open_, deep_bb, min3, x3
@@ -47,6 +47,8 @@ class Rule:
         self.limp = limp                # share of button opens that limp instead of raising
         self.station = station          # postflop: never raises a made hand, calls air this often
         self.aggro = aggro              # postflop: raises / bets any two cards this often
+        self.jam = jam                  # preflop at any depth: re-raises all-in with the top `jam` share
+        self.jam_any = jam_any          # preflop at any depth: re-raises (or opens) all-in with any two this often
         self.rng = np.random.default_rng(seed)
 
     def __call__(self, s):
@@ -59,6 +61,9 @@ class Rule:
         valid = s.valid_actions
         allin_vs = s.opponent_stacks[0] == 0
         if s.phase == "preflop":
+            if "raise" in valid and not allin_vs and (s.to_call > bb // 2 and p <= self.jam
+                                                       or self.jam_any and self.rng.random() < self.jam_any):
+                return "raise", s.max_raise
             if allin_vs or s.to_call > 4 * bb:
                 return ("call", 0) if p <= self.call else ("fold", 0)
             if eff <= self.deep:
@@ -91,8 +96,8 @@ def decider(name, seed):
     if name == "v8":
         e = v8_engine()
     elif name.startswith("v8wr"):                  # the live config (wide_3bet + reraise_defend); v8wr+m5: short-stack
-        e = v8_engine(wide_3bet=True, reraise_defend=True,  # v8wra: + aggro_defend; v8wra+a50: from a 50% bet share
-                      aggro_defend=name.startswith("v8wra"))
+        flags = name.split("+")[0][4:]           # v8wra: + aggro_defend, v8wraj: + deep_jam; v8wra+a50: from 50%
+        e = v8_engine(wide_3bet=True, reraise_defend=True, aggro_defend="a" in flags, deep_jam="j" in flags)
         for part in name.split("+")[1:]:
             if part[0] == "m":                       # calls need N points of equity over the price
                 e.short_call_margin = int(part[1:]) / 100
@@ -125,6 +130,10 @@ def decider(name, seed):
         return Rule(shove=0.60, call=0.55, open_=0.95, deep_bb=15, seed=seed, aggro=0.6)
     elif name == "limper":                         # small3b that limps 70% of its buttons
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, limp=0.7)
+    elif name == "jammer":                         # small3b that answers any raise all-in with its top 12%
+        return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, jam=0.12)
+    elif name == "chaos":                          # small3b that jams any two cards 25% of the time, calls jams 50%
+        return Rule(shove=0.55, call=0.50, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, jam_any=0.25)
     elif name == "nit":
         return Rule(shove=0.15, call=0.12, open_=0.30, deep_bb=12, seed=seed)
     e.rng = np.random.default_rng(seed)

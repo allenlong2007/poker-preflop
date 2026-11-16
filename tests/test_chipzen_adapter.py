@@ -262,3 +262,27 @@ def test_name_keys_skip_possibly_truncated_names(tmp_path):
     (tmp_path / "hands.jsonl").write_text(json.dumps(rec | {"opp_name": "x" * 64}) + "\n"
                                           + json.dumps(rec | {"opp_name": "ok"}) + "\n")
     assert load_reads(tmp_path / "hands.jsonl") == {"name:ok": [1, 1]}
+
+
+def test_deep_jam_is_opt_in_and_folds_weak_hands_to_a_deep_jam():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    hist = [[Act("btn", "raise", 2.5), Act("bb", "raise", 7.5), Act("btn", "raise", 104.0)]]
+    assert v8_engine().decide("bb", "KcTd", "", hist, sample=False, stack=96.0).action == "call"   # the old leak
+    e = v8_engine(deep_jam=True)
+    assert e.decide("bb", "KcTd", "", hist, sample=False, stack=96.0).action == "fold"
+    assert e.decide("bb", "QsQd", "", hist, sample=False, stack=96.0).action == "call"
+    e.opp_jams = (8, 12)                                # a jam-happy opponent: call wider
+    assert e.decide("bb", "KcTd", "", hist, sample=False, stack=96.0).action == "call"
+    short = [[Act("btn", "raise", 2.0), Act("bb", "raise", 6.0), Act("btn", "raise", 20.0)]]
+    assert "deep_jam" not in v8_engine(deep_jam=True).decide("bb", "KcTd", "", short, sample=False,
+                                                            stack=20.0).diagnostics   # shallow: the trees decide
+
+
+def test_jam_seen_counts_deep_preflop_jams():
+    from bot.chipzen.adapter import jam_seen
+    rec = {"hero_pos": "bb", "stacks": {"hero": 96.0, "opp": 104.0},
+           "history": [[["btn", "raise", 2.5], ["bb", "raise", 7.5], ["btn", "raise", 104.0], ["bb", "fold", None]]]}
+    assert jam_seen(rec) == (1, 2)
+    assert jam_seen(rec | {"stacks": {"hero": 20.0, "opp": 104.0}}) == (0, 0)
+    assert jam_seen({"junk": 1}) == (0, 0)
