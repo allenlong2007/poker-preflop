@@ -102,7 +102,7 @@ def decider(name, seed):
     elif name.startswith("v8wr"):                  # the live config (wide_3bet + reraise_defend); v8wr+m5: short-stack
         flags = name.split("+")[0][4:]           # v8wra: + aggro_defend, v8wraj: + deep_jam; v8wra+a50: from 50%
         e = v8_engine(wide_3bet=True, reraise_defend=True, aggro_defend="a" in flags, deep_jam="j" in flags,
-                      light_3bet="l" in flags)                 # v8wrajl: + light_3bet
+                      light_3bet="l" in flags, river_air="v" in flags)   # v8wrajl: + light_3bet, v: river_air
         for part in name.split("+")[1:]:
             if part[0] == "m":                       # calls need N points of equity over the price
                 e.short_call_margin = int(part[1:]) / 100
@@ -116,6 +116,8 @@ def decider(name, seed):
                 e.wide3_real = int(part[1:]) / 100
             elif part[0] == "o":                     # +o60: light_3bet acts from a 60% fold-to-3-bet share
                 e.light3_on = int(part[1:]) / 100
+            elif part[0] == "v":                     # +v2: river_air mode 2
+                e.river_air_mode = int(part[1:])
             elif part[0] == "e":                     # +e40: 4-bet a wide (normal-size) 3-bet at 40% equity
                 e.wide3_eq = int(part[1:]) / 100
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity

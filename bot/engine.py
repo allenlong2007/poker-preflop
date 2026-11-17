@@ -208,7 +208,7 @@ class Engine:
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
                  postflop_depths=None, policy_overrides=None, postflop_nearest=False,
                  micro_pushfold=False, wide_3bet=False, reraise_defend=False, aggro_defend=False,
-                 deep_jam=False, light_3bet=False):
+                 deep_jam=False, light_3bet=False, river_air=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -282,6 +282,12 @@ class Engine:
         self.light_3bet = light_3bet
         self.opp_f3 = (0, 0)
         self.light3_on = LIGHT3_ON
+        # river_air (Chipzen, 2026-11-17): on the river, facing a bet or raise with only high card (a board pair
+        # does not count), move the call mass to fold. The pot-odds range gave 8-high 24% equity vs a river raise on
+        # QJTK2 (Season 15 R1 vs MonteCarlo, -32bb). Mode 1: only after our own river bet was raised; mode 2: also
+        # any river bet when our high card is below a king.
+        self.river_air = river_air
+        self.river_air_mode = RIVER_AIR_MODE
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self.wide3_min_ratio = WIDE3_MIN_RATIO
         self.wide3_real = WIDE3_REAL
@@ -385,6 +391,8 @@ class Engine:
                                                        diagnostics=evidence, bet_rate=self._aggro_rate()))
                     d.diagnostics["pot_odds"] = evidence
                     _trace(d.diagnostics, "pot_odds", before, d.probs)
+            if self.river_air:
+                d = self._apply(d, "river_air", self._river_air, hero, hole, board[:2 + st.street], st)
         d.diagnostics.update({
             "exact": exact,
             "context": {"hero_position": hero, "hero_hole": "".join(map(card_str, hole)),
@@ -1065,6 +1073,21 @@ class Engine:
         d.notes.append(f"folds to 3-bets {f:.0%}: 3-bet EV {ev3:+.2f}bb vs call {evc:+.2f}bb: moved {moved:.0%} to 3-bet")
         return d
 
+    def _river_air(self, d, hero, hole, board, st):
+        """River, facing a bet or raise, holding only high card: fold instead of calling (see river_air)."""
+        if st.street != 3 or st.facing(hero) <= EPS or "fold" not in self._options or not d.probs.get("call"):
+            return d
+        mine, base = eval7.evaluate(hole + board) >> 24, eval7.evaluate(board) >> 24
+        if mine > 1 or mine > base:                          # a pair of our own or better
+            return d
+        raised = any(a.player == hero and a.kind in ("bet", "raise") for a in st.history[3])
+        if not raised and (self.river_air_mode < 2 or max(c.rank for c in hole) >= RIVER_AIR_HIGH):
+            return d
+        call = d.probs.pop("call")
+        d.probs["fold"] = d.probs.get("fold", 0.0) + call
+        d.notes.append(f"river air: high card {'raised' if raised else 'vs bet'}, call {call:.0%} -> fold")
+        return d
+
     def _small_raise(self, d, hero, hole, st):
         """Experiment 46: the tree reads any preflop raise as its own (big) size; a min-raise priced at
         SMALL_RAISE_PRICE or less is only folded when the hand's equity against a strong range (top
@@ -1454,6 +1477,8 @@ LIGHT3_MIN_BB = 15.0            # shallower, a 3-bet is close to a jam: the tree
 LIGHT3_REAL = 0.8               # equity realised when called (out of position)
 LIGHT3_OPEN_SHARE = 0.8         # the opening range a call is priced against
 LIGHT3_MARGIN = 0.1             # call -> 3-bet only when it is worth this many bb more
+RIVER_AIR_MODE = 1              # river_air: 1 = fold high card when our river bet is raised; 2 = also vs any river bet
+RIVER_AIR_HIGH = 11             # mode 2 keeps calling with a king or ace (eval7 rank of a king)
 DEEPJAM_BORROW_FRAC = 0.75     # a node borrowed from a tree this much shallower than the stack counts as a jam node
 AGGRO_PRIOR, AGGRO_WEIGHT, AGGRO_MIN_N = 0.35, 20.0, 10   # aggro_defend: prior bet share, its weight, min actions
 AGGRO_ON = 0.6                 # aggro_defend: pot-odds calls at any depth from this shrunk bet share

@@ -336,3 +336,22 @@ def test_fold3_from_record_skips_jams_and_short_stacks():
     assert fold3_from_record(rec(100.0)) == (0, 0)          # our 3-bet was a shove
     assert fold3_from_record(rec(5.0, st=10.0)) == (0, 0)   # too short for light_3bet
     assert fold3_from_record({}) == (0, 0)
+
+
+def test_river_air_is_opt_in_and_folds_high_card_when_our_river_bet_is_raised():
+    from bot.chipzen.adapter import v8_engine
+    hist = [[("btn", "call", 1.0), ("bb", "check", 1.0)], [("bb", "check", 0), ("btn", "check", 0)],
+            [("bb", "bet", 2.0), ("btn", "call", 2.0)], [("bb", "bet", 9.0), ("btn", "raise", 21.0)]]
+    kw = dict(wide_3bet=True, reraise_defend=True, aggro_defend=True, deep_jam=True, light_3bet=True)
+    on = v8_engine(river_air=True, **kw)
+    d = on.decide("bb", "8s6h", "2hQsJsTcKd", hist, sample=False, stack=24.36)
+    assert d.label == "fold" and not d.probs.get("call")
+    d = on.decide("bb", "Ks6h", "2hQsJsTcKd", hist, sample=False, stack=24.36)    # a pair of our own: untouched
+    assert d.probs.get("call", 0) > 0
+    off = v8_engine(**kw)
+    assert off.decide("bb", "8s6h", "2hQsJsTcKd", hist, sample=False, stack=24.36).probs.get("call", 0) > 0
+    # mode 1 leaves a plain river bet alone; mode 2 folds high card below a king to it
+    bet = hist[:3] + [[("bb", "check", 0), ("btn", "bet", 9.0)]]
+    assert "river air" not in " ".join(on.decide("bb", "8s6h", "2hQsJsTcKd", bet, sample=False, stack=24.36).notes)
+    on.river_air_mode = 2
+    assert not on.decide("bb", "8s6h", "2hQsJsTcKd", bet, sample=False, stack=24.36).probs.get("call")

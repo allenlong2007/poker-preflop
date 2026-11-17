@@ -22,11 +22,13 @@ PHASES = ("preflop", "flop", "turn", "river")
 POSTS = ("post_small_blind", "post_big_blind", "post_ante")
 
 
-def v8_engine(wide_3bet=False, reraise_defend=False, aggro_defend=False, deep_jam=False, light_3bet=False):
+def v8_engine(wide_3bet=False, reraise_defend=False, aggro_defend=False, deep_jam=False, light_3bet=False,
+              river_air=False):
     """The v8 configuration (same as bot/pokernow/server.py on this branch), plus opt-in Chipzen stages."""
     return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True,
                   micro_pushfold=True, wide_3bet=wide_3bet, reraise_defend=reraise_defend,
-                  aggro_defend=aggro_defend, deep_jam=deep_jam, light_3bet=light_3bet)
+                  aggro_defend=aggro_defend, deep_jam=deep_jam, light_3bet=light_3bet,
+                  river_air=river_air)
 
 
 def threebet_seen(action_history, seat):
