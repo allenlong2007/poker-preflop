@@ -299,3 +299,29 @@ def test_deep_jam_prices_a_big_4bet_that_borrowed_a_shallow_node():
     assert e.decide("bb", "KsKd", "", hist, sample=False, stack=50.0).action != "fold"
     e.deepjam_borrow_frac = 0.0                          # true all-ins only: the old behaviour here
     assert e.decide("bb", "KcTd", "", hist, sample=False, stack=50.0).action == "call"
+
+
+def test_fold3_seen_counts_only_our_bb_3bet_vs_their_open():
+    from bot.chipzen.adapter import fold3_seen
+    pre = lambda *acts: [{"phase": "preflop", "seat": s, "action": a} for s, a in acts]
+    base = [(1, "post_small_blind"), (0, "post_big_blind")]
+    assert fold3_seen(pre(*base, (1, "raise"), (0, "raise"), (1, "fold")), 0) == (1, 1)
+    assert fold3_seen(pre(*base, (1, "raise"), (0, "raise"), (1, "call")), 0) == (0, 1)
+    assert fold3_seen(pre(*base, (1, "raise"), (0, "call")), 0) == (0, 0)
+    assert fold3_seen(pre(*base, (1, "call"), (0, "raise"), (1, "fold")), 0) == (0, 0)
+    assert fold3_seen(pre(*base, (1, "raise"), (0, "raise"), (1, "fold")), 1) == (0, 0)
+
+
+def test_light_3bet_is_opt_in_and_needs_a_folding_read():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    hist = [[Act("btn", "raise", 2.5)], [], [], []]
+    off = v8_engine()
+    on = v8_engine(light_3bet=True)
+    on.opp_f3 = (1, 2)                                   # thin read: shrunk share 0.5, below light3_on
+    d = on.decide("bb", "7c2d", "", hist, sample=False)
+    assert "light_3bet" not in " ".join(d.notes)
+    on.opp_f3 = (19, 20)                                 # folds 95%: 72o becomes a 3-bet
+    d = on.decide("bb", "7c2d", "", hist, sample=False)
+    assert d.action == "raise" and any("folds to 3-bets" in n for n in d.notes)
+    assert off.decide("bb", "7c2d", "", hist, sample=False).action == "fold"

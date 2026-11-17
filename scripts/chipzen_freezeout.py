@@ -101,7 +101,8 @@ def decider(name, seed):
         e = v8_engine()
     elif name.startswith("v8wr"):                  # the live config (wide_3bet + reraise_defend); v8wr+m5: short-stack
         flags = name.split("+")[0][4:]           # v8wra: + aggro_defend, v8wraj: + deep_jam; v8wra+a50: from 50%
-        e = v8_engine(wide_3bet=True, reraise_defend=True, aggro_defend="a" in flags, deep_jam="j" in flags)
+        e = v8_engine(wide_3bet=True, reraise_defend=True, aggro_defend="a" in flags, deep_jam="j" in flags,
+                      light_3bet="l" in flags)                 # v8wrajl: + light_3bet
         for part in name.split("+")[1:]:
             if part[0] == "m":                       # calls need N points of equity over the price
                 e.short_call_margin = int(part[1:]) / 100
@@ -113,6 +114,8 @@ def decider(name, seed):
                 e.aggro_on = int(part[1:]) / 100
             elif part[0] == "r":                     # +r60: call a wide 3-bet when 60% of equity beats the price
                 e.wide3_real = int(part[1:]) / 100
+            elif part[0] == "o":                     # +o60: light_3bet acts from a 60% fold-to-3-bet share
+                e.light3_on = int(part[1:]) / 100
             elif part[0] == "e":                     # +e40: 4-bet a wide (normal-size) 3-bet at 40% equity
                 e.wide3_eq = int(part[1:]) / 100
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity
@@ -140,6 +143,8 @@ def decider(name, seed):
         return Rule(shove=0.60, call=0.55, open_=0.95, deep_bb=15, seed=seed, aggro=0.6)
     elif name == "limper":                         # small3b that limps 70% of its buttons
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, limp=0.7)
+    elif name == "folder":                         # stebin-like: opens 85% small, folds ~88% of hands to a 3-bet
+        return Rule(shove=0.55, call=0.12, open_=0.85, deep_bb=30, seed=seed, x3=1.8, bluff=0.4)
     elif name == "jammer":                         # small3b that answers any raise all-in with its top 12%
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, jam=0.12)
     elif name == "chaos":                          # small3b that jams any two cards 25% of the time, calls jams 50%

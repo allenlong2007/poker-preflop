@@ -208,7 +208,7 @@ class Engine:
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
                  postflop_depths=None, policy_overrides=None, postflop_nearest=False,
                  micro_pushfold=False, wide_3bet=False, reraise_defend=False, aggro_defend=False,
-                 deep_jam=False):
+                 deep_jam=False, light_3bet=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -276,6 +276,12 @@ class Engine:
         self.opp_jams = (0, 0)
         self.deepjam_borrow_frac = DEEPJAM_BORROW_FRAC   # 0: only true all-ins (the f59703f behaviour)
         self.opp_3bet = (0, 0)
+        # light_3bet (Chipzen, 2026-11-16): opp_f3 = (folds to our 3-bets, our 3-bets they faced), set by the adapter.
+        # In the big blind vs an open, once their shrunk fold share reaches light3_on, 3-bet instead of folding or
+        # calling when that is worth more (scout: stebin-bot-here folded 6 of 7 3-bets).
+        self.light_3bet = light_3bet
+        self.opp_f3 = (0, 0)
+        self.light3_on = LIGHT3_ON
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self.wide3_min_ratio = WIDE3_MIN_RATIO
         self.wide3_real = WIDE3_REAL
@@ -349,6 +355,8 @@ class Engine:
             d = self._apply(d, "small_raise", self._small_raise, hero, hole, st)
             if self.wide_3bet:
                 d = self._apply(d, "wide_3bet", self._wide_3bet, hero, hole, st)
+            if self.light_3bet:
+                d = self._apply(d, "light_3bet", self._light_3bet, hero, hole, st)
             d = self._apply(d, "reraise_war", self._vs_reraise_war, hero, hole, st)
             if self.deep_jam:
                 d = self._apply(d, "deep_jam", self._deep_jam, hero, hole, st)
@@ -1028,6 +1036,35 @@ class Engine:
         d.notes.append(f"wide 3-bettor (top {share:.0%}): equity {eq:.0%} vs price {need:.0%}: {verdict}")
         return d
 
+    def _light_3bet(self, d, hero, hole, st):
+        acts = st.history[0]
+        if hero != "bb" or [(a.player, a.kind) for a in acts] != [("btn", "raise")] or "3-bet" not in self._options:
+            return d
+        k, n = self.opp_f3
+        f = (k + LIGHT3_PRIOR * LIGHT3_WEIGHT) / (n + LIGHT3_WEIGHT)
+        if f < self.light3_on or st.stack < LIGHT3_MIN_BB:
+            return d
+        s, t = acts[0].to, self._options["3-bet"][1]
+        if t >= JAM_FRACTION * st.stack - EPS or t <= s + EPS:
+            return d
+        pot = s + 1.0                                            # their open + our big blind
+        eq3 = _equity_vs_top(hole, max(0.05, 1.0 - f))           # vs the hands that continue
+        ev3 = f * pot + (1 - f) * (LIGHT3_REAL * eq3 * 2 * t - (t - 1.0))
+        evc = LIGHT3_REAL * _equity_vs_top(hole, LIGHT3_OPEN_SHARE) * 2 * s - (s - 1.0)
+        moved = 0.0
+        probs = dict(d.probs)
+        if probs.get("fold", 0.0) > 0 and ev3 > 0:
+            moved += probs.pop("fold")
+        if probs.get("call", 0.0) > 0 and ev3 > max(evc, 0.0) + LIGHT3_MARGIN:
+            moved += probs.pop("call")
+        d.diagnostics["light_3bet"] = {"fold_share": f, "ev_3bet": ev3, "ev_call": evc, "observed": list(self.opp_f3)}
+        if moved <= 0:
+            return d
+        probs["3-bet"] = probs.get("3-bet", 0.0) + moved
+        d.probs = probs
+        d.notes.append(f"folds to 3-bets {f:.0%}: 3-bet EV {ev3:+.2f}bb vs call {evc:+.2f}bb: moved {moved:.0%} to 3-bet")
+        return d
+
     def _small_raise(self, d, hero, hole, st):
         """Experiment 46: the tree reads any preflop raise as its own (big) size; a min-raise priced at
         SMALL_RAISE_PRICE or less is only folded when the hand's equity against a strong range (top
@@ -1410,6 +1447,12 @@ DEEPJAM_MIN_BB = 30.0          # deep_jam: only deeper than this (the 25bb trees
 DEEPJAM_PRIOR, DEEPJAM_WEIGHT = 0.08, 10.0   # their jam range starts as the top 8%; prior weight in actions
 DEEPJAM_RANGE_SCALE = 3.0      # jam share per deep preflop action -> range share in a facing-jam spot
 DEEPJAM_MARGIN = 0.02
+LIGHT3_PRIOR, LIGHT3_WEIGHT = 0.5, 6.0    # light_3bet: prior fold-to-3-bet share and its strength (in 3-bets)
+LIGHT3_ON = 0.75                # act once the shrunk fold share is at least this (fresh A/B: 0.75 kept the folder gain, 0.7 leaked elsewhere)
+LIGHT3_MIN_BB = 15.0            # shallower, a 3-bet is close to a jam: the trees and push/fold decide
+LIGHT3_REAL = 0.8               # equity realised when called (out of position)
+LIGHT3_OPEN_SHARE = 0.8         # the opening range a call is priced against
+LIGHT3_MARGIN = 0.1             # call -> 3-bet only when it is worth this many bb more
 DEEPJAM_BORROW_FRAC = 0.75     # a node borrowed from a tree this much shallower than the stack counts as a jam node
 AGGRO_PRIOR, AGGRO_WEIGHT, AGGRO_MIN_N = 0.35, 20.0, 10   # aggro_defend: prior bet share, its weight, min actions
 AGGRO_ON = 0.6                 # aggro_defend: pot-odds calls at any depth from this shrunk bet share

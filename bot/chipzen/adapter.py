@@ -22,11 +22,11 @@ PHASES = ("preflop", "flop", "turn", "river")
 POSTS = ("post_small_blind", "post_big_blind", "post_ante")
 
 
-def v8_engine(wide_3bet=False, reraise_defend=False, aggro_defend=False, deep_jam=False):
+def v8_engine(wide_3bet=False, reraise_defend=False, aggro_defend=False, deep_jam=False, light_3bet=False):
     """The v8 configuration (same as bot/pokernow/server.py on this branch), plus opt-in Chipzen stages."""
     return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True,
                   micro_pushfold=True, wide_3bet=wide_3bet, reraise_defend=reraise_defend,
-                  aggro_defend=aggro_defend, deep_jam=deep_jam)
+                  aggro_defend=aggro_defend, deep_jam=deep_jam, light_3bet=light_3bet)
 
 
 def threebet_seen(action_history, seat):
@@ -39,6 +39,19 @@ def threebet_seen(action_history, seat):
             or acts[0]["action"] != "raise":
         return 0, 0
     return int(acts[1]["action"] == "raise"), 1
+
+
+def fold3_seen(action_history, seat):
+    """From a finished hand: (opponent folded to our 3-bet?, opponent faced our 3-bet?) as (0/1, 0/1)."""
+    pre = [a for a in action_history if isinstance(a, dict) and a.get("phase", "preflop") == "preflop"
+           and isinstance(a.get("action"), str)]
+    button = next((a.get("seat") for a in pre if a["action"] == "post_small_blind"), None)
+    acts = [a for a in pre if not a["action"].startswith("post")]
+    if button is None or button == seat or len(acts) < 3 or acts[0].get("seat") != button \
+            or acts[0]["action"] != "raise" or acts[1].get("seat") != seat or acts[1]["action"] != "raise" \
+            or acts[2].get("seat") != button:
+        return 0, 0
+    return int(acts[2]["action"] == "fold"), 1
 
 
 def aggression_seen(action_history, seat):
@@ -192,7 +205,7 @@ AGGR_SEED_CAP = 60             # the same for carried-over postflop actions (agg
 READS_SEED_CAP = 30            # carried-over opens count as at most this many, so the current match still moves it
 
 
-def load_reads(path, aggr=None, jams=None):
+def load_reads(path, aggr=None, jams=None, f3=None):
     """Per-opponent [3-bets, our button opens they faced] from the stored hand records (hands.jsonl), keyed by the
     platform's participant_id (records without one are ignored), so the read carries across matches and restarts.
     Bad lines are skipped and any failure gives an empty read."""
@@ -229,6 +242,12 @@ def load_reads(path, aggr=None, jams=None):
                             c[0] += jk
                             c[1] += jn
                     pre = r["history"][0]
+                    if f3 is not None and isinstance(key, str) and key and not key.startswith("pid:") \
+                            and r.get("hero_pos") == "bb" and len(pre) >= 3 and list(pre[0][:2]) == ["btn", "raise"] \
+                            and list(pre[1][:2]) == ["bb", "raise"] and pre[2][0] == "btn":
+                        c = f3.setdefault(key, [0, 0])
+                        c[0] += int(pre[2][1] == "fold")
+                        c[1] += 1
                     if not isinstance(key, str) or not key or r.get("hero_pos") != "btn" or len(pre) < 2 \
                             or list(pre[0][:2]) != ["btn", "raise"]:
                         continue
@@ -238,11 +257,14 @@ def load_reads(path, aggr=None, jams=None):
                 except Exception:
                     continue
     except Exception:
-        for x in (aggr, jams):
+        for x in (aggr, jams, f3):
             if x is not None:
                 x.clear()
         return {}
     for c in reads.values():                                     # scale long histories down, keeping the rate
+        if c[1] > READS_SEED_CAP:
+            c[0], c[1] = c[0] * READS_SEED_CAP / c[1], READS_SEED_CAP
+    for c in (f3 or {}).values():
         if c[1] > READS_SEED_CAP:
             c[0], c[1] = c[0] * READS_SEED_CAP / c[1], READS_SEED_CAP
     for c in (jams or {}).values():
@@ -266,10 +288,11 @@ class Decider:
         # opponent name -> [3-bets, our opens they faced], seeded from earlier matches' hand records
         # opponent -> [postflop bets/raises, postflop actions] (aggro_defend), from the same records
         self.aggr, self.jams = {}, {}                             # + [deep preflop jams, deep preflop actions]
+        self.f3 = {}                                             # + [folds to our 3-bets, our 3-bets faced]
         try:
-            self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams) if log_dir else {}
+            self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3) if log_dir else {}
         except Exception:                                        # a bad file never stops the bot from starting
-            self.reads, self.aggr, self.jams = {}, {}, {}
+            self.reads, self.aggr, self.jams, self.f3 = {}, {}, {}, {}
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -288,6 +311,7 @@ class Decider:
             self.engine.opp_3bet = tuple(self.reads.get(self.opp, (0, 0)))
             self.engine.opp_aggr = tuple(self.aggr.get(self.opp, (0, 0)))
             self.engine.opp_jams = tuple(self.jams.get(self.opp, (0, 0)))
+            self.engine.opp_f3 = tuple(self.f3.get(self.opp, (0, 0)))
             hero, history, eff = translate(state, bb)
             d = self.engine.decide(hero, row["hole"], row["board"], history, stack=eff)
             out = to_action(d, state, bb)
@@ -316,6 +340,13 @@ class Decider:
             r = self.reads.setdefault(self.opp, [0, 0])
             r[0] += k
             r[1] += n
+        k, n = fold3_seen(result.get("action_history") or [], seat)
+        if n:
+            r = self.f3.setdefault(self.opp, [0, 0])
+            r[0] += k
+            r[1] += n
+            if r[1] > READS_SEED_CAP:
+                r[0], r[1] = r[0] * READS_SEED_CAP / r[1], READS_SEED_CAP
         k, n = aggression_seen(result.get("action_history") or [], seat)
         if n:
             r = self.aggr.setdefault(self.opp, [0, 0])
