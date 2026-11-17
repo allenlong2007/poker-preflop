@@ -14,7 +14,7 @@ import os
 import time
 from pathlib import Path
 
-from bot.engine import Act, Engine
+from bot.engine import LIGHT3_MIN_BB, Act, Engine
 
 log = logging.getLogger("hubot.chipzen")
 
@@ -52,6 +52,21 @@ def fold3_seen(action_history, seat):
             or acts[2].get("seat") != button:
         return 0, 0
     return int(acts[2]["action"] == "fold"), 1
+
+
+def fold3_from_record(rec):
+    """From a hand record: (opponent folded to our 3-bet?, faced it?), only for a non-jam 3-bet from the big blind
+    vs their open with both stacks at least LIGHT3_MIN_BB, so the read matches the spots light_3bet acts in."""
+    try:
+        pre, st = rec["history"][0], rec["stacks"]
+        hero, opp = float(st["hero"]), float(st["opp"])
+        if rec.get("hero_pos") != "bb" or len(pre) < 3 or list(pre[0][:2]) != ["btn", "raise"] \
+                or list(pre[1][:2]) != ["bb", "raise"] or pre[2][0] != "btn" or min(hero, opp) < LIGHT3_MIN_BB \
+                or pre[1][2] is None or float(pre[1][2]) >= 0.95 * min(hero, opp):
+            return 0, 0
+        return int(pre[2][1] == "fold"), 1
+    except Exception:
+        return 0, 0
 
 
 def aggression_seen(action_history, seat):
@@ -242,12 +257,12 @@ def load_reads(path, aggr=None, jams=None, f3=None):
                             c[0] += jk
                             c[1] += jn
                     pre = r["history"][0]
-                    if f3 is not None and isinstance(key, str) and key and not key.startswith("pid:") \
-                            and r.get("hero_pos") == "bb" and len(pre) >= 3 and list(pre[0][:2]) == ["btn", "raise"] \
-                            and list(pre[1][:2]) == ["bb", "raise"] and pre[2][0] == "btn":
-                        c = f3.setdefault(key, [0, 0])
-                        c[0] += int(pre[2][1] == "fold")
-                        c[1] += 1
+                    if f3 is not None and isinstance(key, str) and key and not key.startswith("pid:"):
+                        fk, fn = fold3_from_record(r)
+                        if fn:
+                            c = f3.setdefault(key, [0, 0])
+                            c[0] += fk
+                            c[1] += fn
                     if not isinstance(key, str) or not key or r.get("hero_pos") != "btn" or len(pre) < 2 \
                             or list(pre[0][:2]) != ["btn", "raise"]:
                         continue
@@ -340,7 +355,8 @@ class Decider:
             r = self.reads.setdefault(self.opp, [0, 0])
             r[0] += k
             r[1] += n
-        k, n = fold3_seen(result.get("action_history") or [], seat)
+        rec = hand_record(result, seat, "", "", "", "", self.last_bb)
+        k, n = fold3_from_record(rec) if rec else (0, 0)
         if n:
             r = self.f3.setdefault(self.opp, [0, 0])
             r[0] += k

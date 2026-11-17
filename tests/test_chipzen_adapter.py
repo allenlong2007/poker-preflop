@@ -325,3 +325,14 @@ def test_light_3bet_is_opt_in_and_needs_a_folding_read():
     d = on.decide("bb", "7c2d", "", hist, sample=False)
     assert d.action == "raise" and any("folds to 3-bets" in n for n in d.notes)
     assert off.decide("bb", "7c2d", "", hist, sample=False).action == "fold"
+
+
+def test_fold3_from_record_skips_jams_and_short_stacks():
+    from bot.chipzen.adapter import fold3_from_record
+    rec = lambda to, st=100.0, kind="fold": {"hero_pos": "bb", "stacks": {"hero": st, "opp": st},
+                                             "history": [[["btn", "raise", 2.5], ["bb", "raise", to], ["btn", kind, 0]]]}
+    assert fold3_from_record(rec(9.0)) == (1, 1)
+    assert fold3_from_record(rec(9.0, kind="call")) == (0, 1)
+    assert fold3_from_record(rec(100.0)) == (0, 0)          # our 3-bet was a shove
+    assert fold3_from_record(rec(5.0, st=10.0)) == (0, 0)   # too short for light_3bet
+    assert fold3_from_record({}) == (0, 0)

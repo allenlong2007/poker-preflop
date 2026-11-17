@@ -1042,7 +1042,7 @@ class Engine:
             return d
         k, n = self.opp_f3
         f = (k + LIGHT3_PRIOR * LIGHT3_WEIGHT) / (n + LIGHT3_WEIGHT)
-        if f < self.light3_on or st.stack < LIGHT3_MIN_BB:
+        if n < LIGHT3_MIN_N or f < self.light3_on or st.stack < LIGHT3_MIN_BB:
             return d
         s, t = acts[0].to, self._options["3-bet"][1]
         if t >= JAM_FRACTION * st.stack - EPS or t <= s + EPS:
@@ -1449,6 +1449,7 @@ DEEPJAM_RANGE_SCALE = 3.0      # jam share per deep preflop action -> range shar
 DEEPJAM_MARGIN = 0.02
 LIGHT3_PRIOR, LIGHT3_WEIGHT = 0.5, 6.0    # light_3bet: prior fold-to-3-bet share and its strength (in 3-bets)
 LIGHT3_ON = 0.75                # act once the shrunk fold share is at least this (fresh A/B: 0.75 kept the folder gain, 0.7 leaked elsewhere)
+LIGHT3_MIN_N = 6                # at least this many of our 3-bets seen before acting
 LIGHT3_MIN_BB = 15.0            # shallower, a 3-bet is close to a jam: the trees and push/fold decide
 LIGHT3_REAL = 0.8               # equity realised when called (out of position)
 LIGHT3_OPEN_SHARE = 0.8         # the opening range a call is priced against
