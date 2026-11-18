@@ -208,7 +208,7 @@ class Engine:
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
                  postflop_depths=None, policy_overrides=None, postflop_nearest=False,
                  micro_pushfold=False, wide_3bet=False, reraise_defend=False, aggro_defend=False,
-                 deep_jam=False, light_3bet=False, river_air=False):
+                 deep_jam=False, light_3bet=False, river_air=False, size_tell=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -287,6 +287,13 @@ class Engine:
         # QJTK2 (Season 15 R1 vs MonteCarlo, -32bb). Mode 1: only after our own river bet was raised; mode 2: also
         # any river bet when our high card is below a king.
         self.river_air = river_air
+        # size_tell (Chipzen, 2026-11-17): opp_sizes = ((weak, n) after small river bets, (weak, n) after big ones), from
+        # this opponent's showdowns, set by the adapter. When their weak-hand share differs by bet size, the pot-odds
+        # range scales their bluffs by it on the river (alizabethbot3s: 1/3-pot river bets were air or a weak pair,
+        # 0.6-pot+ bets value). Balanced sizing gives a scale near 1, and then nothing changes.
+        self.size_tell = size_tell
+        self.opp_sizes = ((0, 0), (0, 0))
+        self.size_act = SIZE_ACT
         self.river_air_mode = RIVER_AIR_MODE
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
         self.wide3_min_ratio = WIDE3_MIN_RATIO
@@ -375,12 +382,19 @@ class Engine:
             d = self._apply(d, "trap", self._trap, hero, hole, board[:2 + st.street], st)
             if self.river_jam:
                 d = self._apply(d, "river_jam", self._river_jam, hero, hole, board[:2 + st.street], st)
+            size_on = False
+            if self.size_tell:
+                scale = self._size_scale(self._river_bet_frac(st, hero)) if st.street == 3 else None
+                size_on = scale is not None and abs(scale - 1.0) >= self.size_act
+                self.size_value = self._size_value_fn() if size_on else None
+                if size_on:
+                    d.notes.append(f"size tell: river bluff share x{scale:.2f}")
             if self._short(st, hero) and "short_stack" not in self.off:     # off: pot-odds check instead
                 d = self._apply(d, "short_stack", self._short_stack, hero, hole, board[:2 + st.street], st)
             elif self.pot_odds and "pot_odds" not in self.off and st.facing(hero) > EPS and (
                     st.stack <= self.pot_odds_max_bb or self.reraise_defend and any(
                         a.player == hero and a.kind in ("bet", "raise") for a in st.history[st.street])
-                    or (self._aggro_rate() or 0.0) >= self.aggro_on):
+                    or (self._aggro_rate() or 0.0) >= self.aggro_on or size_on):
                 if "fold" in self._options and "call" in self._options:
                     before = dict(d.probs)
                     probs = dict.fromkeys(("fold", "call"), 0.0) | d.probs
@@ -1073,6 +1087,34 @@ class Engine:
         d.notes.append(f"folds to 3-bets {f:.0%}: 3-bet EV {ev3:+.2f}bb vs call {evc:+.2f}bb: moved {moved:.0%} to 3-bet")
         return d
 
+    def _river_bet_frac(self, st, hero):
+        """The opponent's river bet we face, as a share of the pot at the start of the river (None if not a bet)."""
+        acts = st.history[3]
+        last = acts[-1] if acts else None
+        if last is None or last.player == hero or last.kind != "bet":
+            return None
+        pot = st.street_start[3][0]
+        return last.to / pot if pot > 0 else None
+
+    def _size_scale(self, frac):
+        """Their weak-hand share after river bets of this size over their overall share, shrunk (None: no read)."""
+        if frac is None:
+            return None
+        (ks, ns), (kb, nb) = self.opp_sizes
+        if ns + nb < SIZE_MIN_N:
+            return None
+        p_all = (ks + kb + SIZE_PRIOR * SIZE_WEIGHT) / (ns + nb + SIZE_WEIGHT)
+        k, n = (ks, ns) if frac < SIZE_SMALL else (kb, nb)
+        p = (k + p_all * SIZE_WEIGHT) / (n + SIZE_WEIGHT)
+        return float(np.clip(p / max(p_all, 1e-6), *SIZE_CLIP))
+
+    def _size_value_fn(self):
+        """potodds' size_value hook: scales the bluff share of river bets only."""
+        def fn(frac, street=3):
+            return (self._size_scale(frac) or 1.0) if street == 3 else 1.0
+        fn.by_street = True
+        return fn
+
     def _river_air(self, d, hero, hole, board, st):
         """River, facing a bet or raise, holding only high card: fold instead of calling (see river_air)."""
         if st.street != 3 or st.facing(hero) <= EPS or "fold" not in self._options or not d.probs.get("call"):
@@ -1479,6 +1521,12 @@ LIGHT3_OPEN_SHARE = 0.8         # the opening range a call is priced against
 LIGHT3_MARGIN = 0.1             # call -> 3-bet only when it is worth this many bb more
 RIVER_AIR_MODE = 1              # river_air: 1 = fold high card when our river bet is raised; 2 = also vs any river bet
 RIVER_AIR_HIGH = 11             # mode 2 keeps calling with a king or ace (eval7 rank of a king)
+SIZE_PRIOR, SIZE_WEIGHT = 0.35, 3.0   # size_tell: prior weak-hand share of river bets, its strength (in bets)
+SIZE_SMALL = 0.5                # river bets below this share of the pot are "small"
+SIZE_MIN_N = 4                  # showdowns after their river bets before the read is used
+SIZE_CLIP = (0.33, 3.0)         # bounds on the bluff-share scale
+SIZE_ACT = 0.25                 # act only when the scale for this bet size is at least this far from 1
+SIZE_CAP = 20                   # per size bucket: a sliding read, recent showdowns count
 DEEPJAM_BORROW_FRAC = 0.75     # a node borrowed from a tree this much shallower than the stack counts as a jam node
 AGGRO_PRIOR, AGGRO_WEIGHT, AGGRO_MIN_N = 0.35, 20.0, 10   # aggro_defend: prior bet share, its weight, min actions
 AGGRO_ON = 0.6                 # aggro_defend: pot-odds calls at any depth from this shrunk bet share
@@ -1553,6 +1601,18 @@ def strong_class(hole, board):
     if t == 3:
         return "set" if hole[0].rank == hole[1].rank else "trips"
     return {4: "straight", 5: "flush"}.get(t, "full house+")
+
+
+def weak_showdown(hole, board):
+    """A shown hand that a value bet would not be made with: high card, a pair below the top board card, or only the
+    board's pair. Two pair or better of its own, top pair or an overpair count as strong."""
+    t, bt = eval7.evaluate(hole + board) >> 24, eval7.evaluate(board) >> 24
+    if t <= bt:
+        return True
+    if t >= 2:
+        return False
+    top = max(c.rank for c in board)
+    return not (any(c.rank == top for c in hole) or hole[0].rank == hole[1].rank > top)
 
 
 def _is_nuts(hole, board):

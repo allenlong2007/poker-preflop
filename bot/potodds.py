@@ -261,7 +261,7 @@ def opponent_range(pre, st, hero, board, hole, prof=None, aggression=1.0, size_v
                 f_bet = bet_rate
             agg = aggression * ((1 - strict * (1 - RAISE_BLUFF[s])) if a.kind == "raise" else 1.0)
             if size_value is not None and a.kind in ("bet", "raise"):
-                agg *= size_value(frac)
+                agg *= size_value(frac, s) if getattr(size_value, "by_street", False) else size_value(frac)
             p = None
             if bluff_model is not None and a.kind in ("bet", "raise"):
                 p = bluff_model.predict(s, frac, a.kind == "raise", barrels, b, opp == "btn")

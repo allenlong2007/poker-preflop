@@ -14,7 +14,7 @@ import os
 import time
 from pathlib import Path
 
-from bot.engine import LIGHT3_MIN_BB, Act, Engine
+from bot.engine import LIGHT3_MIN_BB, SIZE_CAP, SIZE_SMALL, Act, Engine, State, parse_cards, weak_showdown
 
 log = logging.getLogger("hubot.chipzen")
 
@@ -23,12 +23,12 @@ POSTS = ("post_small_blind", "post_big_blind", "post_ante")
 
 
 def v8_engine(wide_3bet=False, reraise_defend=False, aggro_defend=False, deep_jam=False, light_3bet=False,
-              river_air=False):
+              river_air=False, size_tell=False):
     """The v8 configuration (same as bot/pokernow/server.py on this branch), plus opt-in Chipzen stages."""
     return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True,
                   micro_pushfold=True, wide_3bet=wide_3bet, reraise_defend=reraise_defend,
                   aggro_defend=aggro_defend, deep_jam=deep_jam, light_3bet=light_3bet,
-                  river_air=river_air)
+                  river_air=river_air, size_tell=size_tell)
 
 
 def threebet_seen(action_history, seat):
@@ -54,6 +54,39 @@ def fold3_seen(action_history, seat):
             or acts[2].get("seat") != button:
         return 0, 0
     return int(acts[2]["action"] == "fold"), 1
+
+
+def size_tell_from_record(rec):
+    """From a hand record: (1 if the opponent's river bet was big else 0, 1 if the hand it showed was weak else 0)
+    when it bet the river (not a raise) and showed down; else None."""
+    try:
+        opp, hole, board = rec["opp_pos"], (rec.get("shown") or {}).get("opp"), rec.get("board") or ""
+        if not (isinstance(hole, str) and len(hole) == 4 and isinstance(board, str) and len(board) == 10):
+            return None
+        hist = [[Act(*a) for a in street] for street in rec["history"]]
+        if len(hist) < 4:
+            return None
+        for i, a in enumerate(hist[3]):
+            if a.player == opp and a.kind == "bet":
+                pot = State(hist[:3] + [hist[3][:i]]).street_start[3][0]
+                if pot <= 0:
+                    return None
+                return int(a.to / pot >= SIZE_SMALL), int(weak_showdown(parse_cards(hole), parse_cards(board)))
+        return None
+    except Exception:
+        return None
+
+
+def add_size(sizes, key, tell):
+    """Count one river-bet showdown (from size_tell_from_record) in sizes[key] = [[weak, n] small, [weak, n] big]."""
+    if tell is None:
+        return
+    big, weak = tell
+    c = sizes.setdefault(key, [[0, 0], [0, 0]])[big]
+    c[0] += weak
+    c[1] += 1
+    if c[1] > SIZE_CAP:                                          # a sliding read: recent showdowns count
+        c[0], c[1] = c[0] * SIZE_CAP / c[1], SIZE_CAP
 
 
 def fold3_from_record(rec):
@@ -222,7 +255,7 @@ AGGR_SEED_CAP = 60             # the same for carried-over postflop actions (agg
 READS_SEED_CAP = 30            # carried-over opens count as at most this many, so the current match still moves it
 
 
-def load_reads(path, aggr=None, jams=None, f3=None):
+def load_reads(path, aggr=None, jams=None, f3=None, sizes=None):
     """Per-opponent [3-bets, our button opens they faced] from the stored hand records (hands.jsonl), keyed by the
     platform's participant_id (records without one are ignored), so the read carries across matches and restarts.
     Bad lines are skipped and any failure gives an empty read."""
@@ -258,6 +291,8 @@ def load_reads(path, aggr=None, jams=None, f3=None):
                             c = jams.setdefault(key, [0, 0])
                             c[0] += jk
                             c[1] += jn
+                    if sizes is not None and isinstance(key, str) and key and not key.startswith("pid:"):
+                        add_size(sizes, key, size_tell_from_record(r))
                     pre = r["history"][0]
                     if f3 is not None and isinstance(key, str) and key and not key.startswith("pid:"):
                         fk, fn = fold3_from_record(r)
@@ -274,7 +309,7 @@ def load_reads(path, aggr=None, jams=None, f3=None):
                 except Exception:
                     continue
     except Exception:
-        for x in (aggr, jams, f3):
+        for x in (aggr, jams, f3, sizes):
             if x is not None:
                 x.clear()
         return {}
@@ -298,7 +333,7 @@ def load_reads(path, aggr=None, jams=None, f3=None):
 SCOUT_FILE = "scout_seeds.json"
 
 
-def load_scout_seeds(path, f3, reads=None, aggr=None):
+def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None):
     """Add scouted reads from other bots' replays: {"name:<bot>": {"f3": [folds to 3-bets, 3-bets faced],
     "3b": [3-bets, opens faced], "aggr": [postflop bets/raises, postflop actions]}}. Counts must be whole numbers
     with 0 <= k <= n <= the read's cap (READS_SEED_CAP, or AGGR_SEED_CAP for aggr); anything else is skipped, and
@@ -328,6 +363,16 @@ def load_scout_seeds(path, f3, reads=None, aggr=None):
                 c[0], c[1] = c[0] + k, c[1] + n
                 if c[1] > cap:
                     c[0], c[1] = c[0] * cap / c[1], cap
+            sz = seed.get("sizes") if sizes is not None else None
+            if isinstance(sz, (list, tuple)) and len(sz) == 2 and all(
+                    isinstance(c, (list, tuple)) and len(c) == 2 and type(c[0]) is int and type(c[1]) is int
+                    and 0 <= c[0] <= c[1] <= SIZE_CAP for c in sz):
+                cur = sizes.setdefault(key, [[0, 0], [0, 0]])
+                for i in (0, 1):
+                    cur[i][0] += sz[i][0]
+                    cur[i][1] += sz[i][1]
+                    if cur[i][1] > SIZE_CAP:
+                        cur[i][0], cur[i][1] = cur[i][0] * SIZE_CAP / cur[i][1], SIZE_CAP
         except Exception:
             continue
 
@@ -343,16 +388,18 @@ class Decider:
         # opponent -> [postflop bets/raises, postflop actions] (aggro_defend), from the same records
         self.aggr, self.jams = {}, {}                             # + [deep preflop jams, deep preflop actions]
         self.f3 = {}                                             # + [folds to our 3-bets, our 3-bets faced]
+        self.sizes = {}                                          # + [[weak, n] small, [weak, n] big] river bets
         try:
-            self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3) if log_dir else {}
+            self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3,
+                                    self.sizes) if log_dir else {}
         except Exception:                                        # a bad file never stops the bot from starting
-            self.reads, self.aggr, self.jams, self.f3 = {}, {}, {}, {}
+            self.reads, self.aggr, self.jams, self.f3, self.sizes = {}, {}, {}, {}, {}
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             os.chmod(self.log_path.parent, 0o700)
             try:                                                 # scouted reads, after the dir is private
-                load_scout_seeds(Path(log_dir) / SCOUT_FILE, self.f3, self.reads, self.aggr)
+                load_scout_seeds(Path(log_dir) / SCOUT_FILE, self.f3, self.reads, self.aggr, self.sizes)
             except Exception:
                 pass
 
@@ -370,6 +417,7 @@ class Decider:
             self.engine.opp_aggr = tuple(self.aggr.get(self.opp, (0, 0)))
             self.engine.opp_jams = tuple(self.jams.get(self.opp, (0, 0)))
             self.engine.opp_f3 = tuple(self.f3.get(self.opp, (0, 0)))
+            self.engine.opp_sizes = tuple(tuple(c) for c in self.sizes.get(self.opp, ((0, 0), (0, 0))))
             hero, history, eff = translate(state, bb)
             d = self.engine.decide(hero, row["hole"], row["board"], history, stack=eff)
             out = to_action(d, state, bb)
@@ -388,7 +436,7 @@ class Decider:
         """The opponent's stable key (pid:<participant_id>). None: a fresh key that nothing else shares."""
         self.opp = key if key else f"anon:{next(_ANON)}"
 
-    def observe(self, result, seat=None):
+    def observe(self, result, seat=None, board=None):
         """A finished hand (Chipzen round result): update this opponent's 3-bet count."""
         seat = self.seat if seat is None else seat
         if seat is None:
@@ -421,6 +469,9 @@ class Decider:
             r[1] += n
             if r[1] > AGGR_SEED_CAP:
                 r[0], r[1] = r[0] * AGGR_SEED_CAP / r[1], AGGR_SEED_CAP
+        b = board if isinstance(board, str) and board else result.get("board")
+        if rec and isinstance(b, str) and len(b) == 10:
+            add_size(self.sizes, self.opp, size_tell_from_record(dict(rec, board=b)))
 
 
 def _append_private(path, row):
@@ -481,7 +532,7 @@ def make_bot(log_dir=None, engine=None):
             except Exception:
                 log.exception("could not record the hand")
             try:                                                 # the 3-bet read never blocks the hand record
-                self.decider.observe((message or {}).get("result") or {}, self.me)
+                self.decider.observe((message or {}).get("result") or {}, self.me, self.board)
             except Exception:
                 log.exception("could not update the 3-bet read")
             super().on_round_result(message)

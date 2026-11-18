@@ -379,3 +379,34 @@ def test_scout_seeds_add_a_valid_fold_read_and_skip_bad_entries(tmp_path):
                                                    "name:y": {"aggr": [70, 70], "3b": "bad"}}))
     d = Decider(v8_engine(), log_dir=tmp_path)
     assert d.reads == {"name:x": [8, 29]} and d.aggr == {"name:x": [45, 60]} and d.f3 == {"name:x": [1, 1]}
+
+
+def test_size_tell_read_and_stage():
+    from bot.chipzen.adapter import size_tell_from_record, add_size, v8_engine
+    from bot.engine import weak_showdown, parse_cards as pc
+    assert weak_showdown(pc("8s6h"), pc("2hQsJsTcKd"))                  # 8-high
+    assert weak_showdown(pc("5c5d"), pc("2hQsJsTcKd"))                  # pair below the top card
+    assert not weak_showdown(pc("Kh3c"), pc("2hQsJsTcKd"))              # top pair (kings)
+    assert not weak_showdown(pc("Ah4c"), pc("2hQsJsTcKd"))              # straight
+    hist = [[["btn", "raise", 2.5], ["bb", "call", 0]], [["bb", "check", 0], ["btn", "check", 0]],
+            [["bb", "check", 0], ["btn", "check", 0]], [["bb", "check", 0], ["btn", "bet", 1.5], ["bb", "call", 0]]]
+    rec = {"opp_pos": "btn", "history": hist, "board": "2hQsJsTcKd", "shown": {"opp": "8s6h"}}
+    assert size_tell_from_record(rec) == (0, 1)                         # 1.5 into 5: small, and air
+    assert size_tell_from_record(dict(rec, shown={})) is None           # no showdown: nothing learned
+    sizes = {}
+    for _ in range(6):
+        add_size(sizes, "k", (0, 1))                                    # small bets: always air
+        add_size(sizes, "k", (1, 0))                                    # big bets: always value
+    eng = v8_engine(size_tell=True, reraise_defend=True)
+    eng.opp_sizes = tuple(tuple(c) for c in sizes["k"])
+    assert eng._size_scale(0.3) > 1.5 and eng._size_scale(0.9) < 0.6
+    play = [[("btn", "raise", 2.5), ("bb", "call", 2.5)], [("bb", "check", 0), ("btn", "check", 0)],
+            [("bb", "check", 0), ("btn", "check", 0)]]
+    small = play + [[("bb", "check", 0), ("btn", "bet", 1.7)]]
+    d = eng.decide("bb", "9c8c", "2hQsJs5c3d", small, sample=False, stack=60)   # 9-high vs a small "bluff" bet
+    assert any("size tell" in n for n in d.notes)
+    balanced = v8_engine(size_tell=True)
+    balanced.opp_sizes = ((3, 6), (3, 6))                               # same weak share at both sizes
+    assert abs(balanced._size_scale(0.3) - 1) < 0.25
+    d = balanced.decide("bb", "9c8c", "2hQsJs5c3d", small, sample=False, stack=60)
+    assert not any("size tell" in n for n in d.notes)

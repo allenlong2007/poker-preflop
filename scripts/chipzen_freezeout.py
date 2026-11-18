@@ -39,7 +39,7 @@ class Rule:
     (2.5x) at deep stacks, cbet: bets pot postflop with a pair or better, else check/fold."""
 
     def __init__(self, shove, call, open_, deep_bb, seed, min3=False, x3=3.0, bluff=0.0, limp=0.0, station=0.0,
-                 aggro=0.0, jam=0.0, jam_any=0.0, big=0.0):
+                 aggro=0.0, jam=0.0, jam_any=0.0, big=0.0, tell=0.0, rev=False):
         from bot.engine import INDEX, hand_class, parse_cards as parse
         self.pct, self.INDEX, self.hand_class, self.parse = _strength(), INDEX, hand_class, parse
         self.shove, self.call, self.open, self.deep, self.min3, self.x3 = shove, call, open_, deep_bb, min3, x3
@@ -50,6 +50,9 @@ class Rule:
         self.jam = jam                  # preflop at any depth: re-raises all-in with the top `jam` share
         self.jam_any = jam_any          # preflop at any depth: re-raises (or opens) all-in with any two this often
         self.big = big                  # preflop: re-raises to 60% of its stack (not all-in) with the top `big` share
+        self.tell = tell                # postflop: sizing tell. Bets 1/3 pot with air/weak pairs (bluffing this often
+        #                                 when checked to), pot with top pair or better; calls with any pair
+        self.rev = rev                  # the reverse tell: small with value, pot with air
         self.rng = np.random.default_rng(seed)
 
     def __call__(self, s):
@@ -81,6 +84,18 @@ class Rule:
             return ("check", 0) if "check" in valid else ("call", 0)
         cards = [eval7.Card(c) for c in [hole[:2], hole[2:]] + ["".join(map(str, [b])) for b in s.board]]
         made = eval7.handtype(eval7.evaluate(cards)) != "High Card"
+        if self.tell:
+            from bot.engine import weak_showdown
+            weak = len(s.board) < 3 or weak_showdown(cards[:2], cards[2:])
+            if "raise" in valid and not s.to_call:
+                big, small = (s.pot // 3, s.pot) if self.rev else (s.pot, s.pot // 3)
+                if not weak:
+                    return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, big))
+                if self.rng.random() < self.tell:
+                    return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, small))
+            if s.to_call:
+                return ("call", 0) if made and "call" in valid else ("fold", 0)
+            return "check", 0
         if self.station:
             if s.to_call:
                 return ("call", 0) if made or self.rng.random() < self.station else ("fold", 0)
@@ -102,7 +117,8 @@ def decider(name, seed):
     elif name.startswith("v8wr"):                  # the live config (wide_3bet + reraise_defend); v8wr+m5: short-stack
         flags = name.split("+")[0][4:]           # v8wra: + aggro_defend, v8wraj: + deep_jam; v8wra+a50: from 50%
         e = v8_engine(wide_3bet=True, reraise_defend=True, aggro_defend="a" in flags, deep_jam="j" in flags,
-                      light_3bet="l" in flags, river_air="v" in flags)   # v8wrajl: + light_3bet, v: river_air
+                      light_3bet="l" in flags, river_air="v" in flags,   # v8wrajl: + light_3bet, v: river_air
+                      size_tell="s" in flags)                                # s: size_tell
         for part in name.split("+")[1:]:
             if part[0] == "m":                       # calls need N points of equity over the price
                 e.short_call_margin = int(part[1:]) / 100
@@ -145,6 +161,10 @@ def decider(name, seed):
         return Rule(shove=0.60, call=0.55, open_=0.95, deep_bb=15, seed=seed, aggro=0.6)
     elif name == "limper":                         # small3b that limps 70% of its buttons
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, limp=0.7)
+    elif name == "teller":                         # alizabeth-like: opens 90%, 1/3-pot bluffs, pot-size value
+        return Rule(shove=0.55, call=0.30, open_=0.90, deep_bb=30, seed=seed, x3=3.0, tell=0.5)
+    elif name == "teller_rev":                     # the reverse tell: 1/3-pot value, pot-size bluffs
+        return Rule(shove=0.55, call=0.30, open_=0.90, deep_bb=30, seed=seed, x3=3.0, tell=0.5, rev=True)
     elif name == "folder":                         # stebin-like: opens 85% small, folds ~88% of hands to a 3-bet
         return Rule(shove=0.55, call=0.12, open_=0.85, deep_bb=30, seed=seed, x3=1.8, bluff=0.4)
     elif name == "jammer":                         # small3b that answers any raise all-in with its top 12%
@@ -159,6 +179,9 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
+SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
+
+
 def run(job):
     """A duplicate pair of SERIES-match series. Rows: (hero, opp, seed, swap, match index, winner, hands)."""
     from bot.chipzen.sim import freezeout
@@ -168,8 +191,11 @@ def run(job):
         for m in range(SERIES):
             s = seed * 10 + m
             d = {0: decider(hero, s * 2 + swap), 1: decider(opp, s * 2 + swap + 7919)}
-            if "+w" in hero:                       # +w: hero first plays a warm-up match vs the same bot type, so its
-                freezeout({0: d[0], 1: decider(opp, s * 2 + swap + 31337)}, s + 10**7, swap=swap)  # reads carry over
+            if "+S" in hero and opp in SIZE_SEEDS:     # +S: a scouted size_tell read (the opponent's true pattern)
+                d[0].sizes["unknown"] = [list(c) for c in SIZE_SEEDS[opp]]
+            warm = next((int(p[1:]) if p[1:].isdigit() else 1 for p in hero.split("+")[1:] if p[:1] == "w"), 0)
+            for k in range(warm):                  # +w / +wN: hero first plays N warm-up matches vs the same bot type,
+                freezeout({0: d[0], 1: decider(opp, s * 2 + swap + 31337 + k)}, s + 10**7 + k, swap=swap)  # reads carry
             win, hands = freezeout(d, s, swap=swap)
             out.append((hero, opp, seed, swap, m, win, hands))
     return out
