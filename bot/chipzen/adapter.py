@@ -367,12 +367,15 @@ def load_reads(path, aggr=None, jams=None, f3=None, sizes=None, folds=None):
 
 
 SCOUT_FILE = "scout_seeds.json"
+# per-opponent engine settings a scout seed may set ("tune": {...}), with the allowed range for each
+TUNE_RANGES = {"light3_on": (0.5, 0.95), "betmore_on": (0.4, 0.9), "betmore_max": (1.0, 3.0), "betmore_bkt": (8, 11)}
 
 
-def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None, folds=None, betmore=None):
+def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None, folds=None, betmore=None, tune=None):
     """Add scouted reads from other bots' replays: {"name:<bot>": {"f3": [folds to 3-bets, 3-bets faced],
     "3b": [3-bets, opens faced], "aggr": [postflop bets/raises, postflop actions],
-    "fold": [folds to our postflop bets/raises, times faced], "bet_more": true (turn bet_more on vs this bot only)}}. Counts must be whole numbers
+    "fold": [folds to our postflop bets/raises, times faced], "bet_more": true (turn bet_more on vs this bot only),
+    "tune": {setting: value} (TUNE_RANGES settings, vs this bot only)}}. Counts must be whole numbers
     with 0 <= k <= n <= the read's cap (READS_SEED_CAP, or AGGR_SEED_CAP for aggr); anything else is skipped, and
     any failure leaves the reads as they were."""
     try:
@@ -402,6 +405,15 @@ def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None, folds=None, be
                     c[0], c[1] = c[0] * cap / c[1], cap
             if betmore is not None and seed.get("bet_more") is True:
                 betmore.add(key)
+            t = seed.get("tune") if tune is not None else None
+            if isinstance(t, dict):
+                ok = {}
+                for name, (lo, hi) in TUNE_RANGES.items():
+                    v = t.get(name)
+                    if type(v) in (int, float) and lo <= v <= hi:
+                        ok[name] = int(v) if name == "betmore_bkt" else float(v)
+                if ok:
+                    tune[key] = ok
             sz = seed.get("sizes") if sizes is not None else None
             if isinstance(sz, (list, tuple)) and len(sz) == 2 and all(
                     isinstance(c, (list, tuple)) and len(c) == 2 and type(c[0]) is int and type(c[1]) is int
@@ -431,6 +443,8 @@ class Decider:
         self.folds = {}                                          # + [folds to our postflop bets, times faced]
         self.betmore_for = set()                                 # opponents a scout seed turns bet_more on for
         self.bet_more_base = bool(getattr(self.engine, "bet_more", False))
+        self.tune = {}                                           # opponent -> {engine setting: value}
+        self.tune_base = {k: getattr(self.engine, k) for k in TUNE_RANGES if hasattr(self.engine, k)}
         try:
             self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3,
                                     self.sizes, self.folds) if log_dir else {}
@@ -442,7 +456,7 @@ class Decider:
             os.chmod(self.log_path.parent, 0o700)
             try:                                                 # scouted reads, after the dir is private
                 load_scout_seeds(Path(log_dir) / SCOUT_FILE, self.f3, self.reads, self.aggr, self.sizes, self.folds,
-                                 self.betmore_for)
+                                 self.betmore_for, self.tune)
             except Exception:
                 pass
 
@@ -462,6 +476,9 @@ class Decider:
             self.engine.opp_f3 = tuple(self.f3.get(self.opp, (0, 0)))
             self.engine.opp_fold = tuple(self.folds.get(self.opp, (0, 0)))
             self.engine.bet_more = self.bet_more_base or self.opp in self.betmore_for
+            mine = self.tune.get(self.opp, {})
+            for k, v in self.tune_base.items():
+                setattr(self.engine, k, mine.get(k, v))
             self.engine.opp_sizes = tuple(tuple(c) for c in self.sizes.get(self.opp, ((0, 0), (0, 0))))
             hero, history, eff = translate(state, bb)
             d = self.engine.decide(hero, row["hole"], row["board"], history, stack=eff)

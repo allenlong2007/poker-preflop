@@ -126,7 +126,7 @@ def decider(name, seed):
         for part in name.split("+")[1:]:
             if part[0] == "m":                       # calls need N points of equity over the price
                 e.short_call_margin = int(part[1:]) / 100
-            elif part in ("w", "F", "S"):
+            elif part in ("w", "F", "S", "T"):
                 pass
             elif part[0] == "b":                     # +b0: deep_jam on true all-ins only
                 e.deepjam_borrow_frac = int(part[1:]) / 100
@@ -192,6 +192,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
+F3_SEEDS = {"lilb": (13, 17)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
@@ -205,6 +206,8 @@ def run(job):
         for m in range(SERIES):
             s = seed * 10 + m
             d = {0: decider(hero, s * 2 + swap), 1: decider(opp, s * 2 + swap + 7919)}
+            if "+T" in hero and opp in F3_SEEDS:      # +T: the scouted fold-to-3-bet read (lil-b2c's 13 of 17)
+                d[0].f3["unknown"] = list(F3_SEEDS[opp])
             if "+F" in hero and opp in FOLD_SEEDS:     # +F: a scouted bet_more fold read (lil-b2c's real 65%)
                 d[0].folds["unknown"] = list(FOLD_SEEDS[opp])
             if "+S" in hero and opp in SIZE_SEEDS:     # +S: a scouted size_tell read (the opponent's true pattern)

@@ -460,3 +460,15 @@ def test_bet_more_seed_turns_it_on_for_that_opponent_only(tmp_path):
     assert on == {"name:a"}                                      # only a real true, never the sentinel names
     d = Decider(log_dir=tmp_path)
     assert d.betmore_for == {"name:a"} and d.bet_more_base is False
+
+
+def test_scout_tune_is_per_opponent_and_range_checked(tmp_path):
+    import json
+    seeds = tmp_path / "scout_seeds.json"
+    seeds.write_text(json.dumps({"name:a": {"tune": {"light3_on": 0.65, "betmore_bkt": 8, "betmore_max": 9,
+                                                     "evil": 1}},
+                                 "name:b": {"tune": {"light3_on": "0.6"}}}))
+    d = Decider(log_dir=tmp_path)
+    assert d.tune == {"name:a": {"light3_on": 0.65, "betmore_bkt": 8}}   # out of range / wrong type / unknown: dropped
+    base = dict(d.tune_base)
+    assert base["light3_on"] == 0.75
