@@ -208,7 +208,7 @@ class Engine:
                  exact_candidate=False, exact_min_updates=1000, exact_required=True, coverage_path=True,
                  postflop_depths=None, policy_overrides=None, postflop_nearest=False,
                  micro_pushfold=False, wide_3bet=False, reraise_defend=False, aggro_defend=False,
-                 deep_jam=False, light_3bet=False, river_air=False, size_tell=False):
+                 deep_jam=False, light_3bet=False, river_air=False, size_tell=False, bet_more=False):
         """policy_dir: postflop policies (default: experiment 30's finer sizes when all are trained, else
         experiment 26's). translate: blend neighbouring sizes when facing an untrained bet size.
         defend_keep / river_lead: experiment 35's BB corrections (default DEFEND_KEEP / RIVER_LEAD)."""
@@ -293,6 +293,12 @@ class Engine:
         # 0.6-pot+ bets value). Balanced sizing gives a scale near 1, and then nothing changes.
         self.size_tell = size_tell
         self.opp_sizes = ((0, 0), (0, 0))
+        # bet_more (Chipzen, 2026-11-18): opp_fold = (folds to our postflop bets/raises, times they faced one), set by
+        # the adapter. Once their shrunk fold share reaches betmore_on, scale our bluff share (draws / overcards / air
+        # when we can bet first) by fold share / BETMORE_BASE, up to BETMORE_MAX (scout: lil-b2c folds 62-72%).
+        self.bet_more = bet_more
+        self.opp_fold = (0, 0)
+        self.betmore_on, self.betmore_max, self.betmore_bkt = BETMORE_ON, BETMORE_MAX, BETMORE_MIN_BKT
         self.size_act = SIZE_ACT
         self.river_air_mode = RIVER_AIR_MODE
         self.wide3_eq, self.wide3_min_eq = WIDE3_4BET_EQ, WIDE3_MIN_4BET_EQ
@@ -1020,6 +1026,16 @@ class Engine:
             return None
         return (k + AGGRO_PRIOR * AGGRO_WEIGHT) / (n + AGGRO_WEIGHT)
 
+    def _bet_more_scale(self):
+        """bet_more: how much to scale bluffs by, from the opponent's shrunk fold share to our postflop bets (1: off)."""
+        if not self.bet_more:
+            return 1.0
+        k, n = self.opp_fold
+        if n < BETMORE_MIN_N:
+            return 1.0
+        f = (k + BETMORE_PRIOR * BETMORE_WEIGHT) / (n + BETMORE_WEIGHT)
+        return min(self.betmore_max, f / BETMORE_BASE) if f >= self.betmore_on else 1.0
+
     def _wide_3bet_share(self, ratio):
         """The opponent's estimated 3-bet share vs our open: their observed rate shrunk to a prior (tight for normal
         sizes, wide for min-3-bets, which naive bots make with most hands)."""
@@ -1322,7 +1338,11 @@ class Engine:
     def _exploit(self, probs, kind, bkt, notes, faced=0.0, street=0):
         """Scale bluffs by how often the opponent folds, and calling down by how often they bet (on this street)."""
         b, d = self.exploit["bluff"], self._defend(street)
-        if kind in ("btn_vs_check", "bb_first") and bkt >= 9 and abs(b - 1) > 0.02:
+        more = self._bet_more_scale()
+        if more > 1 and kind in ("btn_vs_check", "bb_first") and bkt >= self.betmore_bkt:
+            b *= more
+        lo = min(9, self.betmore_bkt) if more > 1 else 9
+        if kind in ("btn_vs_check", "bb_first") and bkt >= lo and abs(b - 1) > 0.02:
             bets = [k for k in probs if k.startswith(("bet", "lead"))]
             tot = sum(probs[k] for k in bets)
             if 0 < tot < 1:
@@ -1529,6 +1549,11 @@ SIZE_ACT = 0.25                 # act only when the scale for this bet size is a
 SIZE_CAP = 20                   # per size bucket: a sliding read, recent showdowns count
 DEEPJAM_BORROW_FRAC = 0.75     # a node borrowed from a tree this much shallower than the stack counts as a jam node
 AGGRO_PRIOR, AGGRO_WEIGHT, AGGRO_MIN_N = 0.35, 20.0, 10   # aggro_defend: prior bet share, its weight, min actions
+BETMORE_PRIOR, BETMORE_WEIGHT, BETMORE_MIN_N = 0.45, 10.0, 8   # bet_more: prior fold share, its weight, min spots
+BETMORE_ON = 0.55               # bet_more: act from this shrunk fold share to our postflop bets
+BETMORE_BASE = 0.45             # the fold share the trained bluff frequencies are roughly balanced for
+BETMORE_MAX = 1.8               # bluff share at most x this
+BETMORE_MIN_BKT = 9             # hand groups scaled: 9 weak draw, 10 overcards, 11 air (8 adds strong draws)
 AGGRO_ON = 0.6                 # aggro_defend: pot-odds calls at any depth from this shrunk bet share
 WIDE3_PRIOR, WIDE3_MIN_PRIOR = 0.15, 0.45   # wide_3bet: prior 3-bet share for normal / min-3-bet sizes
 WIDE3_MIN_RATIO = 2.0       # a 3-bet to at most this x the open reads as a small 3-bet (PluriBot: 2.25 -> 4; 2.0 beat 1.6 in the sim)

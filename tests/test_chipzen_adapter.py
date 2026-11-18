@@ -410,3 +410,53 @@ def test_size_tell_read_and_stage():
     assert abs(balanced._size_scale(0.3) - 1) < 0.25
     d = balanced.decide("bb", "9c8c", "2hQsJs5c3d", small, sample=False, stack=60)
     assert not any("size tell" in n for n in d.notes)
+
+
+def test_bet_more_fold_read_seed_and_stage(tmp_path):
+    import json
+    from bot.chipzen.adapter import fold_seen, folds_faced, load_scout_seeds
+    from bot.engine import BETMORE_MAX, Engine
+    # we (seat 0) bet the flop and they fold; on the turn they call our bet, then we bet the river and they raise
+    hist = [{"seat": 1, "phase": "preflop", "action": "post_small_blind"},
+            {"seat": 0, "phase": "flop", "action": "bet"}, {"seat": 1, "phase": "flop", "action": "fold"},
+            {"seat": 1, "phase": "turn", "action": "check"}, {"seat": 0, "phase": "turn", "action": "bet"},
+            {"seat": 1, "phase": "turn", "action": "call"},
+            {"seat": 0, "phase": "river", "action": "raise"}, {"seat": 1, "phase": "river", "action": "raise"},
+            {"seat": 0, "phase": "river", "action": "call"}]
+    assert fold_seen(hist, 0) == (1, 3)
+    assert fold_seen(hist, 1) == (0, 1)                          # our raise of their river bet: they raised back
+    assert folds_faced([("bb", "check"), ("btn", "check")], "btn") == (0, 0)
+    seeds = tmp_path / "s.json"
+    seeds.write_text(json.dumps({"name:x": {"fold": [40, 60]}, "name:y": {"fold": [61, 61]}, "name:z": {"fold": [3, 2]}}))
+    folds = {}
+    load_scout_seeds(seeds, {}, folds=folds)
+    assert folds == {"name:x": [40, 60]}                         # over the cap or k > n: skipped
+    d = Decider(log_dir=tmp_path)
+    assert d.folds == {}
+    # the stage: off by default and below the line; on, it scales bluffs (hand groups 9-11) when we can bet first
+    e = Engine.__new__(Engine)
+    e.exploit, e.bet_more, e.opp_fold = {"bluff": 1.0, "defend": 1.0}, False, (50, 60)
+    e.betmore_on, e.betmore_max, e.betmore_bkt = 0.55, BETMORE_MAX, 9
+    probs = {"check": 0.7, "bet33": 0.3}
+    assert e._exploit(dict(probs), "btn_vs_check", 11, []) == probs
+    e.bet_more = True
+    e.opp_fold = (20, 60)                                        # folds a third: below the line
+    assert e._exploit(dict(probs), "btn_vs_check", 11, []) == probs
+    e.opp_fold = (50, 60)
+    out = e._exploit(dict(probs), "btn_vs_check", 11, [])
+    assert out["bet33"] > 0.45 and abs(sum(out.values()) - 1) < 1e-9
+    assert e._exploit(dict(probs), "btn_vs_check", 4, []) == probs     # made hands keep the trained mix
+    assert e._exploit(dict(probs), "bb_vs_bet", 11, []) == probs       # only when we can bet first
+
+
+def test_bet_more_seed_turns_it_on_for_that_opponent_only(tmp_path):
+    import json
+    from bot.chipzen.adapter import load_scout_seeds
+    seeds = tmp_path / "scout_seeds.json"
+    seeds.write_text(json.dumps({"name:a": {"fold": [40, 60], "bet_more": True}, "name:b": {"bet_more": "yes"},
+                                 "name:unknown": {"bet_more": True}}))
+    on = set()
+    load_scout_seeds(seeds, {}, betmore=on)
+    assert on == {"name:a"}                                      # only a real true, never the sentinel names
+    d = Decider(log_dir=tmp_path)
+    assert d.betmore_for == {"name:a"} and d.bet_more_base is False

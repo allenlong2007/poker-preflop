@@ -39,7 +39,7 @@ class Rule:
     (2.5x) at deep stacks, cbet: bets pot postflop with a pair or better, else check/fold."""
 
     def __init__(self, shove, call, open_, deep_bb, seed, min3=False, x3=3.0, bluff=0.0, limp=0.0, station=0.0,
-                 aggro=0.0, jam=0.0, jam_any=0.0, big=0.0, tell=0.0, rev=False):
+                 aggro=0.0, jam=0.0, jam_any=0.0, big=0.0, tell=0.0, rev=False, fit=False):
         from bot.engine import INDEX, hand_class, parse_cards as parse
         self.pct, self.INDEX, self.hand_class, self.parse = _strength(), INDEX, hand_class, parse
         self.shove, self.call, self.open, self.deep, self.min3, self.x3 = shove, call, open_, deep_bb, min3, x3
@@ -53,6 +53,7 @@ class Rule:
         self.tell = tell                # postflop: sizing tell. Bets 1/3 pot with air/weak pairs (bluffing this often
         #                                 when checked to), pot with top pair or better; calls with any pair
         self.rev = rev                  # the reverse tell: small with value, pot with air
+        self.fit = fit                  # postflop: only top pair / overpair or better counts as made (folds the rest)
         self.rng = np.random.default_rng(seed)
 
     def __call__(self, s):
@@ -84,6 +85,9 @@ class Rule:
             return ("check", 0) if "check" in valid else ("call", 0)
         cards = [eval7.Card(c) for c in [hole[:2], hole[2:]] + ["".join(map(str, [b])) for b in s.board]]
         made = eval7.handtype(eval7.evaluate(cards)) != "High Card"
+        if self.fit:
+            from bot.engine import weak_showdown
+            made = not weak_showdown(cards[:2], cards[2:])
         if self.tell:
             from bot.engine import weak_showdown
             weak = len(s.board) < 3 or weak_showdown(cards[:2], cards[2:])
@@ -118,11 +122,11 @@ def decider(name, seed):
         flags = name.split("+")[0][4:]           # v8wra: + aggro_defend, v8wraj: + deep_jam; v8wra+a50: from 50%
         e = v8_engine(wide_3bet=True, reraise_defend=True, aggro_defend="a" in flags, deep_jam="j" in flags,
                       light_3bet="l" in flags, river_air="v" in flags,   # v8wrajl: + light_3bet, v: river_air
-                      size_tell="s" in flags)                                # s: size_tell
+                      size_tell="s" in flags, bet_more="b" in flags)        # s: size_tell, b: bet_more
         for part in name.split("+")[1:]:
             if part[0] == "m":                       # calls need N points of equity over the price
                 e.short_call_margin = int(part[1:]) / 100
-            elif part == "w":
+            elif part in ("w", "F", "S"):
                 pass
             elif part[0] == "b":                     # +b0: deep_jam on true all-ins only
                 e.deepjam_borrow_frac = int(part[1:]) / 100
@@ -134,6 +138,12 @@ def decider(name, seed):
                 e.light3_on = int(part[1:]) / 100
             elif part[0] == "v":                     # +v2: river_air mode 2
                 e.river_air_mode = int(part[1:])
+            elif part[0] == "f":                     # +f50: bet_more acts from a 50% fold share
+                e.betmore_on = int(part[1:]) / 100
+            elif part[0] == "x":                     # +x25: bet_more scales bluffs at most x2.5
+                e.betmore_max = int(part[1:]) / 10
+            elif part[0] == "g":                     # +g8: bet_more also scales strong draws (hand group 8)
+                e.betmore_bkt = int(part[1:])
             elif part[0] == "e":                     # +e40: 4-bet a wide (normal-size) 3-bet at 40% equity
                 e.wide3_eq = int(part[1:]) / 100
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity
@@ -167,6 +177,9 @@ def decider(name, seed):
         return Rule(shove=0.55, call=0.30, open_=0.90, deep_bb=30, seed=seed, x3=3.0, tell=0.5, rev=True)
     elif name == "folder":                         # stebin-like: opens 85% small, folds ~88% of hands to a 3-bet
         return Rule(shove=0.55, call=0.12, open_=0.85, deep_bb=30, seed=seed, x3=1.8, bluff=0.4)
+    elif name == "lilb":                           # lil-b2c-like: folds 45% / limps 25% / opens 30%, folds most hands
+        #                                            to a 3-bet, fit-or-fold postflop, stabs 12% of misses when checked to
+        return Rule(shove=0.30, call=0.15, open_=0.55, deep_bb=12, seed=seed, limp=0.45, bluff=0.12, fit=True)
     elif name == "jammer":                         # small3b that answers any raise all-in with its top 12%
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, jam=0.12)
     elif name == "chaos":                          # small3b that jams any two cards 25% of the time, calls jams 50%
@@ -179,6 +192,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
+FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
 
@@ -191,6 +205,8 @@ def run(job):
         for m in range(SERIES):
             s = seed * 10 + m
             d = {0: decider(hero, s * 2 + swap), 1: decider(opp, s * 2 + swap + 7919)}
+            if "+F" in hero and opp in FOLD_SEEDS:     # +F: a scouted bet_more fold read (lil-b2c's real 65%)
+                d[0].folds["unknown"] = list(FOLD_SEEDS[opp])
             if "+S" in hero and opp in SIZE_SEEDS:     # +S: a scouted size_tell read (the opponent's true pattern)
                 d[0].sizes["unknown"] = [list(c) for c in SIZE_SEEDS[opp]]
             warm = next((int(p[1:]) if p[1:].isdigit() else 1 for p in hero.split("+")[1:] if p[:1] == "w"), 0)

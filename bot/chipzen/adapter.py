@@ -23,12 +23,12 @@ POSTS = ("post_small_blind", "post_big_blind", "post_ante")
 
 
 def v8_engine(wide_3bet=False, reraise_defend=False, aggro_defend=False, deep_jam=False, light_3bet=False,
-              river_air=False, size_tell=False):
+              river_air=False, size_tell=False, bet_more=False):
     """The v8 configuration (same as bot/pokernow/server.py on this branch), plus opt-in Chipzen stages."""
     return Engine(pot_odds=True, exact_required=False, postflop_depths=(25, 40, 60, 100), postflop_nearest=True,
                   micro_pushfold=True, wide_3bet=wide_3bet, reraise_defend=reraise_defend,
                   aggro_defend=aggro_defend, deep_jam=deep_jam, light_3bet=light_3bet,
-                  river_air=river_air, size_tell=size_tell)
+                  river_air=river_air, size_tell=size_tell, bet_more=bet_more)
 
 
 def threebet_seen(action_history, seat):
@@ -121,6 +121,33 @@ def aggression_seen(action_history, seat):
             continue
         n += 1
         k += a["action"] in ("bet", "raise", "all_in")
+    return k, n
+
+
+def folds_faced(acts, me):
+    """One street's actions as (player, kind) pairs: (opponent folds to our bets/raises, times they faced one).
+    Kinds: bet / raise / all_in are aggressive, fold folds; anything else answers without folding."""
+    k = n = 0
+    pending = False
+    for who, kind in acts:
+        if who == me:
+            pending = kind in ("bet", "raise", "all_in")
+            continue
+        if pending:
+            n += 1
+            k += kind == "fold"
+        pending = False
+    return k, n
+
+
+def fold_seen(action_history, seat):
+    """From a finished hand: (opponent folds to our postflop bets/raises, times they faced one)."""
+    k = n = 0
+    for ph in PHASES[1:]:
+        acts = [(a.get("seat") == seat, a.get("action")) for a in action_history
+                if isinstance(a, dict) and a.get("phase") == ph and a.get("action") not in POSTS]
+        fk, fn = folds_faced(acts, True)
+        k, n = k + fk, n + fn
     return k, n
 
 
@@ -255,7 +282,7 @@ AGGR_SEED_CAP = 60             # the same for carried-over postflop actions (agg
 READS_SEED_CAP = 30            # carried-over opens count as at most this many, so the current match still moves it
 
 
-def load_reads(path, aggr=None, jams=None, f3=None, sizes=None):
+def load_reads(path, aggr=None, jams=None, f3=None, sizes=None, folds=None):
     """Per-opponent [3-bets, our button opens they faced] from the stored hand records (hands.jsonl), keyed by the
     platform's participant_id (records without one are ignored), so the read carries across matches and restarts.
     Bad lines are skipped and any failure gives an empty read."""
@@ -285,6 +312,15 @@ def load_reads(path, aggr=None, jams=None, f3=None, sizes=None):
                         c = aggr.setdefault(key, [0, 0])
                         c[0] += sum(a[1] in ("bet", "raise") for a in acts)
                         c[1] += len(acts)
+                    if folds is not None and isinstance(key, str) and key and r.get("hero_pos") in ("btn", "bb"):
+                        fk = fn = 0
+                        for street in r["history"][1:]:
+                            a, b = folds_faced([(a[0], a[1]) for a in street], r["hero_pos"])
+                            fk, fn = fk + a, fn + b
+                        if fn:
+                            c = folds.setdefault(key, [0, 0])
+                            c[0] += fk
+                            c[1] += fn
                     if jams is not None and isinstance(key, str) and key and not key.startswith("pid:"):
                         jk, jn = jam_seen(r)
                         if jn:
@@ -309,7 +345,7 @@ def load_reads(path, aggr=None, jams=None, f3=None, sizes=None):
                 except Exception:
                     continue
     except Exception:
-        for x in (aggr, jams, f3, sizes):
+        for x in (aggr, jams, f3, sizes, folds):
             if x is not None:
                 x.clear()
         return {}
@@ -319,7 +355,7 @@ def load_reads(path, aggr=None, jams=None, f3=None, sizes=None):
     for c in (f3 or {}).values():
         if c[1] > READS_SEED_CAP:
             c[0], c[1] = c[0] * READS_SEED_CAP / c[1], READS_SEED_CAP
-    for c in (jams or {}).values():
+    for c in list((jams or {}).values()) + list((folds or {}).values()):
         if c[1] > AGGR_SEED_CAP:
             c[0], c[1] = c[0] * AGGR_SEED_CAP / c[1], AGGR_SEED_CAP
     for key in [k for k, c in (aggr or {}).items() if not c[1]]:
@@ -333,9 +369,10 @@ def load_reads(path, aggr=None, jams=None, f3=None, sizes=None):
 SCOUT_FILE = "scout_seeds.json"
 
 
-def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None):
+def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None, folds=None, betmore=None):
     """Add scouted reads from other bots' replays: {"name:<bot>": {"f3": [folds to 3-bets, 3-bets faced],
-    "3b": [3-bets, opens faced], "aggr": [postflop bets/raises, postflop actions]}}. Counts must be whole numbers
+    "3b": [3-bets, opens faced], "aggr": [postflop bets/raises, postflop actions],
+    "fold": [folds to our postflop bets/raises, times faced], "bet_more": true (turn bet_more on vs this bot only)}}. Counts must be whole numbers
     with 0 <= k <= n <= the read's cap (READS_SEED_CAP, or AGGR_SEED_CAP for aggr); anything else is skipped, and
     any failure leaves the reads as they were."""
     try:
@@ -350,7 +387,7 @@ def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None):
                     or key in ("name:unknown", "name:multi"):
                 continue
             for name, store, cap in (("f3", f3, READS_SEED_CAP), ("3b", reads, READS_SEED_CAP),
-                                     ("aggr", aggr, AGGR_SEED_CAP)):
+                                     ("aggr", aggr, AGGR_SEED_CAP), ("fold", folds, AGGR_SEED_CAP)):
                 if store is None or name not in seed:
                     continue
                 pair = seed[name]
@@ -363,6 +400,8 @@ def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None):
                 c[0], c[1] = c[0] + k, c[1] + n
                 if c[1] > cap:
                     c[0], c[1] = c[0] * cap / c[1], cap
+            if betmore is not None and seed.get("bet_more") is True:
+                betmore.add(key)
             sz = seed.get("sizes") if sizes is not None else None
             if isinstance(sz, (list, tuple)) and len(sz) == 2 and all(
                     isinstance(c, (list, tuple)) and len(c) == 2 and type(c[0]) is int and type(c[1]) is int
@@ -389,17 +428,21 @@ class Decider:
         self.aggr, self.jams = {}, {}                             # + [deep preflop jams, deep preflop actions]
         self.f3 = {}                                             # + [folds to our 3-bets, our 3-bets faced]
         self.sizes = {}                                          # + [[weak, n] small, [weak, n] big] river bets
+        self.folds = {}                                          # + [folds to our postflop bets, times faced]
+        self.betmore_for = set()                                 # opponents a scout seed turns bet_more on for
+        self.bet_more_base = bool(getattr(self.engine, "bet_more", False))
         try:
             self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3,
-                                    self.sizes) if log_dir else {}
+                                    self.sizes, self.folds) if log_dir else {}
         except Exception:                                        # a bad file never stops the bot from starting
-            self.reads, self.aggr, self.jams, self.f3, self.sizes = {}, {}, {}, {}, {}
+            self.reads, self.aggr, self.jams, self.f3, self.sizes, self.folds = {}, {}, {}, {}, {}, {}
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             os.chmod(self.log_path.parent, 0o700)
             try:                                                 # scouted reads, after the dir is private
-                load_scout_seeds(Path(log_dir) / SCOUT_FILE, self.f3, self.reads, self.aggr, self.sizes)
+                load_scout_seeds(Path(log_dir) / SCOUT_FILE, self.f3, self.reads, self.aggr, self.sizes, self.folds,
+                                 self.betmore_for)
             except Exception:
                 pass
 
@@ -417,6 +460,8 @@ class Decider:
             self.engine.opp_aggr = tuple(self.aggr.get(self.opp, (0, 0)))
             self.engine.opp_jams = tuple(self.jams.get(self.opp, (0, 0)))
             self.engine.opp_f3 = tuple(self.f3.get(self.opp, (0, 0)))
+            self.engine.opp_fold = tuple(self.folds.get(self.opp, (0, 0)))
+            self.engine.bet_more = self.bet_more_base or self.opp in self.betmore_for
             self.engine.opp_sizes = tuple(tuple(c) for c in self.sizes.get(self.opp, ((0, 0), (0, 0))))
             hero, history, eff = translate(state, bb)
             d = self.engine.decide(hero, row["hole"], row["board"], history, stack=eff)
@@ -460,6 +505,13 @@ class Decider:
             r[0] += k
             r[1] += n
             if r[1] > AGGR_SEED_CAP:                             # a sliding read: recent play counts, old play fades
+                r[0], r[1] = r[0] * AGGR_SEED_CAP / r[1], AGGR_SEED_CAP
+        k, n = fold_seen(result.get("action_history") or [], seat)
+        if n:
+            r = self.folds.setdefault(self.opp, [0, 0])
+            r[0] += k
+            r[1] += n
+            if r[1] > AGGR_SEED_CAP:
                 r[0], r[1] = r[0] * AGGR_SEED_CAP / r[1], AGGR_SEED_CAP
         rec = hand_record(result, seat, "", "", "", "", self.last_bb)
         k, n = jam_seen(rec) if rec else (0, 0)
