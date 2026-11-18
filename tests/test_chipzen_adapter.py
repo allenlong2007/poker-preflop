@@ -374,3 +374,7 @@ def test_scout_seeds_add_a_valid_fold_read_and_skip_bad_entries(tmp_path):
     assert dec.action == "raise"                # 12/13 shrinks to 0.79, above light3_on
     (tmp_path / SCOUT_FILE).write_text("{not json")
     assert Decider(v8_engine(), log_dir=tmp_path).f3 == {}
+    (tmp_path / SCOUT_FILE).write_text(json.dumps({"name:x": {"3b": [8, 29], "aggr": [45, 60], "f3": [1, 1]},
+                                                   "name:y": {"aggr": [70, 70], "3b": "bad"}}))
+    d = Decider(v8_engine(), log_dir=tmp_path)
+    assert d.reads == {"name:x": [8, 29]} and d.aggr == {"name:x": [45, 60]} and d.f3 == {"name:x": [1, 1]}
