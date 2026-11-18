@@ -311,7 +311,8 @@ def load_scout_seeds(path, f3, reads=None, aggr=None):
         return
     for key, seed in list(data.items())[:100]:
         try:
-            if not (isinstance(key, str) and key.startswith("name:") and 5 < len(key) < 69 and isinstance(seed, dict)):
+            if not (isinstance(key, str) and key.startswith("name:") and 5 < len(key) < 69 and isinstance(seed, dict)) \
+                    or key in ("name:unknown", "name:multi"):
                 continue
             for name, store, cap in (("f3", f3, READS_SEED_CAP), ("3b", reads, READS_SEED_CAP),
                                      ("aggr", aggr, AGGR_SEED_CAP)):
@@ -344,14 +345,16 @@ class Decider:
         self.f3 = {}                                             # + [folds to our 3-bets, our 3-bets faced]
         try:
             self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3) if log_dir else {}
-            if log_dir:
-                load_scout_seeds(Path(log_dir) / SCOUT_FILE, self.f3, self.reads, self.aggr)   # scouted reads
         except Exception:                                        # a bad file never stops the bot from starting
             self.reads, self.aggr, self.jams, self.f3 = {}, {}, {}, {}
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
         if self.log_path:
             self.log_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             os.chmod(self.log_path.parent, 0o700)
+            try:                                                 # scouted reads, after the dir is private
+                load_scout_seeds(Path(log_dir) / SCOUT_FILE, self.f3, self.reads, self.aggr)
+            except Exception:
+                pass
 
     def __call__(self, state):
         t0 = time.perf_counter()

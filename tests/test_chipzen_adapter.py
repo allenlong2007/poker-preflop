@@ -366,6 +366,7 @@ def test_scout_seeds_add_a_valid_fold_read_and_skip_bad_entries(tmp_path):
         "name:bad2": {"f3": [1.5, 3]},          # not whole numbers
         "name:bad3": {"f3": [40, 40]},          # over the cap
         "pid:x": {"f3": [3, 3]},                # not a name key
+        "name:unknown": {"f3": [3, 3]},         # sentinel names are never seeded
     }))
     d = Decider(v8_engine(light_3bet=True), log_dir=tmp_path)
     assert d.f3 == {"name:alizabethbot3s": [12, 13]}
