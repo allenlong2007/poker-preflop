@@ -355,3 +355,22 @@ def test_river_air_is_opt_in_and_folds_high_card_when_our_river_bet_is_raised():
     assert "river air" not in " ".join(on.decide("bb", "8s6h", "2hQsJsTcKd", bet, sample=False, stack=24.36).notes)
     on.river_air_mode = 2
     assert not on.decide("bb", "8s6h", "2hQsJsTcKd", bet, sample=False, stack=24.36).probs.get("call")
+
+
+def test_scout_seeds_add_a_valid_fold_read_and_skip_bad_entries(tmp_path):
+    import json
+    from bot.chipzen.adapter import Decider, v8_engine, SCOUT_FILE
+    (tmp_path / SCOUT_FILE).write_text(json.dumps({
+        "name:alizabethbot3s": {"f3": [12, 13]},
+        "name:bad1": {"f3": [5, 3]},            # folds > faced
+        "name:bad2": {"f3": [1.5, 3]},          # not whole numbers
+        "name:bad3": {"f3": [40, 40]},          # over the cap
+        "pid:x": {"f3": [3, 3]},                # not a name key
+    }))
+    d = Decider(v8_engine(light_3bet=True), log_dir=tmp_path)
+    assert d.f3 == {"name:alizabethbot3s": [12, 13]}
+    d.engine.opp_f3 = tuple(d.f3["name:alizabethbot3s"])
+    dec = d.engine.decide("bb", "7c2d", "", [[("btn", "raise", 2.5)], [], [], []], sample=False)
+    assert dec.action == "raise"                # 12/13 shrinks to 0.79, above light3_on
+    (tmp_path / SCOUT_FILE).write_text("{not json")
+    assert Decider(v8_engine(), log_dir=tmp_path).f3 == {}

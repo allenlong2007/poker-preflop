@@ -295,6 +295,34 @@ def load_reads(path, aggr=None, jams=None, f3=None):
     return reads
 
 
+SCOUT_FILE = "scout_seeds.json"
+
+
+def load_scout_seeds(path, f3):
+    """Add scouted reads from other bots' replays: {"name:<bot>": {"f3": [folds to 3-bets, 3-bets faced]}}.
+    Counts must be whole numbers with 0 <= folds <= faced <= READS_SEED_CAP; anything else is skipped, and any
+    failure leaves the reads as they were."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    for key, seed in list(data.items())[:100]:
+        try:
+            if not (isinstance(key, str) and key.startswith("name:") and 5 < len(key) < 69 and isinstance(seed, dict)):
+                continue
+            k, n = seed.get("f3", (0, 0))
+            if not (type(k) is int and type(n) is int and 0 <= k <= n <= READS_SEED_CAP and n):
+                continue
+            c = f3.setdefault(key, [0, 0])
+            c[0], c[1] = c[0] + k, c[1] + n
+            if c[1] > READS_SEED_CAP:
+                c[0], c[1] = c[0] * READS_SEED_CAP / c[1], READS_SEED_CAP
+        except Exception:
+            continue
+
+
 class Decider:
     """The SDK-free core: GameState in, (action, amount) out, with a JSONL decision log."""
 
@@ -308,6 +336,8 @@ class Decider:
         self.f3 = {}                                             # + [folds to our 3-bets, our 3-bets faced]
         try:
             self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3) if log_dir else {}
+            if log_dir:
+                load_scout_seeds(Path(log_dir) / SCOUT_FILE, self.f3)   # scouted reads from other bots' replays
         except Exception:                                        # a bad file never stops the bot from starting
             self.reads, self.aggr, self.jams, self.f3 = {}, {}, {}, {}
         self.log_path = Path(log_dir) / "decisions.jsonl" if log_dir else None
