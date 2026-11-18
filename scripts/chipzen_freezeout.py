@@ -180,6 +180,9 @@ def decider(name, seed):
     elif name == "lilb":                           # lil-b2c-like: folds 45% / limps 25% / opens 30%, folds most hands
         #                                            to a 3-bet, fit-or-fold postflop, stabs 12% of misses when checked to
         return Rule(shove=0.30, call=0.15, open_=0.55, deep_bb=12, seed=seed, limp=0.45, bluff=0.12, fit=True)
+    elif name == "jarvis":                         # Jarvis-like: opens 77% of buttons at 3x, never limps, folds 82%
+        #                                            to a 3-bet, bets 2/3 pot when checked to about half the time
+        return Rule(shove=0.30, call=0.18, open_=0.77, deep_bb=12, seed=seed, bluff=0.5)
     elif name == "jammer":                         # small3b that answers any raise all-in with its top 12%
         return Rule(shove=0.55, call=0.40, open_=0.80, deep_bb=30, seed=seed, x3=1.8, bluff=0.4, jam=0.12)
     elif name == "chaos":                          # small3b that jams any two cards 25% of the time, calls jams 50%
@@ -192,7 +195,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
-F3_SEEDS = {"lilb": (13, 17)}                       # folds to our 3-bets, 3-bets faced
+F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
