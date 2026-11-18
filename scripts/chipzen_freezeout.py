@@ -113,6 +113,89 @@ class Rule:
         return ("check", 0) if "check" in valid else ("fold", 0)
 
 
+class JarvisBot:
+    """Jarvis as scouted 2026-11-18 (325 hands): SB opens 80% to 3x deep / 64% mid, jams 55% under 15bb, never limps;
+    BB folds ~65% to opens (3-bets 8%, calls the rest); folds 82% to 3-bets. Postflop it bets 2/3 pot into a check
+    or as the first actor ~80% on the flop with any two, ~55% on the turn, the river mostly for value; vs our bets
+    it folds ~2/3 of misses on the flop, is sticky on the turn, calls the river with top pair+."""
+
+    def __init__(self, seed):
+        from bot.engine import INDEX, hand_class, parse_cards as parse
+        self.pct, self.INDEX, self.hand_class, self.parse = _strength(), INDEX, hand_class, parse
+        self.rng = np.random.default_rng(seed)
+
+    def _kind(self, hole, board):
+        import eval7
+        from bot.engine import weak_showdown
+        h = [eval7.Card(hole[:2]), eval7.Card(hole[2:])]
+        b = [eval7.Card(str(c)) for c in board]
+        if eval7.evaluate(h + b) >> 24 >= 2 and eval7.evaluate(h + b) >> 24 > eval7.evaluate(b) >> 24:
+            return "str"
+        if not weak_showdown(h, b):
+            return "top"
+        if eval7.evaluate(h + b) >> 24 > eval7.evaluate(b) >> 24:
+            return "pair"
+        suits = [str(c)[1] for c in h + b]
+        if len(b) < 5 and any(suits.count(x) == 4 and x in (hole[1], hole[3]) for x in set(suits)):
+            return "draw"
+        return "air"
+
+    def __call__(self, s):
+        a = self._act(s)
+        if a[0] not in s.valid_actions:                              # e.g. a raise when only fold / call is left
+            a = ("call", 0) if a[0] == "raise" and "call" in s.valid_actions else \
+                ("check", 0) if "check" in s.valid_actions else ("fold", 0)
+        return a
+
+    def _act(self, s):
+        from bot.chipzen.adapter import big_blind
+        hole = "".join(map(str, s.hole_cards))
+        p = self.pct[self.INDEX[self.hand_class(self.parse(hole))]]
+        bb = big_blind(s.action_history, 100)
+        eff = min(s.your_stack, s.opponent_stacks[0]) / bb
+        valid, r = s.valid_actions, self.rng.random()
+        allin_vs = s.opponent_stacks[0] == 0
+        to = lambda x: ("raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, int(x))))
+        fold = ("check", 0) if "check" in valid else ("fold", 0)
+        call = ("call", 0) if "call" in valid else ("check", 0)
+        if s.phase == "preflop":
+            if allin_vs:
+                return call if p <= (0.20 if eff < 15 else 0.12) else fold
+            if s.to_call == bb // 2:                                  # SB first in
+                if eff < 15:
+                    return ("raise", s.max_raise) if p <= 0.55 else fold
+                return to(3 * bb) if p <= (0.80 if eff >= 35 else 0.64) else fold
+            if s.to_call == 0:                                        # BB vs a limp
+                return to(3.5 * bb) if p <= 0.31 and "raise" in valid else ("check", 0)
+            if s.to_call <= 4 * bb:                                   # BB vs an open
+                if p <= 0.08 and "raise" in valid:
+                    return to(3.5 * (s.to_call + bb))
+                return call if p <= (0.40 if eff >= 35 else 0.27) else fold
+            return call if p <= 0.12 else fold                        # vs a 3-bet or bigger
+        k = self._kind(hole, s.board)
+        street = len(s.board) - 2                                    # 1 flop .. 3 river
+        if not s.to_call:
+            first = not any(a.get("phase") == s.phase and a.get("seat") != s.your_seat
+                            for a in s.action_history if isinstance(a, dict))
+            bet = {1: 0.93 if not first else 0.75, 2: 0.45, 3: 0.10}[street]
+            if k in ("str", "top") and street < 3 or k == "str" or k == "top" and r < 0.7 \
+                    or k in ("air", "draw", "pair") and r < bet:
+                if "raise" in valid:
+                    return to(0.66 * s.pot)
+            return ("check", 0)
+        if allin_vs:
+            return call if k in ("str", "top") else fold
+        if k == "str":
+            return to(3 * s.to_call + s.pot // 2) if r < 0.4 and "raise" in valid else call
+        if street == 1:
+            if (k == "draw" and r < 0.5 or k == "top" and r < 0.3) and "raise" in valid:
+                return to(3 * s.to_call + s.pot // 2)
+            return call if k in ("top", "draw") or k == "pair" and r < 0.5 else fold
+        if street == 2:
+            return call if k in ("top", "pair", "draw") or r < 0.5 else fold
+        return call if k == "top" or k == "pair" and r < 0.2 else fold
+
+
 def decider(name, seed):
     from bot.chipzen.adapter import Decider, v8_engine
     from bot.engine import Engine
@@ -126,7 +209,7 @@ def decider(name, seed):
         for part in name.split("+")[1:]:
             if part[0] == "m":                       # calls need N points of equity over the price
                 e.short_call_margin = int(part[1:]) / 100
-            elif part in ("w", "F", "S", "T"):
+            elif part in ("w", "F", "S", "T") or part[:1] == "X":
                 pass
             elif part[0] == "b":                     # +b0: deep_jam on true all-ins only
                 e.deepjam_borrow_frac = int(part[1:]) / 100
@@ -144,6 +227,8 @@ def decider(name, seed):
                 e.betmore_max = int(part[1:]) / 10
             elif part[0] == "g":                     # +g8: bet_more also scales strong draws (hand group 8)
                 e.betmore_bkt = int(part[1:])
+            elif part[0] == "K":                     # +K50: steal moves 50% of button fold/limp to the open
+                e.steal = int(part[1:]) / 100
             elif part[0] == "e":                     # +e40: 4-bet a wide (normal-size) 3-bet at 40% equity
                 e.wide3_eq = int(part[1:]) / 100
     elif name.startswith("v8w"):                   # + the wide_3bet read; v8w50 = 4-bet at 50% equity
@@ -180,6 +265,8 @@ def decider(name, seed):
     elif name == "lilb":                           # lil-b2c-like: folds 45% / limps 25% / opens 30%, folds most hands
         #                                            to a 3-bet, fit-or-fold postflop, stabs 12% of misses when checked to
         return Rule(shove=0.30, call=0.15, open_=0.55, deep_bb=12, seed=seed, limp=0.45, bluff=0.12, fit=True)
+    elif name == "jarvis2":                        # the faithful Jarvis model (JarvisBot)
+        return JarvisBot(seed)
     elif name == "jarvis":                         # Jarvis-like: opens 77% of buttons at 3x, never limps, folds 82%
         #                                            to a 3-bet, bets 2/3 pot when checked to about half the time
         return Rule(shove=0.30, call=0.18, open_=0.77, deep_bb=12, seed=seed, bluff=0.5)
@@ -195,7 +282,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
-F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17)}                       # folds to our 3-bets, 3-bets faced
+F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
@@ -215,6 +302,10 @@ def run(job):
                 d[0].folds["unknown"] = list(FOLD_SEEDS[opp])
             if "+S" in hero and opp in SIZE_SEEDS:     # +S: a scouted size_tell read (the opponent's true pattern)
                 d[0].sizes["unknown"] = [list(c) for c in SIZE_SEEDS[opp]]
+            xt = {"b": "x_bluff", "f": "x_def_flop", "t": "x_def_turn", "r": "x_def_river"}
+            for part in hero.split("+")[1:]:              # +Xb120 / +Xf150 / +Xt150 / +Xr100: exploit-scale tune
+                if part[:1] == "X" and part[1:2] in xt:
+                    d[0].tune.setdefault("unknown", {})[xt[part[1]]] = int(part[2:]) / 100
             warm = next((int(p[1:]) if p[1:].isdigit() else 1 for p in hero.split("+")[1:] if p[:1] == "w"), 0)
             for k in range(warm):                  # +w / +wN: hero first plays N warm-up matches vs the same bot type,
                 freezeout({0: d[0], 1: decider(opp, s * 2 + swap + 31337 + k)}, s + 10**7 + k, swap=swap)  # reads carry

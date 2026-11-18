@@ -282,6 +282,9 @@ class Engine:
         self.light_3bet = light_3bet
         self.opp_f3 = (0, 0)
         self.light3_on = LIGHT3_ON
+        # steal (Chipzen, 2026-11-18, opt-in per opponent via a scout "tune"): on the button first in, move this share
+        # of the fold and limp mass to the open, against a big blind that folds most hands to an open. 0 = off.
+        self.steal = 0.0
         # river_air (Chipzen, 2026-11-17): on the river, facing a bet or raise with only high card (a board pair
         # does not count), move the call mass to fold. The pot-odds range gave 8-high 24% equity vs a river raise on
         # QJTK2 (Season 15 R1 vs MonteCarlo, -32bb). Mode 1: only after our own river bet was raised; mode 2: also
@@ -571,6 +574,12 @@ class Engine:
                      for a, p in probs.items()}
             _trace(diagnostics, "preflop_adaptation", diagnostics["base"]["probs"], probs)
             node += f" (adapted {lam:.0%})"
+        if self.steal > 0 and base == "btn_root" and st.stack >= STEAL_MIN_BB and "raise" in probs:
+            moved = self.steal * (probs.get("fold", 0) + probs.get("limp", 0))
+            before = dict(probs)
+            probs = {a: (p * (1 - self.steal) if a in ("fold", "limp") else p) for a, p in probs.items()}
+            probs["raise"] += moved
+            _trace(diagnostics, "steal", before, probs)
         if not deep:
             node += f" ({n.lo:g}bb tree)" if n.exact else f" ({n.lo:g}/{n.hi:g}bb blend {n.w:.2f})"
         self._options = opts
@@ -1533,6 +1542,7 @@ DEEPJAM_PRIOR, DEEPJAM_WEIGHT = 0.08, 10.0   # their jam range starts as the top
 DEEPJAM_RANGE_SCALE = 3.0      # jam share per deep preflop action -> range share in a facing-jam spot
 DEEPJAM_MARGIN = 0.02
 LIGHT3_PRIOR, LIGHT3_WEIGHT = 0.5, 6.0    # light_3bet: prior fold-to-3-bet share and its strength (in 3-bets)
+STEAL_MIN_BB = 15.0            # steal: only with at least this many big blinds (shorter stacks use the push/fold trees)
 LIGHT3_ON = 0.75                # act once the shrunk fold share is at least this (fresh A/B: 0.75 kept the folder gain, 0.7 leaked elsewhere)
 LIGHT3_MIN_N = 6                # at least this many of our 3-bets seen before acting
 LIGHT3_MIN_BB = 15.0            # shallower, a 3-bet is close to a jam: the trees and push/fold decide

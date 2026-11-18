@@ -368,7 +368,10 @@ def load_reads(path, aggr=None, jams=None, f3=None, sizes=None, folds=None):
 
 SCOUT_FILE = "scout_seeds.json"
 # per-opponent engine settings a scout seed may set ("tune": {...}), with the allowed range for each
-TUNE_RANGES = {"light3_on": (0.5, 0.95), "betmore_on": (0.4, 0.9), "betmore_max": (1.0, 3.0), "betmore_bkt": (8, 11)}
+TUNE_RANGES = {"light3_on": (0.5, 0.95), "betmore_on": (0.4, 0.9), "betmore_max": (1.0, 3.0), "betmore_bkt": (8, 11), "steal": (0.0, 1.0),
+               # the engine's postflop exploit scales (Engine.exploit): bluff share x, and fold -> call moved per street
+               "x_bluff": (0.5, 1.5), "x_def_flop": (0.7, 3.0), "x_def_turn": (0.7, 3.0), "x_def_river": (0.7, 3.0)}
+EXPLOIT_TUNE = {"x_def_flop": "flop", "x_def_turn": "turn", "x_def_river": "river"}
 
 
 def load_scout_seeds(path, f3, reads=None, aggr=None, sizes=None, folds=None, betmore=None, tune=None):
@@ -445,6 +448,7 @@ class Decider:
         self.bet_more_base = bool(getattr(self.engine, "bet_more", False))
         self.tune = {}                                           # opponent -> {engine setting: value}
         self.tune_base = {k: getattr(self.engine, k) for k in TUNE_RANGES if hasattr(self.engine, k)}
+        self.exploit_base = dict(getattr(self.engine, "exploit", None) or {"bluff": 1.0, "defend": 1.0})
         try:
             self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3,
                                     self.sizes, self.folds) if log_dir else {}
@@ -479,6 +483,13 @@ class Decider:
             mine = self.tune.get(self.opp, {})
             for k, v in self.tune_base.items():
                 setattr(self.engine, k, mine.get(k, v))
+            ex = dict(self.exploit_base)
+            if "x_bluff" in mine:
+                ex["bluff"] = mine["x_bluff"]
+            if any(k in mine for k in EXPLOIT_TUNE):
+                base = ex.get("defend_street") or {}
+                ex["defend_street"] = {st: mine.get(k, base.get(st, ex["defend"])) for k, st in EXPLOIT_TUNE.items()}
+            self.engine.exploit = ex
             self.engine.opp_sizes = tuple(tuple(c) for c in self.sizes.get(self.opp, ((0, 0), (0, 0))))
             hero, history, eff = translate(state, bb)
             d = self.engine.decide(hero, row["hole"], row["board"], history, stack=eff)
