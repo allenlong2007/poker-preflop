@@ -285,6 +285,10 @@ class Engine:
         # steal (Chipzen, 2026-11-18, opt-in per opponent via a scout "tune"): on the button first in, move this share
         # of the fold and limp mass to the open, against a big blind that folds most hands to an open. 0 = off.
         self.steal = 0.0
+        # value_up (Chipzen, 2026-11-19, opt-in per opponent via a scout "tune"): vs a calling station, when checked to or
+        # first to act with group <= value_bkt (default top pair, T+ kicker), move this share of the check and smaller
+        # bets to the largest trained bet. 0 = off.
+        self.value_up, self.value_bkt = 0.0, 4
         # river_air (Chipzen, 2026-11-17): on the river, facing a bet or raise with only high card (a board pair
         # does not count), move the call mass to fold. The pot-odds range gave 8-high 24% equity vs a river raise on
         # QJTK2 (Season 15 R1 vs MonteCarlo, -32bb). Mode 1: only after our own river bet was raised; mode 2: also
@@ -1347,6 +1351,16 @@ class Engine:
     def _exploit(self, probs, kind, bkt, notes, faced=0.0, street=0):
         """Scale bluffs by how often the opponent folds, and calling down by how often they bet (on this street)."""
         b, d = self.exploit["bluff"], self._defend(street)
+        if getattr(self, "value_up", 0) > 0 and kind in ("btn_vs_check", "bb_first") and bkt <= self.value_bkt:
+            bets = sorted((float(k.split()[1]), k) for k in probs if k.startswith(("bet", "lead")))
+            if bets:
+                top = bets[-1][1]
+                low = [k for k in probs if k != top and (k == "check" or k.startswith(("bet", "lead")))]
+                moved = self.value_up * sum(probs[k] for k in low)
+                if moved > 0.005:
+                    probs = {k: (v * (1 - self.value_up) if k in low else v) for k, v in probs.items()}
+                    probs[top] += moved
+                    notes.append(f"value_up: {moved:.0%} to {top}")
         more = self._bet_more_scale()
         if more > 1 and kind in ("btn_vs_check", "bb_first") and bkt >= self.betmore_bkt:
             b *= more

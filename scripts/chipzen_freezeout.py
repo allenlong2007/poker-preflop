@@ -289,6 +289,10 @@ def decider(name, seed):
                 e.betmore_max = int(part[1:]) / 10
             elif part[0] == "g":                     # +g8: bet_more also scales strong draws (hand group 8)
                 e.betmore_bkt = int(part[1:])
+            elif part[0] == "V":                     # +V50: value_up moves 50% of value checks/small bets to the top size
+                e.value_up = int(part[1:]) / 100
+            elif part[0] == "Y":                     # +Y6: value_up counts groups up to 6 (middle pair) as value
+                e.value_bkt = int(part[1:])
             elif part[0] == "K":                     # +K50: steal moves 50% of button fold/limp to the open
                 e.steal = int(part[1:]) / 100
             elif part[0] == "e":                     # +e40: 4-bet a wide (normal-size) 3-bet at 40% equity
