@@ -196,6 +196,68 @@ class JarvisBot:
         return call if k == "top" or k == "pair" and r < 0.2 else fold
 
 
+class TideBot(JarvisBot):
+    """tidewater_rnr as scouted 2026-11-19 (576 hands): SB raises 64% (2-3x) / limps 30% / folds 6%; BB defends 81%
+    vs opens (3-bets 18% to ~3x), raises 37% of limps; vs our 3-bet folds only 25% (4-bets 17%). Postflop: as the
+    raiser c-bets 60% (flop bets are often air), checks the flop as the caller; turn and river bets are nearly always
+    strong. Vs our bets it folds ~37%, calls down pairs, raises strong hands (~15%)."""
+
+    def _act(self, s):
+        from bot.chipzen.adapter import big_blind
+        hole = "".join(map(str, s.hole_cards))
+        p = self.pct[self.INDEX[self.hand_class(self.parse(hole))]]
+        bb = big_blind(s.action_history, 100)
+        eff = min(s.your_stack, s.opponent_stacks[0]) / bb
+        valid, r = s.valid_actions, self.rng.random()
+        allin_vs = s.opponent_stacks[0] == 0
+        to = lambda x: ("raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, int(x))))
+        fold = ("check", 0) if "check" in valid else ("fold", 0)
+        call = ("call", 0) if "call" in valid else ("check", 0)
+        if s.phase == "preflop":
+            if allin_vs:
+                return call if p <= 0.40 else fold
+            if s.to_call == bb // 2:                                  # SB first in
+                if eff < 15:
+                    return ("raise", s.max_raise) if p <= 0.35 else call if p <= 0.85 else fold
+                if p <= 0.64:
+                    return to((2.0 if r < 0.6 else 3.0) * bb)
+                return call if p <= 0.94 else fold
+            if s.to_call == 0:                                        # BB vs a limp
+                return to(3 * bb) if p <= 0.37 and "raise" in valid else ("check", 0)
+            if s.to_call <= 4 * bb:                                   # BB vs an open
+                if p <= 0.18 and "raise" in valid:
+                    return to(3 * (s.to_call + bb))
+                return call if p <= 0.81 else fold
+            if p <= 0.12 and "raise" in valid:                       # vs a 3-bet: 4-bet all-in, call wide
+                return ("raise", s.max_raise)
+            return call if p <= 0.50 else fold
+        k = self._kind(hole, s.board)
+        street = len(s.board) - 2
+        if not s.to_call:
+            mine_pfr = any(a.get("seat") == s.your_seat and a.get("action") in ("raise", "all_in")
+                           and a.get("phase") == "preflop" for a in s.action_history if isinstance(a, dict))
+            if street == 1:
+                bet = (k in ("str", "top") or r < 0.5) if mine_pfr else (k == "str" and r < 0.5 or r < 0.02)
+            elif street == 2:
+                bet = k == "str" or k == "top" and r < 0.4 or r < 0.04
+            else:
+                bet = k == "str" or k == "top" and r < 0.2
+            if bet and "raise" in valid:
+                return to((0.33 if r < 0.3 else 0.66) * s.pot)
+            return ("check", 0)
+        if allin_vs:
+            return call if k in ("str", "top") or k == "pair" and r < 0.5 else fold
+        if k == "str":
+            return to(3 * s.to_call + s.pot // 2) if r < 0.5 and "raise" in valid else call
+        if street == 1:
+            if k in ("top", "draw") and r < 0.35 and "raise" in valid:
+                return to(3 * s.to_call + s.pot // 2)
+            return call if k in ("top", "pair", "draw") or r < 0.4 else fold
+        if street == 2:
+            return call if k in ("top", "pair", "draw") or r < 0.15 else fold
+        return call if k == "top" or k == "pair" and r < 0.85 or r < 0.1 else fold
+
+
 def decider(name, seed):
     from bot.chipzen.adapter import Decider, v8_engine
     from bot.engine import Engine
@@ -265,6 +327,8 @@ def decider(name, seed):
     elif name == "lilb":                           # lil-b2c-like: folds 45% / limps 25% / opens 30%, folds most hands
         #                                            to a 3-bet, fit-or-fold postflop, stabs 12% of misses when checked to
         return Rule(shove=0.30, call=0.15, open_=0.55, deep_bb=12, seed=seed, limp=0.45, bluff=0.12, fit=True)
+    elif name == "tide":                           # tidewater_rnr model (TideBot)
+        return TideBot(seed)
     elif name == "jarvis2":                        # the faithful Jarvis model (JarvisBot)
         return JarvisBot(seed)
     elif name == "jarvis":                         # Jarvis-like: opens 77% of buttons at 3x, never limps, folds 82%
@@ -282,7 +346,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
-F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17)}                       # folds to our 3-bets, 3-bets faced
+F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
