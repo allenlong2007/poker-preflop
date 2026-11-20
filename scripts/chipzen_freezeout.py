@@ -316,6 +316,65 @@ class CuteBot(JarvisBot):
         return call if k == "top" or k == "pair" and r < 0.3 else fold
 
 
+class AutoBot(JarvisBot):
+    """AutodidactInnovations as scouted 2026-11-19 (879 hands): SB limps 72% and raises the top 28% to 4x, never folds
+    or jams; BB folds 71% to opens (calls 20%, 3-bets 9% to ~2.4x); calls ~2/3 of iso-raises after a limp. Postflop
+    passive: bets mostly made hands; vs our bets raises the flop ~19% with pairs+, calls ~54% (air included), then
+    folds 46% on the turn and 60% on the river."""
+
+    def _act(self, s):
+        from bot.chipzen.adapter import big_blind
+        hole = "".join(map(str, s.hole_cards))
+        p = self.pct[self.INDEX[self.hand_class(self.parse(hole))]]
+        bb = big_blind(s.action_history, 100)
+        valid, r = s.valid_actions, self.rng.random()
+        allin_vs = s.opponent_stacks[0] == 0
+        to = lambda x: ("raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, int(x))))
+        fold = ("check", 0) if "check" in valid else ("fold", 0)
+        call = ("call", 0) if "call" in valid else ("check", 0)
+        pre = [a for a in s.action_history if isinstance(a, dict) and a.get("phase") == "preflop"
+               and not str(a.get("action", "")).startswith("post")]
+        limped = any(a.get("seat") == s.your_seat and a.get("action") == "call" for a in pre)
+        if s.phase == "preflop":
+            if allin_vs:
+                return call if p <= 0.20 else fold
+            if s.to_call == bb // 2:
+                return to(4 * bb) if p <= 0.28 else call
+            if s.to_call == 0:
+                return to(3.5 * bb) if p <= 0.37 and "raise" in valid else ("check", 0)
+            if limped:                                                 # our iso-raise over its limp
+                return call if p <= 0.76 else fold
+            if s.to_call <= 4 * bb:
+                if p <= 0.09 and "raise" in valid:
+                    return to(2.4 * (s.to_call + bb))
+                return call if p <= 0.29 else fold
+            if p <= 0.10 and "raise" in valid:
+                return ("raise", s.max_raise)
+            return call if p <= 0.22 else fold
+        k = self._kind(hole, s.board)
+        street = len(s.board) - 2
+        if not s.to_call:
+            mine_pfr = any(a.get("seat") == s.your_seat and a.get("action") in ("raise", "all_in") for a in pre)
+            if street == 1:
+                bet = k in ("str", "top") or k == "pair" and r < (0.3 if mine_pfr else 0.05) or r < 0.02
+            else:
+                bet = k == "str" or k == "top" and r < 0.5 or r < 0.02
+            if bet and "raise" in valid:
+                return to((0.9 if r < 0.15 else 0.66) * s.pot)
+            return ("check", 0)
+        if allin_vs:
+            return call if k in ("str", "top") else fold
+        if street == 1:
+            if k in ("str", "top", "pair") and r < 0.65 and "raise" in valid:
+                return to(3 * s.to_call + s.pot // 2)
+            return call if k in ("str", "top", "pair", "draw") or r < 0.5 else fold
+        if street == 2:
+            if k == "str" and r < 0.3 and "raise" in valid:
+                return to(3 * s.to_call + s.pot // 2)
+            return call if k in ("str", "top", "draw") or k == "pair" and r < 0.7 or r < 0.15 else fold
+        return call if k in ("str", "top") or k == "pair" and r < 0.5 else fold
+
+
 def decider(name, seed):
     from bot.chipzen.adapter import Decider, v8_engine
     from bot.engine import Engine
@@ -389,6 +448,8 @@ def decider(name, seed):
     elif name == "lilb":                           # lil-b2c-like: folds 45% / limps 25% / opens 30%, folds most hands
         #                                            to a 3-bet, fit-or-fold postflop, stabs 12% of misses when checked to
         return Rule(shove=0.30, call=0.15, open_=0.55, deep_bb=12, seed=seed, limp=0.45, bluff=0.12, fit=True)
+    elif name == "auto":                           # AutodidactInnovations model (AutoBot)
+        return AutoBot(seed)
     elif name == "cute":                           # cutewalrus model (CuteBot)
         return CuteBot(seed)
     elif name == "tide":                           # tidewater_rnr model (TideBot)
@@ -410,7 +471,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
-F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32)}                       # folds to our 3-bets, 3-bets faced
+F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "auto": (3, 13)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
