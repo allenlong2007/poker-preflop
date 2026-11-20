@@ -486,3 +486,30 @@ def test_minmax_tune_applies_to_its_opponent_only(tmp_path):
     assert decider.engine.minmax is None
     rows = (tmp_path / "decisions.jsonl").read_text().splitlines()
     assert rows and not any('"error"' in r for r in rows)
+
+
+def test_jam_wide_tune_applies_to_its_opponent_only(tmp_path):
+    rng = random.Random(4)
+    decider = Decider(log_dir=tmp_path)
+    decider.tune = {"auto": {"jam_wide": 0.58, "jam_vs_open": 0.62, "limp_jam_eq": 0.5, "short_call_margin": 0.05}}
+    decider.opp = "auto"
+    deal_hand(rng, {0: 1000, 1: 1000}, 5, 0, {0: decider, 1: decider}, 1)
+    e = decider.engine
+    assert (e.jam_wide, e.jam_vs_open, e.limp_jam_eq, e.short_call_margin) == (0.58, 0.62, 0.5, 0.05)
+    decider.opp = "other"
+    deal_hand(rng, {0: 1000, 1: 1000}, 5, 1, {0: decider, 1: decider}, 2)
+    assert (e.jam_wide, e.jam_vs_open, e.limp_jam_eq, e.short_call_margin) == (0.0, 0.0, 0.0, 0.0)
+    rows = (tmp_path / "decisions.jsonl").read_text().splitlines()
+    assert rows and not any('"error"' in r for r in rows)
+
+
+def test_jam_wide_jams_strong_hands_only():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    e = v8_engine(wide_3bet=True)
+    e.jam_wide, e.jam_vs_open = 0.58, 0.62
+    assert e.decide("btn", "AsKd", "", [[]], sample=False, stack=100.0).probs.get("all-in", 0) == 1.0
+    assert e.decide("bb", "QsQd", "", [[Act("btn", "call", 1.0)]], sample=False, stack=100.0).probs.get("all-in", 0) == 1.0
+    assert e.decide("bb", "AsJd", "", [[Act("btn", "raise", 4.0)]], sample=False, stack=100.0).probs.get("all-in", 0) == 1.0
+    assert e.decide("btn", "7h2c", "", [[]], sample=False, stack=100.0).probs.get("all-in", 0) < 0.5
+    assert e.decide("bb", "9s9d", "", [[Act("btn", "raise", 4.0)]], sample=False, stack=100.0).probs.get("all-in", 0) == 1.0
