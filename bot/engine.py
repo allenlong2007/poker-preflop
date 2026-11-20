@@ -293,6 +293,11 @@ class Engine:
         # the largest bet <= value_max pots (0 = no cap); bluff_big moves that share of river air (hand group 8+)
         # checks and smaller bets to the largest bet when it is at least BLUFF_BIG_MIN pots. Both off by default.
         self.value_max, self.bluff_big = 0.0, 0.0
+        # minmax (Chipzen, 2026-11-19): per-opponent sizing when we can bet first. {"value": (flop, turn, river) pot
+        # fractions for value hands (group <= value_bkt; all their check / bet mass moves there), "bluff": sizes for
+        # bluffs (groups 9+, river 8+), "scale": bluff frequency multipliers}. A size of 0 leaves that street alone;
+        # sizes off the trained menu are allowed. None = off.
+        self.minmax = None
         # river_air (Chipzen, 2026-11-17): on the river, facing a bet or raise with only high card (a board pair
         # does not count), move the call mass to fold. The pot-odds range gave 8-high 24% equity vs a river raise on
         # QJTK2 (Season 15 R1 vs MonteCarlo, -32bb). Mode 1: only after our own river bet was raised; mode 2: also
@@ -799,6 +804,8 @@ class Engine:
 
         before_exploit = dict(probs)
         probs = self._exploit(probs, kind, bkt, notes, aggressive[0].to / P if aggressive else 0, st.street)
+        for lab in [l for l in probs if l not in opts and l.startswith(("bet ", "lead "))]:   # minmax off-menu sizes
+            opts[lab] = ("bet", bet_to(float(lab.split()[1])))
         # Can't raise an all-in player; a raise that needs the whole stack is an all-in.
         if opp_all_in or hero_left <= b_facing + EPS:
             for lab in [l for l in probs if l.startswith("raise")]:
@@ -1355,6 +1362,12 @@ class Engine:
     def _exploit(self, probs, kind, bkt, notes, faced=0.0, street=0):
         """Scale bluffs by how often the opponent folds, and calling down by how often they bet (on this street)."""
         b, d = self.exploit["bluff"], self._defend(street)
+        mm = getattr(self, "minmax", None)
+        if mm and kind in ("btn_vs_check", "bb_first") and 1 <= street <= 3:
+            i = street - 1
+            if bkt <= self.value_bkt and mm.get("value", (0, 0, 0))[i] > 0 or bkt >= (8 if i == 2 else 9) and (
+                    mm.get("bluff", (0, 0, 0))[i] > 0 or abs(mm.get("scale", (1, 1, 1))[i] - 1) > 0.02):
+                return self._minmax(probs, kind, bkt, notes, i, mm)
         if getattr(self, "value_up", 0) > 0 and kind in ("btn_vs_check", "bb_first") and bkt <= self.value_bkt:
             bets = sorted((float(k.split()[1]), k) for k in probs if k.startswith(("bet", "lead")))
             cap = getattr(self, "value_max", 0)
@@ -1400,6 +1413,31 @@ class Engine:
                 moved = c * (1 - d)
                 probs = dict(probs, fold=f + moved, call=c - moved)
                 notes.append(f"opponent bets x{d:.2f}: {moved:.0%} call -> fold")
+        return probs
+
+    def _minmax(self, probs, kind, bkt, notes, s, mm):
+        """minmax: value hands bet the largest size the opponent still calls, bluffs the smallest size it folds to."""
+        prefix = "lead" if kind == "bb_first" else "bet"
+        sized = [k for k in probs if k.startswith(("bet", "lead"))]
+        value, bluff, scale = mm.get("value", (0, 0, 0))[s], mm.get("bluff", (0, 0, 0))[s], mm.get("scale", (1, 1, 1))[s]
+        if bkt <= self.value_bkt and value > 0:
+            label = f"{prefix} {value:.2g}"
+            share = self.value_up if getattr(self, "value_up", 0) > 0 else 1.0
+            moved = share * sum(probs[k] for k in sized + ["check"] if k in probs and k != label)
+            probs = {k: (v * (1 - share) if k == "check" or k in sized and k != label else v) for k, v in probs.items()}
+            probs[label] = probs.get(label, 0.0) + moved
+            notes.append(f"minmax value: {moved:.0%} to {label}")
+        elif bkt >= (8 if s == 2 else 9) and (bluff > 0 or abs(scale - 1) > 0.02):
+            tot = sum(probs[k] for k in sized)
+            new = min(max(0.95, tot), tot * scale) if 0 < tot < 1 else tot
+            if bluff > 0:
+                label = f"{prefix} {bluff:.2g}"
+                probs = {k: v for k, v in probs.items() if k not in sized}
+                probs[label] = new
+                probs["check"] = max(0.0, 1 - new - sum(v for k, v in probs.items() if k not in ("check", label)))
+            elif 0 < tot < 1:
+                probs = {k: (v * new / tot if k in sized else v * (1 - new) / (1 - tot)) for k, v in probs.items()}
+            notes.append(f"minmax bluff: {tot:.0%} -> {new:.0%}" + (f" at {bluff:.2g}" if bluff > 0 else ""))
         return probs
 
     def _oop_correction(self, probs, s, kind, bkt, st, notes, faced=0.0):

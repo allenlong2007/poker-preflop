@@ -438,6 +438,12 @@ def decider(name, seed):
                 e.value_up = int(part[1:]) / 100
             elif part[0] == "Y":                     # +Y6: value_up counts groups up to 6 (middle pair) as value
                 e.value_bkt = int(part[1:])
+            elif part[0] == "N":                     # +Nv75-100-100_b100-50-150_s100-100-130: minmax sizes (pot %)
+                mm = {}
+                for seg in part[1:].split("_"):
+                    vals = tuple(int(x) / 100 for x in seg[1:].split("-"))
+                    mm[{"v": "value", "b": "bluff", "s": "scale"}[seg[0]]] = vals
+                e.minmax = mm
             elif part[0] == "M":                     # +M100: value_up targets the largest bet <= 1.00 pot
                 e.value_max = int(part[1:]) / 100
             elif part[0] == "Q":                     # +Q60: bluff_big moves 60% of river air to the overbet

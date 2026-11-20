@@ -472,3 +472,17 @@ def test_scout_tune_is_per_opponent_and_range_checked(tmp_path):
     assert d.tune == {"name:a": {"light3_on": 0.65, "betmore_bkt": 8}}   # out of range / wrong type / unknown: dropped
     base = dict(d.tune_base)
     assert base["light3_on"] == 0.75
+
+
+def test_minmax_tune_applies_to_its_opponent_only(tmp_path):
+    rng = random.Random(3)
+    decider = Decider(log_dir=tmp_path)
+    decider.tune = {"walrus": {"mm_vr": 1.0, "mm_bt": 0.5, "mm_br": 0.5}}
+    decider.opp = "walrus"
+    deal_hand(rng, {0: 1000, 1: 1000}, 5, 0, {0: decider, 1: decider}, 1)
+    assert decider.engine.minmax == {"value": (0.0, 0.0, 1.0), "bluff": (0.0, 0.5, 0.5), "scale": (1.0, 1.0, 1.0)}
+    decider.opp = "other"
+    deal_hand(rng, {0: 1000, 1: 1000}, 5, 1, {0: decider, 1: decider}, 2)
+    assert decider.engine.minmax is None
+    rows = (tmp_path / "decisions.jsonl").read_text().splitlines()
+    assert rows and not any('"error"' in r for r in rows)

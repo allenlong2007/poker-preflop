@@ -369,6 +369,8 @@ def load_reads(path, aggr=None, jams=None, f3=None, sizes=None, folds=None):
 SCOUT_FILE = "scout_seeds.json"
 # per-opponent engine settings a scout seed may set ("tune": {...}), with the allowed range for each
 TUNE_RANGES = {"light3_on": (0.5, 0.95), "betmore_on": (0.4, 0.9), "betmore_max": (1.0, 3.0), "betmore_bkt": (8, 11), "steal": (0.0, 1.0), "value_up": (0.0, 1.0), "value_bkt": (2, 7), "value_max": (0.0, 2.0), "bluff_big": (0.0, 1.0),
+               "mm_vf": (0.0, 2.0), "mm_vt": (0.0, 2.0), "mm_vr": (0.0, 3.0), "mm_bf": (0.0, 2.0), "mm_bt": (0.0, 2.0), "mm_br": (0.0, 3.0),
+               "mm_xf": (0.5, 2.0), "mm_xt": (0.5, 2.0), "mm_xr": (0.5, 2.0),
                # the engine's postflop exploit scales (Engine.exploit): bluff share x, and fold -> call moved per street
                "x_bluff": (0.5, 1.5), "x_def_flop": (0.7, 3.0), "x_def_turn": (0.7, 3.0), "x_def_river": (0.7, 3.0)}
 EXPLOIT_TUNE = {"x_def_flop": "flop", "x_def_turn": "turn", "x_def_river": "river"}
@@ -448,6 +450,7 @@ class Decider:
         self.bet_more_base = bool(getattr(self.engine, "bet_more", False))
         self.tune = {}                                           # opponent -> {engine setting: value}
         self.tune_base = {k: getattr(self.engine, k) for k in TUNE_RANGES if hasattr(self.engine, k)}
+        self.minmax_base = getattr(self.engine, "minmax", None)
         self.exploit_base = dict(getattr(self.engine, "exploit", None) or {"bluff": 1.0, "defend": 1.0})
         try:
             self.reads = load_reads(Path(log_dir) / "hands.jsonl", self.aggr, self.jams, self.f3,
@@ -490,6 +493,11 @@ class Decider:
                 base = ex.get("defend_street") or {}
                 ex["defend_street"] = {st: mine.get(k, base.get(st, ex["defend"])) for k, st in EXPLOIT_TUNE.items()}
             self.engine.exploit = ex
+            if any(k.startswith("mm_") for k in mine):                # minmax sizes for this opponent only
+                g = lambda pre, d: tuple(mine.get(pre + st, d) for st in "ftr")
+                self.engine.minmax = {"value": g("mm_v", 0.0), "bluff": g("mm_b", 0.0), "scale": g("mm_x", 1.0)}
+            else:
+                self.engine.minmax = self.minmax_base
             self.engine.opp_sizes = tuple(tuple(c) for c in self.sizes.get(self.opp, ((0, 0), (0, 0))))
             hero, history, eff = translate(state, bb)
             d = self.engine.decide(hero, row["hole"], row["board"], history, stack=eff)
