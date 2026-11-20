@@ -503,6 +503,8 @@ def decider(name, seed):
                 e.iso_to = int(part[1:]) / 10
             elif part[0] == "W":                     # +W60: hands >= 60% equity vs random jam first-in / over a limp
                 e.jam_wide = int(part[1:]) / 100
+            elif part[0] == "P":                     # +P30: over a limp, hands >= 30% equity vs random jam
+                e.jam_limp = int(part[1:]) / 100
             elif part[0] == "O":                     # +O60: hands >= 60% equity vs random jam over an open
                 e.jam_vs_open = int(part[1:]) / 100
             elif part[0] == "C":                     # +C8: short-stack calls need 8 points of equity over the price

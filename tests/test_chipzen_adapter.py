@@ -513,3 +513,12 @@ def test_jam_wide_jams_strong_hands_only():
     assert e.decide("bb", "AsJd", "", [[Act("btn", "raise", 4.0)]], sample=False, stack=100.0).probs.get("all-in", 0) == 1.0
     assert e.decide("btn", "7h2c", "", [[]], sample=False, stack=100.0).probs.get("all-in", 0) < 0.5
     assert e.decide("bb", "9s9d", "", [[Act("btn", "raise", 4.0)]], sample=False, stack=100.0).probs.get("all-in", 0) == 1.0
+
+
+def test_jam_limp_threshold_overrides_jam_wide_over_a_limp():
+    from bot.chipzen.adapter import v8_engine
+    from bot.engine import Act
+    e = v8_engine(wide_3bet=True)
+    e.jam_wide, e.jam_limp = 0.55, 0.40
+    assert e.decide("bb", "Js7d", "", [[Act("btn", "call", 1.0)]], sample=False, stack=100.0).probs.get("all-in", 0) == 1.0
+    assert e.decide("btn", "Js7d", "", [[]], sample=False, stack=100.0).probs.get("all-in", 0) < 0.5

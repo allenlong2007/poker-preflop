@@ -293,6 +293,7 @@ class Engine:
         # jam_wide / jam_vs_open: hands at or above this equity vs random always jam first-in on the button or over a
         # limp (jam_wide), or over an open (jam_vs_open). For must-win-fast matches (the hands-per-win tiebreak). 0 = off.
         self.jam_wide, self.jam_vs_open = 0.0, 0.0
+        self.jam_limp = 0.0                   # its own threshold over a limp (0 = use jam_wide)
         # value_up (Chipzen, 2026-11-19, opt-in per opponent via a scout "tune"): vs a calling station, when checked to or
         # first to act with group <= value_bkt (default top pair, T+ kicker), move this share of the check and smaller
         # bets to the largest trained bet. 0 = off.
@@ -614,8 +615,9 @@ class Engine:
             probs["check"] = probs.get("check", 0) + probs.pop("all-in")
             probs["all-in"] = 0.0
             _trace(diagnostics, "limp_jam_cut", before, probs)
-        jw = getattr(self, "jam_vs_open", 0) if base == "bb_vs_raise" else getattr(self, "jam_wide", 0) \
-            if base in ("btn_root", "bb_vs_limp") else 0
+        jw = getattr(self, "jam_vs_open", 0) if base == "bb_vs_raise" else (getattr(self, "jam_limp", 0)
+              or getattr(self, "jam_wide", 0)) if base == "bb_vs_limp" else getattr(self, "jam_wide", 0) \
+            if base == "btn_root" else 0
         if jw > 0 and "all-in" in opts and _equity_vs_random().get(hand_class(hole), 0) >= jw:
             before = dict(probs)
             probs = {a: (1.0 if a == "all-in" else 0.0) for a in probs}
