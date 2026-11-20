@@ -288,6 +288,11 @@ class Engine:
         # Opt-in BB-vs-limp exploits (per-opponent tunes): iso_to = iso-raise size in bb (0 = the solved size),
         # iso_more = share of the BB's check over a limp moved to the iso-raise. 0 = off.
         self.iso_to, self.iso_more = 0.0, 0.0
+        # limp_jam_eq: over a limp, hands below this equity vs a random hand stop jamming (the jam share checks).
+        self.limp_jam_eq = 0.0
+        # jam_wide / jam_vs_open: hands at or above this equity vs random always jam first-in on the button or over a
+        # limp (jam_wide), or over an open (jam_vs_open). For must-win-fast matches (the hands-per-win tiebreak). 0 = off.
+        self.jam_wide, self.jam_vs_open = 0.0, 0.0
         # value_up (Chipzen, 2026-11-19, opt-in per opponent via a scout "tune"): vs a calling station, when checked to or
         # first to act with group <= value_bkt (default top pair, T+ kicker), move this share of the check and smaller
         # bets to the largest trained bet. 0 = off.
@@ -603,6 +608,19 @@ class Engine:
             probs = {a: (p * (1 - self.iso_more) if a == "check" else p) for a, p in probs.items()}
             probs["raise"] += moved
             _trace(diagnostics, "iso_more", before, probs)
+        if getattr(self, "limp_jam_eq", 0) > 0 and base == "bb_vs_limp" and probs.get("all-in", 0) > 0 \
+                and _equity_vs_random().get(hand_class(hole), 1.0) < self.limp_jam_eq:
+            before = dict(probs)
+            probs["check"] = probs.get("check", 0) + probs.pop("all-in")
+            probs["all-in"] = 0.0
+            _trace(diagnostics, "limp_jam_cut", before, probs)
+        jw = getattr(self, "jam_vs_open", 0) if base == "bb_vs_raise" else getattr(self, "jam_wide", 0) \
+            if base in ("btn_root", "bb_vs_limp") else 0
+        if jw > 0 and "all-in" in opts and _equity_vs_random().get(hand_class(hole), 0) >= jw:
+            before = dict(probs)
+            probs = {a: (1.0 if a == "all-in" else 0.0) for a in probs}
+            probs["all-in"] = 1.0
+            _trace(diagnostics, "jam_wide", before, probs)
         if not deep:
             node += f" ({n.lo:g}bb tree)" if n.exact else f" ({n.lo:g}/{n.hi:g}bb blend {n.w:.2f})"
         self._options = opts
@@ -1652,6 +1670,19 @@ WIDE3_ON = 0.25             # act once the estimated share is at least this
 WIDE3_4BET_EQ = 0.45        # 4-bet with at least this all-in equity vs their 3-bet range (sim sweep: 0.55/0.50/0.45)
 WIDE3_MIN_4BET_EQ = 0.35    # facing a min-3-bet (sim sweep: 0.45/0.40/0.35; calling them lost most postflop)
 WIDE3_REAL = 0.8            # call when realised equity (x this) beats the price
+_EQ_RANDOM = None
+
+
+def _equity_vs_random():
+    """Each hand class's equity vs a random hand (output/match/equity_vs_random.json; empty if missing)."""
+    global _EQ_RANDOM
+    if _EQ_RANDOM is None:
+        try:
+            _EQ_RANDOM = json.loads((ROOT / "output" / "match" / "equity_vs_random.json").read_text())
+        except Exception:
+            _EQ_RANDOM = {}
+    return _EQ_RANDOM
+
 SMALL_RAISE_MAX_RAISES = 2  # experiment 48: the check applies facing an open / iso or a 3-bet, never a 4-bet+
 SHOVE_MIN_SEEN = 3          # experiment 46: preflop shoves seen at a spot before the read replaces the tree
 SHOVE_PRIOR = (0.03, 5)     # prior shove share and its weight (deals)

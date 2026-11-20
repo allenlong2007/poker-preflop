@@ -405,11 +405,15 @@ class AutoBot(JarvisBot):
 
 class AutoBot2(AutoBot):
     """AutoBot with the size reads of the 2026-11-20 rescout (1819 HU hands, seasons 12-15, style unchanged).
-    Folds a limp to our iso-raise 14% under 3bb, 24% at 3-4bb, 36% at 4-5bb, ~50% at 5-6.5bb, 52% to a jam; never
+    Folds a limp to our iso-raise 14% under 3bb, 24% at 3-4bb, 36% at 4-5bb, ~50% at 5-6.5bb; to a jam 72% at 10bb+
+    and 15% under 10bb; never
     re-raises a limp. Facing postflop bets, fold share by size (<=40% / 1/2 / 3/4 / pot / over): flop 9/21/32/43/60%,
     turn 42/44/47/65/~55%, river 37/38/56/61/~50%. River bets are near-pure value."""
 
     FOLD = {1: (0.09, 0.21, 0.32, 0.43, 0.60), 2: (0.42, 0.44, 0.47, 0.65, 0.55), 3: (0.37, 0.38, 0.56, 0.61, 0.50)}
+    limp_jam_fold = None
+    jam_call = None                              # share of hands that call a first-in jam (None = AutoBot's 22%)
+    loose_jam = False                            # auto2L: calls 48% of limps vs a jam at any depth (sensitivity)
     WEAK = {1: 1.10, 2: 0.70, 3: 0.75}           # calibration divisors (sim fold share matched to the scouted one)
 
     def _act(self, s):
@@ -423,9 +427,15 @@ class AutoBot2(AutoBot):
                 hole = "".join(map(str, s.hole_cards))
                 p = self.pct[self.INDEX[self.hand_class(self.parse(hole))]]
                 to = (s.to_call + bb) / bb                 # the iso-raise size in bb
-                f = 0.52 if s.opponent_stacks[0] == 0 else 0.14 if to < 3 else 0.24 if to < 4 else 0.36 if to < 5 \
-                    else 0.50 if to < 6.5 else 0.60
+                if s.opponent_stacks[0] == 0:             # a jam: real calls 8/29 at 10bb+, 13/15 under 10bb
+                    f = self.limp_jam_fold if self.limp_jam_fold is not None else 0.52 if self.loose_jam else 0.72 if to >= 10 else 0.15
+                else:
+                    f = 0.14 if to < 3 else 0.24 if to < 4 else 0.36 if to < 5 else 0.50 if to < 6.5 else 0.60
                 return ("call", 0) if p <= 0.28 + 0.72 * (1 - f) else ("fold", 0)
+            if self.jam_call is not None and s.opponent_stacks[0] == 0 and not limped:   # facing a first-in jam
+                hole = "".join(map(str, s.hole_cards))
+                p = self.pct[self.INDEX[self.hand_class(self.parse(hole))]]
+                return ("call", 0) if p <= self.jam_call else ("fold", 0)
             return super()._act(s)
         if not s.to_call or s.opponent_stacks[0] == 0:
             return super()._act(s)
@@ -491,6 +501,14 @@ def decider(name, seed):
                 e.bluff_big = int(part[1:]) / 100
             elif part[0] == "I":                     # +I65: iso-raise a limp to 6.5bb (I0 = the solved size)
                 e.iso_to = int(part[1:]) / 10
+            elif part[0] == "W":                     # +W60: hands >= 60% equity vs random jam first-in / over a limp
+                e.jam_wide = int(part[1:]) / 100
+            elif part[0] == "O":                     # +O60: hands >= 60% equity vs random jam over an open
+                e.jam_vs_open = int(part[1:]) / 100
+            elif part[0] == "C":                     # +C8: short-stack calls need 8 points of equity over the price
+                e.short_call_margin = int(part[1:]) / 100
+            elif part[0] == "J":                     # +J50: over a limp, hands under 50% equity vs random never jam
+                e.limp_jam_eq = int(part[1:]) / 100
             elif part[0] == "L":                     # +L50: move 50% of the BB's checks over a limp to the iso-raise
                 e.iso_more = int(part[1:]) / 100
             elif part[0] == "K":                     # +K50: steal moves 50% of button fold/limp to the open
@@ -535,6 +553,14 @@ def decider(name, seed):
         return AutoBot(seed)
     elif name == "auto2":                          # AutodidactInnovations size-aware model (AutoBot2)
         return AutoBot2(seed)
+    elif name in ("auto2W", "auto2T"):             # jam-call sensitivity: wide (40% / limps 52% call) or tight (12% / 15%)
+        b = AutoBot2(seed)
+        b.jam_call, b.limp_jam_fold = (0.40, 0.48) if name == "auto2W" else (0.12, 0.85)
+        return b
+    elif name == "auto2L":                         # AutoBot2 that calls jams over its limp 48% at any depth
+        b = AutoBot2(seed)
+        b.loose_jam = True
+        return b
     elif name == "cute":                           # cutewalrus model (CuteBot)
         return CuteBot(seed)
     elif name == "cute2":                           # cutewalrus model (CuteBot2)
@@ -558,7 +584,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
-F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "cute2": (22, 32), "auto": (3, 13), "auto2": (3, 13)}                       # folds to our 3-bets, 3-bets faced
+F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "cute2": (22, 32), "auto": (3, 13), "auto2": (3, 13), "auto2L": (3, 13), "auto2W": (3, 13), "auto2T": (3, 13)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
