@@ -316,6 +316,34 @@ class CuteBot(JarvisBot):
         return call if k == "top" or k == "pair" and r < 0.3 else fold
 
 
+class CuteBot2(CuteBot):
+    """CuteBot with the size reads of the 2026-11-19 evening rescout (565 HU + 65 multiway postflop hands). Fold share
+    by our bet size: flop 18% at <=40% pot, 24-30% at 1/2-3/4, 59% at pot; turn 9% small, ~45% at 1/2-3/4, ~58% at pot+;
+    river ~50% up to pot but 11/12 vs overbets and jams."""
+
+    def _act(self, s):
+        if s.phase == "preflop" or not s.to_call or s.opponent_stacks[0] == 0:
+            return super()._act(s)
+        hole = "".join(map(str, s.hole_cards))
+        k, street, r = self._kind(hole, s.board), len(s.board) - 2, self.rng.random()
+        frac = s.to_call / max(1, s.pot - s.to_call)
+        call = ("call", 0)
+        fold = ("fold", 0)
+        if k == "str":
+            if street < 3 and r < 0.15 and "raise" in s.valid_actions:
+                return ("raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, int(3 * s.to_call + s.pot // 2))))
+            return call
+        if street == 3:
+            if frac > 1.2:
+                return call if k == "top" and r < 0.1 else fold
+            return call if k == "top" or k == "pair" and r < 0.3 else fold
+        if frac > 0.9:
+            air = 0.15 if street == 1 else 0.12
+            return call if k == "top" or k in ("pair", "draw") and r < 0.6 or r < air else fold
+        air = (0.8 if frac <= 0.4 else 0.62) if street == 1 else (0.85 if frac <= 0.4 else 0.25)
+        return call if k in ("top", "pair", "draw") or r < air else fold
+
+
 class AutoBot(JarvisBot):
     """AutodidactInnovations as scouted 2026-11-19 (879 hands): SB limps 72% and raises the top 28% to 4x, never folds
     or jams; BB folds 71% to opens (calls 20%, 3-bets 9% to ~2.4x); calls ~2/3 of iso-raises after a limp. Postflop
@@ -410,6 +438,10 @@ def decider(name, seed):
                 e.value_up = int(part[1:]) / 100
             elif part[0] == "Y":                     # +Y6: value_up counts groups up to 6 (middle pair) as value
                 e.value_bkt = int(part[1:])
+            elif part[0] == "M":                     # +M100: value_up targets the largest bet <= 1.00 pot
+                e.value_max = int(part[1:]) / 100
+            elif part[0] == "Q":                     # +Q60: bluff_big moves 60% of river air to the overbet
+                e.bluff_big = int(part[1:]) / 100
             elif part[0] == "K":                     # +K50: steal moves 50% of button fold/limp to the open
                 e.steal = int(part[1:]) / 100
             elif part[0] == "e":                     # +e40: 4-bet a wide (normal-size) 3-bet at 40% equity
@@ -452,6 +484,8 @@ def decider(name, seed):
         return AutoBot(seed)
     elif name == "cute":                           # cutewalrus model (CuteBot)
         return CuteBot(seed)
+    elif name == "cute2":                           # cutewalrus model (CuteBot2)
+        return CuteBot2(seed)
     elif name == "tide":                           # tidewater_rnr model (TideBot)
         return TideBot(seed)
     elif name == "jarvis2":                        # the faithful Jarvis model (JarvisBot)
@@ -471,7 +505,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
-F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "auto": (3, 13)}                       # folds to our 3-bets, 3-bets faced
+F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "cute2": (22, 32), "auto": (3, 13)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 

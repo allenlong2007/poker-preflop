@@ -289,6 +289,10 @@ class Engine:
         # first to act with group <= value_bkt (default top pair, T+ kicker), move this share of the check and smaller
         # bets to the largest trained bet. 0 = off.
         self.value_up, self.value_bkt = 0.0, 4
+        # value_max / bluff_big (Chipzen, 2026-11-19): per-opponent sizing reads. value_max caps value_up's target at
+        # the largest bet <= value_max pots (0 = no cap); bluff_big moves that share of river air (hand group 8+)
+        # checks and smaller bets to the largest bet when it is at least BLUFF_BIG_MIN pots. Both off by default.
+        self.value_max, self.bluff_big = 0.0, 0.0
         # river_air (Chipzen, 2026-11-17): on the river, facing a bet or raise with only high card (a board pair
         # does not count), move the call mass to fold. The pot-odds range gave 8-high 24% equity vs a river raise on
         # QJTK2 (Season 15 R1 vs MonteCarlo, -32bb). Mode 1: only after our own river bet was raised; mode 2: also
@@ -1353,6 +1357,9 @@ class Engine:
         b, d = self.exploit["bluff"], self._defend(street)
         if getattr(self, "value_up", 0) > 0 and kind in ("btn_vs_check", "bb_first") and bkt <= self.value_bkt:
             bets = sorted((float(k.split()[1]), k) for k in probs if k.startswith(("bet", "lead")))
+            cap = getattr(self, "value_max", 0)
+            if cap > 0 and any(f <= cap + 1e-9 for f, _ in bets):
+                bets = [x for x in bets if x[0] <= cap + 1e-9]
             if bets:
                 top = bets[-1][1]
                 low = [k for k in probs if k != top and (k == "check" or k.startswith(("bet", "lead")))]
@@ -1361,6 +1368,16 @@ class Engine:
                     probs = {k: (v * (1 - self.value_up) if k in low else v) for k, v in probs.items()}
                     probs[top] += moved
                     notes.append(f"value_up: {moved:.0%} to {top}")
+        if getattr(self, "bluff_big", 0) > 0 and street == 3 and kind in ("btn_vs_check", "bb_first") and bkt >= 8:
+            bets = sorted((float(k.split()[1]), k) for k in probs if k.startswith(("bet", "lead")))
+            if bets and bets[-1][0] >= BLUFF_BIG_MIN:
+                top = bets[-1][1]
+                low = [k for k in probs if k != top and (k == "check" or k.startswith(("bet", "lead")))]
+                moved = self.bluff_big * sum(probs[k] for k in low)
+                if moved > 0.005:
+                    probs = {k: (v * (1 - self.bluff_big) if k in low else v) for k, v in probs.items()}
+                    probs[top] += moved
+                    notes.append(f"bluff_big: {moved:.0%} to {top}")
         more = self._bet_more_scale()
         if more > 1 and kind in ("btn_vs_check", "bb_first") and bkt >= self.betmore_bkt:
             b *= more
@@ -1556,6 +1573,7 @@ DEEPJAM_PRIOR, DEEPJAM_WEIGHT = 0.08, 10.0   # their jam range starts as the top
 DEEPJAM_RANGE_SCALE = 3.0      # jam share per deep preflop action -> range share in a facing-jam spot
 DEEPJAM_MARGIN = 0.02
 LIGHT3_PRIOR, LIGHT3_WEIGHT = 0.5, 6.0    # light_3bet: prior fold-to-3-bet share and its strength (in 3-bets)
+BLUFF_BIG_MIN = 1.2           # bluff_big: only into a bet of at least this many pots (an overbet)
 STEAL_MIN_BB = 15.0            # steal: only with at least this many big blinds (shorter stacks use the push/fold trees)
 LIGHT3_ON = 0.75                # act once the shrunk fold share is at least this (fresh A/B: 0.75 kept the folder gain, 0.7 leaked elsewhere)
 LIGHT3_MIN_N = 6                # at least this many of our 3-bets seen before acting
