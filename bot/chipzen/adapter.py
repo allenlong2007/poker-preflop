@@ -368,7 +368,7 @@ def load_reads(path, aggr=None, jams=None, f3=None, sizes=None, folds=None):
 
 SCOUT_FILE = "scout_seeds.json"
 # per-opponent engine settings a scout seed may set ("tune": {...}), with the allowed range for each
-TUNE_RANGES = {"light3_on": (0.5, 0.95), "betmore_on": (0.4, 0.9), "betmore_max": (1.0, 3.0), "betmore_bkt": (8, 11), "steal": (0.0, 1.0), "value_up": (0.0, 1.0), "value_bkt": (2, 7), "value_max": (0.0, 2.0), "bluff_big": (0.0, 1.0),
+TUNE_RANGES = {"light3_on": (0.5, 0.95), "betmore_on": (0.4, 0.9), "betmore_max": (1.0, 3.0), "betmore_bkt": (8, 11), "steal": (0.0, 1.0), "iso_to": (0.0, 8.0), "iso_more": (0.0, 1.0), "value_up": (0.0, 1.0), "value_bkt": (2, 7), "value_max": (0.0, 2.0), "bluff_big": (0.0, 1.0),
                "mm_vf": (0.0, 2.0), "mm_vt": (0.0, 2.0), "mm_vr": (0.0, 3.0), "mm_bf": (0.0, 2.0), "mm_bt": (0.0, 2.0), "mm_br": (0.0, 3.0),
                "mm_xf": (0.5, 2.0), "mm_xt": (0.5, 2.0), "mm_xr": (0.5, 2.0),
                # the engine's postflop exploit scales (Engine.exploit): bluff share x, and fold -> call moved per street

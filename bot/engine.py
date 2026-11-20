@@ -285,6 +285,9 @@ class Engine:
         # steal (Chipzen, 2026-11-18, opt-in per opponent via a scout "tune"): on the button first in, move this share
         # of the fold and limp mass to the open, against a big blind that folds most hands to an open. 0 = off.
         self.steal = 0.0
+        # Opt-in BB-vs-limp exploits (per-opponent tunes): iso_to = iso-raise size in bb (0 = the solved size),
+        # iso_more = share of the BB's check over a limp moved to the iso-raise. 0 = off.
+        self.iso_to, self.iso_more = 0.0, 0.0
         # value_up (Chipzen, 2026-11-19, opt-in per opponent via a scout "tune"): vs a calling station, when checked to or
         # first to act with group <= value_bkt (default top pair, T+ kicker), move this share of the check and smaller
         # bets to the largest trained bet. 0 = off.
@@ -516,7 +519,8 @@ class Engine:
                     "all-in": ("raise", st.stack)}
         elif hero == "bb" and kinds == [("btn", "call")]:
             node, pol = "bb_vs_limp", n["bb_vs_limp"]
-            opts = {"check": ("check", 0), "raise": ("raise", self.pre["iso_to"]), "all-in": ("raise", st.stack)}
+            opts = {"check": ("check", 0), "raise": ("raise", min(getattr(self, "iso_to", 0) or self.pre["iso_to"], st.stack)),
+                    "all-in": ("raise", st.stack)}
         elif hero == "bb" and kinds == [("btn", "raise")]:
             s = acts[0].to
             if jam(acts[0]):
@@ -593,6 +597,12 @@ class Engine:
             probs = {a: (p * (1 - self.steal) if a in ("fold", "limp") else p) for a, p in probs.items()}
             probs["raise"] += moved
             _trace(diagnostics, "steal", before, probs)
+        if getattr(self, "iso_more", 0) > 0 and base == "bb_vs_limp" and st.stack >= STEAL_MIN_BB and "raise" in probs:
+            before = dict(probs)
+            moved = self.iso_more * probs.get("check", 0)
+            probs = {a: (p * (1 - self.iso_more) if a == "check" else p) for a, p in probs.items()}
+            probs["raise"] += moved
+            _trace(diagnostics, "iso_more", before, probs)
         if not deep:
             node += f" ({n.lo:g}bb tree)" if n.exact else f" ({n.lo:g}/{n.hi:g}bb blend {n.w:.2f})"
         self._options = opts

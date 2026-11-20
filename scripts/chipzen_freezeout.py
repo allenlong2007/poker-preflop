@@ -403,6 +403,47 @@ class AutoBot(JarvisBot):
         return call if k in ("str", "top") or k == "pair" and r < 0.5 else fold
 
 
+class AutoBot2(AutoBot):
+    """AutoBot with the size reads of the 2026-11-20 rescout (1819 HU hands, seasons 12-15, style unchanged).
+    Folds a limp to our iso-raise 14% under 3bb, 24% at 3-4bb, 36% at 4-5bb, ~50% at 5-6.5bb, 52% to a jam; never
+    re-raises a limp. Facing postflop bets, fold share by size (<=40% / 1/2 / 3/4 / pot / over): flop 9/21/32/43/60%,
+    turn 42/44/47/65/~55%, river 37/38/56/61/~50%. River bets are near-pure value."""
+
+    FOLD = {1: (0.09, 0.21, 0.32, 0.43, 0.60), 2: (0.42, 0.44, 0.47, 0.65, 0.55), 3: (0.37, 0.38, 0.56, 0.61, 0.50)}
+    WEAK = {1: 1.10, 2: 0.70, 3: 0.75}           # calibration divisors (sim fold share matched to the scouted one)
+
+    def _act(self, s):
+        from bot.chipzen.adapter import big_blind
+        bb = big_blind(s.action_history, 100)
+        if s.phase == "preflop":
+            pre = [a for a in s.action_history if isinstance(a, dict) and a.get("phase") == "preflop"
+                   and not str(a.get("action", "")).startswith("post")]
+            limped = any(a.get("seat") == s.your_seat and a.get("action") == "call" for a in pre)
+            if limped and s.to_call and s.opponent_stacks[0] > 0 or limped and s.opponent_stacks[0] == 0:
+                hole = "".join(map(str, s.hole_cards))
+                p = self.pct[self.INDEX[self.hand_class(self.parse(hole))]]
+                to = (s.to_call + bb) / bb                 # the iso-raise size in bb
+                f = 0.52 if s.opponent_stacks[0] == 0 else 0.14 if to < 3 else 0.24 if to < 4 else 0.36 if to < 5 \
+                    else 0.50 if to < 6.5 else 0.60
+                return ("call", 0) if p <= 0.28 + 0.72 * (1 - f) else ("fold", 0)
+            return super()._act(s)
+        if not s.to_call or s.opponent_stacks[0] == 0:
+            return super()._act(s)
+        hole = "".join(map(str, s.hole_cards))
+        k, street, r = self._kind(hole, s.board), len(s.board) - 2, self.rng.random()
+        frac = s.to_call / max(1, s.pot - s.to_call)
+        i = 0 if frac <= 0.4 else 1 if frac <= 0.6 else 2 if frac <= 0.85 else 3 if frac <= 1.2 else 4
+        if k in ("str", "top"):
+            if street < 3 and k == "str" and r < 0.2 and "raise" in s.valid_actions:
+                return ("raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, int(3 * s.to_call + s.pot // 2))))
+            return ("call", 0)
+        if street == 1 and k == "pair" and i in (1, 2) and r < 0.12 and "raise" in s.valid_actions:
+            return ("raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, int(3 * s.to_call + s.pot // 2))))
+        q = min(1.0, self.FOLD[street][i] / self.WEAK[street])
+        q = min(1.0, q * (1.3 if k == "air" else 0.75 if k in ("pair", "draw") else 1.0))
+        return ("fold", 0) if self.rng.random() < q else ("call", 0)
+
+
 def decider(name, seed):
     from bot.chipzen.adapter import Decider, v8_engine
     from bot.engine import Engine
@@ -448,6 +489,10 @@ def decider(name, seed):
                 e.value_max = int(part[1:]) / 100
             elif part[0] == "Q":                     # +Q60: bluff_big moves 60% of river air to the overbet
                 e.bluff_big = int(part[1:]) / 100
+            elif part[0] == "I":                     # +I65: iso-raise a limp to 6.5bb (I0 = the solved size)
+                e.iso_to = int(part[1:]) / 10
+            elif part[0] == "L":                     # +L50: move 50% of the BB's checks over a limp to the iso-raise
+                e.iso_more = int(part[1:]) / 100
             elif part[0] == "K":                     # +K50: steal moves 50% of button fold/limp to the open
                 e.steal = int(part[1:]) / 100
             elif part[0] == "e":                     # +e40: 4-bet a wide (normal-size) 3-bet at 40% equity
@@ -488,6 +533,8 @@ def decider(name, seed):
         return Rule(shove=0.30, call=0.15, open_=0.55, deep_bb=12, seed=seed, limp=0.45, bluff=0.12, fit=True)
     elif name == "auto":                           # AutodidactInnovations model (AutoBot)
         return AutoBot(seed)
+    elif name == "auto2":                          # AutodidactInnovations size-aware model (AutoBot2)
+        return AutoBot2(seed)
     elif name == "cute":                           # cutewalrus model (CuteBot)
         return CuteBot(seed)
     elif name == "cute2":                           # cutewalrus model (CuteBot2)
@@ -511,7 +558,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
-F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "cute2": (22, 32), "auto": (3, 13)}                       # folds to our 3-bets, 3-bets faced
+F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "cute2": (22, 32), "auto": (3, 13), "auto2": (3, 13)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
