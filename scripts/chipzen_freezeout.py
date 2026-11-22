@@ -454,6 +454,54 @@ class AutoBot2(AutoBot):
         return ("fold", 0) if self.rng.random() < q else ("call", 0)
 
 
+class AlizBot(Rule):
+    """alizabethbot3s model from the 2026-11-20 exhibition: opens ~95% to 2.5bb, 3-bets ~28% of our opens,
+    calls jams wide, floats small flop bets, then barrels the turn when checked to (value + air)."""
+
+    def __init__(self, seed, float_=0.75, barrel=0.55):
+        super().__init__(shove=0.55, call=0.36, open_=0.95, deep_bb=12, seed=seed, x3=3.2, jam=0.0)
+        self.float_, self.barrel, self.three = float_, barrel, 0.28
+
+    def __call__(self, s):
+        from bot.engine import weak_showdown
+        from bot.chipzen.adapter import big_blind
+        import eval7
+        hole = "".join(map(str, s.hole_cards))
+        valid = s.valid_actions
+        if s.phase == "preflop":
+            p = self.pct[self.INDEX[self.hand_class(self.parse(hole))]]
+            bb = big_blind(s.action_history, 100)
+            if "raise" in valid and s.opponent_stacks[0] and bb // 2 < s.to_call <= 4 * bb and p <= self.three:
+                size = int(self.x3 * (s.to_call + bb))
+                return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, size))
+            return super().__call__(s)
+        cards = [eval7.Card(c) for c in [hole[:2], hole[2:]] + ["".join(map(str, [b])) for b in s.board]]
+        made = eval7.handtype(eval7.evaluate(cards)) != "High Card"
+        strong = not weak_showdown(cards[:2], cards[2:])
+        street = {3: "flop", 4: "turn", 5: "river"}.get(len(s.board), "flop")
+        r = self.rng.random()
+        def bet(frac):
+            return "raise", max(min(s.min_raise, s.max_raise), min(s.max_raise, int(s.pot * frac)))
+        if not s.to_call:
+            if "raise" not in valid:
+                return "check", 0
+            if street == "flop" and (made or r < 0.5):
+                return bet(0.33)
+            if street == "turn" and (made or r < self.barrel):
+                return bet(0.66)
+            if street == "river" and (strong or r < 0.3):
+                return bet(0.75)
+            return "check", 0
+        frac = s.to_call / max(1, s.pot - s.to_call)
+        if street == "flop":
+            ok = made or r < (self.float_ if frac <= 0.6 else 0.35)
+        elif frac <= 0.6:
+            ok = strong or made and r < 0.6 or r < 0.2
+        else:
+            ok = strong and r < 0.7
+        return ("call", 0) if ok and "call" in valid else ("fold", 0)
+
+
 def decider(name, seed):
     from bot.chipzen.adapter import Decider, v8_engine
     from bot.engine import Engine
@@ -563,6 +611,10 @@ def decider(name, seed):
         b = AutoBot2(seed)
         b.loose_jam = True
         return b
+    elif name == "aliz":                          # alizabethbot3s model (AlizBot)
+        return AlizBot(seed)
+    elif name == "alizT":                         # AlizBot that barrels the turn only 30% (honest-ish)
+        return AlizBot(seed, barrel=0.30)
     elif name == "cute":                           # cutewalrus model (CuteBot)
         return CuteBot(seed)
     elif name == "cute2":                           # cutewalrus model (CuteBot2)
@@ -586,7 +638,7 @@ def decider(name, seed):
     return Decider(engine=e)
 
 
-F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "cute2": (22, 32), "auto": (3, 13), "auto2": (3, 13), "auto2L": (3, 13), "auto2W": (3, 13), "auto2T": (3, 13)}                       # folds to our 3-bets, 3-bets faced
+F3_SEEDS = {"lilb": (13, 17), "jarvis": (14, 17), "jarvis2": (14, 17), "tide": (3, 12), "cute": (22, 32), "cute2": (22, 32), "auto": (3, 13), "auto2": (3, 13), "auto2L": (3, 13), "auto2W": (3, 13), "auto2T": (3, 13), "aliz": (12, 13), "alizT": (12, 13)}                       # folds to our 3-bets, 3-bets faced
 FOLD_SEEDS = {"lilb": (39, 60)}                    # folds to our postflop bets, times faced
 SIZE_SEEDS = {"teller": ((10, 10), (0, 10)), "teller_rev": ((0, 10), (10, 10))}   # (weak, n) small, big
 
